@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "slug": { "type": "string" },
+    "drive_folder_id": { "type": "string" },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["name", "slug"]
+}

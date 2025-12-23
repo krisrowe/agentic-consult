@@ -1,0 +1,14 @@
+customer.yaml
+customers/
+issues/
+.refresh_report_raw.txt
+.refresh_report.json
+*.bundle
+node_modules/
+__pycache__/
+TODO.md
+
+*.egg-info/
+.pytest_cache/
+*.log
+.venv/

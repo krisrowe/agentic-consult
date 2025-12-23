@@ -1,0 +1,24 @@
+# customer refresh configuration
+# Reminder minutes for TickTick reminders
+reminder_minutes: 5
+
+# Directory for issue markdown files
+issues_dir: ./issues
+
+# Gemini CLI command
+gemini_cmd: gemini
+
+# DRY_RUN: set to 1 to preview prompts, 0 to execute
+dry_run: 1
+
+# TickTick project name to check/create tasks in
+ticktick_project: "Work"
+
+# Filename to write open customer-related TickTick tasks
+tasks_json: ./tasks.json
+
+# Google Drive folder id for backing up all customers (optional)
+google_drive_all_customers_folder_id: "<DRIVE_PARENT_ID>"
+
+# File to write completed customer-related TickTick tasks (optional)
+completed_tasks_json: ./completed_tasks.json

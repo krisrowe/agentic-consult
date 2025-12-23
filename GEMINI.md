@@ -1,0 +1,290 @@
+# AI Agent Guide - Agentic Consult
+
+This guide is for AI agents (like Gemini CLI with MCP) that help users work **with** or **on** this repository.
+
+## Two Use Cases
+
+**1. Contributing to this Repository (Developer/Contributor Context)**
+- Working ON the agentic-consult codebase itself
+- See the "Contributing" section below for specific guidance
+
+**2. Using the `consult` CLI Tool (User Context)**  
+- Using the tool from other repositories for customer workflows
+- See the rest of this guide for usage patterns
+
+---
+
+## Agent Workflow Overview
+
+You will help users by invoking the `consult` CLI to:
+1. Manage customer configurations
+2. Scan emails and create tasks
+3. Generate and organize issue tracking notes
+4. Perform security scans before commits
+5. Create backups
+
+## Core CLI Commands
+
+### Customer Management
+
+**Initialize new customer:**
+```bash
+consult customers init --slug <slug> --name "<Name>"
+```
+- Creates customer config at `~/.config/agentic-consult/customers/<slug>/`
+- Auto-discovers or creates Google Drive folder (requires gwsa)
+
+**Show customer info:**
+```bash
+consult customers show <slug>
+```
+
+**Add customer notes:**
+```bash
+consult customers notes add <slug> --content "..."
+consult customers notes add <slug> --file /path/to/file.md
+```
+
+### Email Scan & Task Creation
+
+**Refresh workflow** (scan emails, create tasks, update issues):
+```bash
+# Preview what would be done (safe, dry-run)
+consult customers refresh <slug> --dry-run
+
+# Execute (requires gwsa + TickTick access)
+consult customers refresh <slug> --no-dry-run
+```
+
+**Expected behavior:**
+- Searches Gmail for unreplied messages from customer
+- Creates TickTick tasks for new emails
+- Matches emails to existing issue files or creates new ones
+- Saves attachments to customer's directory
+
+### Security Scanning
+
+**Before any git commit, always run:**
+```bash
+consult precommit
+```
+
+This scans for:
+- Customer names, slugs, keywords
+- Email addresses
+- Drive IDs
+- API keys/tokens
+- Local usernames
+
+**Include gitignored files in scan:**
+```bash
+consult precommit --include-ignored
+```
+
+### Backup Operations
+
+**Backup customer data to Drive:**
+```bash
+consult backup [--output-dir /path] [--no-upload]
+```
+
+## Integration with MCP/gwsa
+
+The tool expects these MCP capabilities:
+
+**Gmail (via gwsa):**
+- `gwsa gmail search "in:inbox from:<customer>"`
+- `gwsa gmail get <message-id>`
+
+**Drive (via gwsa):**
+- `gwsa drive ls <folder-id>`
+- `gwsa drive mkdir --parent <id> --name "<name>"`
+- `gwsa drive upload --file <path> --parent <id>`
+
+**TickTick:**
+- Create tasks via TickTick API/MCP
+
+### TickTick Integration
+
+The `refresh` command requires a `TICKTICK_ACCESS_TOKEN` environment variable to fetch tasks.
+
+> [!TIP]
+> If the TickTick MCP server has been set up on the workstation, you may find the token in `~/.gemini/settings.json` under the `ticktick` MCP server configuration. You can use this token for local CLI operations, but **never** include the token value in any versioned files or commit messages.
+
+## Customer Data Structure
+
+**Customer config location:**
+```
+~/.config/agentic-consult/customers/<slug>/
+├── customer.yaml       # name, slug, drive_folder_id, keywords
+├── notes/             # Customer notes
+└── issues/            # Email-generated issue tracking (optional)
+```
+
+**customer.yaml schema:**
+```yaml
+name: "Customer Name"
+# The slug should typically be the customer's email domain without the suffix
+# (e.g., "acme" for "acme.com"). If the slug differs from the email domain,
+# add the domain name (without suffix) to keywords to help detect customer data.
+slug: customer-slug
+drive_folder_id: "DriveID123456"
+keywords:
+  - keyword1
+  - keyword2
+```
+
+## Agent Best Practices
+
+### When to use dry-run
+- **Always start with `--dry-run`** for refresh commands
+- Show user the preview
+- Ask for confirmation before running with `--no-dry-run`
+
+### Local vs XDG storage
+- Customer data lives in `~/.config/agentic-consult/` (XDG)
+- The git repository at `~/ws/consult/` (or wherever) contains only code
+- **Never** commit customer data to git
+- Use `.gitignore` to exclude `customers/`, `customer.yaml`, `issues/`
+
+### Security workflow
+1. Before committing code changes: `consult precommit`
+2. If scan fails, review findings with user
+3. Either fix issues or update `.gitignore`
+4. Re-run scan until clean
+5. **CRITICAL**: Review commit message for sensitive data
+   - **NEVER include customer names, slugs, keywords, email addresses, or any sensitive data that the scanner detects in git commit messages**
+   - The scanner only checks file contents, not git metadata
+   - Use generic examples (e.g., "customer", "example-corp") instead of real customer data
+6. Then `git commit`
+
+### Issue tracking workflow
+1. User receives email from customer
+2. Run refresh to scan emails: `consult customers refresh <slug> --dry-run`
+3. Review plan with user
+4. Execute: `--no-dry-run`
+5. Check created TickTick tasks and issue files
+
+### Backup workflow
+1. Periodic backups: `consult backup`
+2. Uploads customer data to their configured Drive folder
+3. Use `--no-upload` for local-only backups
+
+## Configuration Management
+
+**View config:**
+```bash
+consult config show
+```
+
+**Set custom customer data path:**
+```bash
+consult config set customers-local-path /custom/path
+```
+
+**Set Drive parent folder for all customers:**
+```bash
+consult config set customers-cloud-folder-id <drive-folder-id>
+```
+
+## Error Handling
+
+**Common issues:**
+
+1. **"Customer not found"** - Run `customers init` first
+2. **"gwsa not found"** - Install google-workspace-access MCP tool
+3. **"Drive folder not found"** - Check `drive_folder_id` in customer.yaml
+4. **Precommit fails** - Review scanner output, check if sensitive data should be gitignored
+
+## Privacy & Security
+
+**Critical rules:**
+- Customer names/slugs/keywords are kept in XDG config directory
+- **Never** commit customer.yaml to git
+- **Always** run precommit before git commits
+- Customer data directories are gitignored by default
+- Sensitive information detection is automatic
+
+**Gitignored by default:**
+```
+customer.yaml
+customers/
+issues/
+.venv/
+*.egg-info/
+.pytest_cache/
+*.log
+```
+
+## Example Agent Session
+
+```
+User: "Set up tracking for Acme Corp"
+
+Agent: I'll initialize a customer configuration for Acme Corp.
+
+[Run] consult customers init --slug acme --name "Acme Corp"
+[Output] Created customer config. Drive folder: 1abc...xyz
+
+Agent: Customer "Acme Corp" is now configured. The Drive folder was auto-created
+       at ~/.config/agentic-consult/customers/acme/
+
+User: "Check for new emails and create tasks"
+
+Agent: I'll preview what would be done:
+
+[Run] consult customers refresh acme --dry-run
+[Output] Would create 3 tasks, update 2 issues, save 1 attachment
+
+Agent: This would create 3 TickTick tasks for unreplied emails. Proceed?
+
+User: "Yes"
+
+[Run] consult customers refresh acme --no-dry-run
+[Output] Created 3 tasks, updated 2 issue files
+
+Agent: Done. Created 3 TickTick tasks and updated issue tracking files.
+```
+
+## Development Workflow
+
+When helping users work on the codebase itself:
+
+**Critical: Always run before committing:**
+```bash
+make precommit  # Runs pytest (10 tests) + security scanner
+```
+
+**Individual development commands:**
+```bash
+# Install for development
+make build
+
+# Run tests only (pytest)
+make test
+
+# Run security scan only
+consult precommit
+
+# Clean build artifacts
+make clean
+```
+
+**Test coverage:**
+- 10 comprehensive tests (pytest)
+- Schema validation
+- Security scanner validation with exact line/value matching
+- Gitignore behavior testing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contributor guidelines.
+
+## Summary
+
+As an AI agent, your role is to:
+1. **Invoke CLI commands** based on user intent
+2. **Start with dry-runs** for safety
+3. **Always scan before commits** using precommit
+4. **Keep customer data separate** from code repository
+5. **Explain what commands do** before running them
+
+The `consult` CLI handles the actual work - you orchestrate it based on user needs.
