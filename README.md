@@ -20,17 +20,33 @@ This tool helps automate customer support workflows by:
 
 **AI Agent Integration**: This tool is designed to work with AI assistants like Gemini CLI. See [GEMINI.md](GEMINI.md) for the agent-facing guide.
 
+## Prerequisites
+
+- Python 3.8+
+- [Google Workspace Access (gwsa)](https://github.com/example/gwsa) - For Gmail and Drive integration.
+- [TickTick Access](https://github.com/krisrowe/ticktick-access) - For task management.
+
+### TickTick Setup
+
+1. Install `ticktick-access` using pipx:
+   ```bash
+   pipx install ticktick-access
+   ```
+
+2. Configure your TickTick client credentials:
+   ```bash
+   ticktick client set
+   ```
+   (You will need a Client ID and Secret from the [TickTick Developer Portal](https://developer.ticktick.com/)).
+
+3. Authenticate:
+   ```bash
+   ticktick auth
+   ```
+
 ## Installation
 
-```bash
-# Create virtual environment and install
-make build
-
-# Or manually
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-```
+1. Clone the repository:
 
 ## Quick Start
 
@@ -87,13 +103,16 @@ consult config show
 # Set config value
 consult config set customers-local-path /path/to/customers
 
-# TickTick Integration (Optional)
-# Requires TICKTICK_ACCESS_TOKEN environment variable
-export TICKTICK_ACCESS_TOKEN="your-token-here"
-```
+### TickTick Integration (Optional)
 
-> [!NOTE]
-> A broader solution for automatic token discovery is pending. For now, ensure this environment variable is set if you want TickTick integration.
+The `refresh` command integrates with TickTick to fetch and manage tasks.
+
+1.  **Install `ticktick-access`**: Ensure the `ticktick` CLI is installed and available in your PATH.
+2.  **Configure Client**: Run `ticktick client set` to provide your TickTick OAuth client ID and secret.
+3.  **Authenticate**: Run `ticktick auth` to authorize the tool and obtain an access token.
+4.  **Verify**: Run `ticktick status` to ensure you are authenticated.
+
+The `consult` tool will automatically discover the access token from the `ticktick-access` configuration or the Gemini MCP settings. Alternatively, you can set the `TICKTICK_ACCESS_TOKEN` environment variable.
 
 ## Project Structure
 

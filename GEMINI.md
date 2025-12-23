@@ -147,6 +147,11 @@ keywords:
 - **Never** commit customer data to git
 - Use `.gitignore` to exclude `customers/`, `customer.yaml`, `issues/`
 
+### Dependency Management
+- **Always use `pipx`** to install Python tools locally (e.g., `ticktick-access`, `gwsa`).
+- `pipx` ensures tools are isolated and don't conflict with system packages or other projects.
+- Example: `pipx install -e ./path/to/local/tool`
+
 ### Security workflow
 1. Before committing code changes: `consult precommit`
 2. If scan fails, review findings with user

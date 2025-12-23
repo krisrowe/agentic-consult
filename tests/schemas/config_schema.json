@@ -1,14 +1,46 @@
 {
   "type": "object",
   "properties": {
-    "reminder_minutes": { "type": "integer" },
-    "issues_dir": { "type": "string" },
-    "gemini_cmd": { "type": "string" },
-    "dry_run": { "type": ["integer", "boolean"] },
-    "ticktick_project": { "type": "string" },
-    "tasks_json": { "type": "string" },
-    "completed_tasks_json": { "type": "string" },
-    "google_drive_all_customers_folder_id": { "type": "string" }
+    "reminder_minutes": {
+      "type": "integer"
+    },
+    "issues_dir": {
+      "type": "string"
+    },
+    "gemini_cmd": {
+      "type": "string"
+    },
+    "dry_run": {
+      "type": [
+        "integer",
+        "boolean"
+      ]
+    },
+    "ticktick_project": {
+      "type": "string"
+    },
+    "tasks_json": {
+      "type": "string"
+    },
+    "completed_tasks_json": {
+      "type": "string"
+    },
+    "google_drive_all_customers_folder_id": {
+      "type": "string"
+    },
+    "ticktick": {
+      "type": "object",
+      "properties": {
+        "auth": {
+          "type": "object",
+          "properties": {
+            "use_gemini": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
   },
   "required": []
 }

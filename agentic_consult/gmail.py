@@ -33,12 +33,30 @@ def fetch_emails(customer: Dict, max_emails: int = 10) -> List[Dict]:
         query = f"({' OR '.join(customer['keywords'])}) is:unread"
 
     try:
-        # Run gwsa mail search --format json
-        cmd = ["gwsa", "mail", "search", query, "--max-results", str(max_emails), "--format", "json"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        emails = json.loads(result.stdout)
-        return emails
+        # 1. Search for metadata first (faster)
+        # Run gwsa mail search --format metadata
+        search_cmd = ["gwsa", "mail", "search", query, "--max-results", str(max_emails), "--format", "metadata"]
+        result = subprocess.run(search_cmd, capture_output=True, text=True, check=True)
+        search_results = json.loads(result.stdout)
+        
+        full_emails = []
+        for msg in search_results:
+            msg_id = msg.get("id")
+            if not msg_id: continue
+            
+            try:
+                # 2. Fetch full content for each message
+                read_cmd = ["gwsa", "mail", "read", msg_id]
+                read_result = subprocess.run(read_cmd, capture_output=True, text=True, check=True)
+                full_email = json.loads(read_result.stdout)
+                full_emails.append(full_email)
+            except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+                click.echo(f"Warning: Failed to read email {msg_id}: {e}", err=True)
+                continue
+                
+        return full_emails
     except subprocess.CalledProcessError as e:
+
         click.echo(f"Error calling gwsa: {e.stderr}", err=True)
         return []
     except json.JSONDecodeError:

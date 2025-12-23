@@ -233,8 +233,15 @@ def customers_refresh(identifier, dry_run, gemini_cmd, max_emails, force_refresh
         root = get_active_customers_root()
         customer_dir = root / cust['slug']
         
+        use_gemini = config.get("ticktick", {}).get("auth", {}).get("use_gemini", False)
+        
         email_count = fetch_and_cache_emails(cust, customer_dir, max_emails=max_emails)
-        task_count = fetch_and_cache_tasks(cust, customer_dir, project=config.get("ticktick_project", "Work"))
+        task_count = fetch_and_cache_tasks(
+            cust, 
+            customer_dir, 
+            project=config.get("ticktick_project", "Work"),
+            use_gemini=use_gemini
+        )
         
         click.echo(f"Fetched {email_count} emails and {task_count} tasks.")
 

@@ -22,3 +22,10 @@ google_drive_all_customers_folder_id: "<DRIVE_PARENT_ID>"
 
 # File to write completed customer-related TickTick tasks (optional)
 completed_tasks_json: ./completed_tasks.json
+
+# TickTick Authentication
+ticktick:
+  auth:
+    # Set to true to allow falling back to ~/.gemini/settings.json for the access token
+    # Default is false.
+    use_gemini: false
