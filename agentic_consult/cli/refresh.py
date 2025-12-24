@@ -280,8 +280,42 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
     # 10. Process Deltas
     process_deltas(deltas_path, config, customer_dir, expected_max_deltas)
     
-    # 11. Update State (Mark processed)
-    if not dry_run and unprocessed_emails:
-        newly_processed_ids = {e['id'] for e in unprocessed_emails}
-        mark_emails_processed(customer_dir, newly_processed_ids)
-        click.echo(f"Marked {len(newly_processed_ids)} emails as processed.")
+    # 11. Update State (Mark processed based on Gemini acknowledgment)
+    if not dry_run:
+        # Load deltas to collect acknowledged email IDs
+        try:
+            with open(deltas_path, 'r') as f:
+                deltas = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            click.echo("Warning: Could not read deltas for acknowledgment tracking", err=True)
+            return
+        
+        # Collect acknowledged IDs from all sections of the deltas response
+        ack_ids = set()
+        
+        # From tasks.create
+        for t in deltas.get('tasks', {}).get('create', []):
+            if 'email_id' in t:
+                ack_ids.add(t['email_id'])
+        
+        # From tasks.update
+        for t in deltas.get('tasks', {}).get('update', []):
+            if 'email_id' in t:
+                ack_ids.add(t['email_id'])
+        
+        # From issues.update
+        for i in deltas.get('issues', {}).get('update', []):
+            if 'email_ids' in i:
+                ack_ids.update(i['email_ids'])
+        
+        # From ignoring array (emails Gemini explicitly chose to ignore)
+        for i in deltas.get('ignoring', []):
+            if 'email_id' in i:
+                ack_ids.add(i['email_id'])
+        
+        # Mark only acknowledged emails as processed
+        if ack_ids:
+            mark_emails_processed(customer_dir, ack_ids)
+            click.echo(f"Marked {len(ack_ids)} emails as processed (acknowledged by Gemini)")
+        else:
+            click.echo("Warning: No emails acknowledged in Gemini response", err=True)

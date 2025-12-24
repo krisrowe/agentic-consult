@@ -8,6 +8,22 @@ from agentic_consult.cli.main import main
 from agentic_consult.processing_state import load_processed_emails
 
 
+def create_mock_subprocess_with_deltas(customer_dir, mock_deltas):
+    """
+    Creates a mock subprocess side_effect that writes deltas.json file.
+    This is needed because mocked subprocess doesn't execute shell redirection.
+    """
+    def mock_subprocess_side_effect(*args, **kwargs):
+        cmd = args[0] if args else kwargs.get('args', '')
+        # If this is the Gemini command (contains redirection to deltas.json)
+        if isinstance(cmd, str) and 'deltas.json' in cmd:
+            # Write the deltas file that would have been created by shell redirection
+            deltas_path = customer_dir / 'deltas.json'
+            deltas_path.write_text(json.dumps(mock_deltas))
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
+    return mock_subprocess_side_effect
+
+
 def test_end_to_end_email_processing_tracking():
     """
     End-to-end test: Run refresh command with mock Gemini and verify emails_processed.txt is created.
@@ -77,7 +93,7 @@ Tasks: <TASKS>
         
         # Mock subprocess.run to avoid actual ticktick CLI calls
         with patch('subprocess.run') as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
+            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             result = runner.invoke(
@@ -89,10 +105,11 @@ Tasks: <TASKS>
             # Verify command succeeded
             assert result.exit_code == 0, f"Command failed: {result.output}"
             
-            # Verify emails_processed.txt was created with all email IDs
+            # Verify emails_processed.txt was created with acknowledged email IDs
+            # email1 was acknowledged in tasks.create, email2 and email3 in ignoring
             processed_emails = load_processed_emails(test_customer_dir)
             assert processed_emails == {"email1", "email2", "email3"}, \
-                f"Expected all 3 emails to be marked as processed, got: {processed_emails}"
+                f"Expected all 3 emails to be marked as processed (all acknowledged), got: {processed_emails}"
             
             # Verify the file exists and has correct content
             processed_file = test_customer_dir / 'emails_processed.txt'
@@ -163,7 +180,7 @@ Tasks: <TASKS>
         
         # Mock subprocess
         with patch('subprocess.run') as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
+            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -175,7 +192,7 @@ Tasks: <TASKS>
             )
             assert result1.exit_code == 0
             
-            # Verify both emails were marked as processed
+            # Verify both emails were marked as processed (both in ignoring array)
             processed = load_processed_emails(test_customer_dir)
             assert processed == {"email1", "email2"}
             
@@ -260,7 +277,7 @@ Tasks: <TASKS>
         
         # Mock subprocess
         with patch('subprocess.run') as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
+            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -274,7 +291,7 @@ Tasks: <TASKS>
                 all_emails = json.load(f)
             assert len(all_emails) == 3
             
-            # Verify email3 was added to processed list
+            # Verify email3 was added to processed list (acknowledged in ignoring array)
             processed = load_processed_emails(test_customer_dir)
             assert processed == {"email1", "email2", "email3"}
 
@@ -333,7 +350,7 @@ Tasks: <TASKS>
         
         # Mock subprocess
         with patch('subprocess.run') as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
+            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -344,7 +361,7 @@ Tasks: <TASKS>
             )
             assert result.exit_code == 0
             
-            # Verify both emails were processed
+            # Verify both emails were processed (both acknowledged in ignoring array)
             processed = load_processed_emails(test_customer_dir)
             assert processed == {"email1", "email2"}
 
@@ -406,7 +423,7 @@ Tasks: <TASKS>
         
         # Mock subprocess
         with patch('subprocess.run') as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
+            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -423,7 +440,7 @@ Tasks: <TASKS>
                 cached_emails = json.load(f)
             assert len(cached_emails) == 3
             
-            # Verify email3 was added to processed list
+            # Verify email3 was added to processed list (acknowledged in ignoring)
             processed = load_processed_emails(test_customer_dir)
             assert processed == {"email1", "email2", "email3"}
 
@@ -483,7 +500,7 @@ Tasks: <TASKS>
         
         # Mock subprocess
         with patch('subprocess.run') as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
+            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -495,6 +512,6 @@ Tasks: <TASKS>
             )
             assert result.exit_code == 0
             
-            # Verify both emails were processed
+            # Verify both emails were processed (both acknowledged in ignoring array)
             processed = load_processed_emails(test_customer_dir)
             assert processed == {"email1", "email2"}
