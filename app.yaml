@@ -1,0 +1,22 @@
+gemini:
+  debug: false
+  models:
+    default: gemini-2.5-flash
+    available:
+      - gemini-3-flash
+      - gemini-2.5-flash
+      - gemini-2.5-pro
+      - gemini-3-pro
+
+email:
+  read_archived_email: false
+  max_emails: 50
+  # Email content batching limits (in characters)
+  max_prompt_content_chars: 100000  # Stop adding emails after this limit is reached/exceeded
+  max_email_chars: 100000           # Truncate individual emails exceeding this limit
+
+# Default Settings
+skip_task_writes: true
+use_mock_gemini: false
+use_mock_data: false
+ticktick_project: Work

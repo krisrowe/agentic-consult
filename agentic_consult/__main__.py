@@ -1,4 +1,4 @@
-from agentic_consult.cli import main
+from agentic_consult.cli.main import main
 
 if __name__ == "__main__":
     main()

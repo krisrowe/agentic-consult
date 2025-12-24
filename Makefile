@@ -24,7 +24,7 @@ test:
 		python3 -m venv .venv; \
 		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
 	fi
-	@. .venv/bin/activate && pytest
+	@PYTHONPATH=. .venv/bin/activate && pytest
 
 precommit:
 	@if [ ! -d ".venv" ]; then \
@@ -37,9 +37,13 @@ precommit:
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@. .venv/bin/activate && pytest -q --tb=no > /tmp/pytest-output.txt 2>&1; \
 	TEST_EXIT=$$?; \
-	TEST_COUNT=$$(grep -oP '\d+(?= passed)' /tmp/pytest-output.txt || echo "0"); \
+	PASS_COUNT=$$(grep -oP '\d+(?= passed)' /tmp/pytest-output.txt || echo "0"); \
+	TOTAL_COUNT=$$(grep -oP '\d+(?= collected)' /tmp/pytest-output.txt || echo "0"); \
+	if [ "$$TOTAL_COUNT" = "0" ]; then \
+		TOTAL_COUNT=$$(grep -oP '\d+(?= items)' /tmp/pytest-output.txt || echo "$$PASS_COUNT"); \
+	fi; \
 	if [ $$TEST_EXIT -eq 0 ]; then \
-		echo "✅ Tests: $$TEST_COUNT/10 passed"; \
+		echo "✅ Tests: $$PASS_COUNT/$$TOTAL_COUNT passed"; \
 	else \
 		echo "❌ Tests: FAILED (run 'make test' for details)"; \
 	fi; \

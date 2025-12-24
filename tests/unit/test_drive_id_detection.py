@@ -8,13 +8,17 @@ import sys as _sys
 
 def run_checker(repo_root, tmp_repo_dir, customers_dir, expect_ok=True):
     # Use sys.executable to run our module directly
-    cmd = [_sys.executable, '-m', 'agentic_consult', 'precommit']
+    cmd = [_sys.executable, '-m', 'agentic_consult', 'precommit', str(tmp_repo_dir)]
     env = os.environ.copy()
     # Ensure local module is found
     env['PYTHONPATH'] = f"{repo_root}:{env.get('PYTHONPATH', '')}"
     env['CUSTOMERS_DIR'] = str(customers_dir)
     env['GIT_DIR'] = str(Path(tmp_repo_dir) / '.git')
     env['GIT_WORK_TREE'] = str(tmp_repo_dir)
+    
+    # Add .gitignore to ignore customers dir
+    (tmp_repo_dir / '.gitignore').write_text('customers/\n')
+    
     proc = subprocess.run(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     output = proc.stdout
     if expect_ok:

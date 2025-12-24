@@ -3,7 +3,7 @@ import sys
 import yaml
 import click
 from pathlib import Path
-from agentic_consult.config import load_main_config
+from pathlib import Path
 
 DEFAULT_CUSTOMERS_DIR_NAME = "customers"
 
@@ -20,21 +20,13 @@ def get_active_customers_root():
     if os.environ.get("CUSTOMERS_DIR"):
         return Path(os.environ["CUSTOMERS_DIR"])
 
-    # 2. Config
-    main_config = load_main_config()
-    custom_path = main_config.get("customers_local_path")
-    if custom_path:
-        return Path(custom_path)
-
-    # 3. XDG (Preferred Default)
-    xdg_root = Path(click.get_app_dir('agentic-consult')) / DEFAULT_CUSTOMERS_DIR_NAME
-    
-    # 4. Local fallback (only if XDG doesn't exist but local does, to support legacy dev usage)
+    # 2. Local ./customers (Preferred for Dev/Repo usage)
     local_root = Path.cwd() / DEFAULT_CUSTOMERS_DIR_NAME
-    if local_root.exists() and not xdg_root.exists():
+    if local_root.exists():
         return local_root
-        
-    # Default to XDG
+
+    # 3. XDG (Default for User usage)
+    xdg_root = Path(click.get_app_dir('agentic-consult')) / DEFAULT_CUSTOMERS_DIR_NAME
     return xdg_root
 
 def load_customer_config(customers_dir=None):

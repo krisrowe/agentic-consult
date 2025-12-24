@@ -44,9 +44,14 @@ This tool helps automate customer support workflows by:
    ticktick auth
    ```
 
-## Installation
+## Debugging
 
-1. Clone the repository:
+Set `CONSULT_DEBUG_GEMINI_MCP=true` in your environment to include `--debug` flag when invoking Gemini CLI. This can help verify that MCP servers are correctly disabled.
+
+```bash
+export CONSULT_DEBUG_GEMINI_MCP=true
+consult customers refresh <slug> --dry-run
+```
 
 ## Quick Start
 

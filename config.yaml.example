@@ -1,27 +1,35 @@
-# customer refresh configuration
-# Reminder minutes for TickTick reminders
+# agentic-consult/config.yaml
+# Place this file in your customers root directory (e.g., alongside your customer folders).
+
+# Default reminder window in minutes
 reminder_minutes: 5
 
-# Directory for issue markdown files
+# Default directory for issue tracking files
 issues_dir: ./issues
 
-# Gemini CLI command
+# Command to invoke Gemini CLI
 gemini_cmd: gemini
 
-# DRY_RUN: set to 1 to preview prompts, 0 to execute
-dry_run: 1
+# Gemini CLI Configuration
+gemini:
+  # Enable debug logging for the Gemini CLI (shows MCP/extension loading)
+  debug: false
 
-# TickTick project name to check/create tasks in
-ticktick_project: "Work"
+# Default TickTick project
+ticktick_project: Work
 
-# Filename to write open customer-related TickTick tasks
-tasks_json: ./tasks.json
+# If true, `refresh` will echo the 'ticktick' commands instead of executing them.
+# The generated `task-deltas.json` file will also be preserved.
+skip_task_writes: true
 
-# Google Drive folder id for backing up all customers (optional)
+# Use mock Gemini script for testing/development
+use_mock_gemini: false
+
+# Use mock input data (emails/tasks) if available in customer directory
+use_mock_data: false
+
+# Root Google Drive folder for all customer data backups
 google_drive_all_customers_folder_id: "<DRIVE_PARENT_ID>"
-
-# File to write completed customer-related TickTick tasks (optional)
-completed_tasks_json: ./completed_tasks.json
 
 # TickTick Authentication
 ticktick:

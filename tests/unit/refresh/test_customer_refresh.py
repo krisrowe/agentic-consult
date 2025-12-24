@@ -2,7 +2,7 @@ import os
 import tempfile
 from pathlib import Path
 from click.testing import CliRunner
-from agentic_consult.cli import main
+from agentic_consult.cli.main import main
 
 def test_refresh_dry_run():
     """Test that refresh command works in dry-run mode with minimal setup."""
@@ -28,7 +28,7 @@ keywords:
         # Create a simple prompt template in the tmp directory
         prompt_tpl = tmp_path / 'prompt.tpl'
         prompt_tpl.write_text("""Customer: <CUSTOMER>
-Project: <TICKTICK_PROJECT>
+Project: <PROJECT>
 Today: <TODAY>
 Issues Dir: <ISSUES_DIR>
 """)
@@ -51,8 +51,7 @@ Issues Dir: <ISSUES_DIR>
             mock_fetch_tasks.return_value = []
             
             # Run refresh in dry-run mode (default)
-            result = runner.invoke(main, ['customers', 'refresh', 'fakecorp'], env=env)
-            
+            result = runner.invoke(main, ['refresh', 'fakecorp'], env=env)            
             # Check that command succeeded
             assert result.exit_code == 0, f"Command failed with: {result.output}"
             
@@ -68,9 +67,8 @@ def test_refresh_build_prompt():
     
     template = """Customer: <CUSTOMER>
 Search: <CUSTOMER_SEARCH>
-Prefix: <CUSTOMER_PREFIX>
 Today: <TODAY>
-Project: <TICKTICK_PROJECT>
+Project: <PROJECT>
 Reminder: <REMINDER_MINUTES>
 Issues: <ISSUES_DIR>
 """
@@ -95,12 +93,11 @@ Issues: <ISSUES_DIR>
         # Verify substitutions
         assert 'Customer: Test Customer Inc' in result
         assert 'Search: Test Customer Inc' in result
-        assert 'Prefix: Test Customer Inc' in result
         assert 'Project: TestProject' in result
         assert 'Reminder: 10' in result
         assert '<CUSTOMER>' not in result
         assert '<TODAY>' not in result
-        assert '<TICKTICK_PROJECT>' not in result
+        assert '<PROJECT>' not in result
 
 
 def test_refresh_no_dry_run():
@@ -150,15 +147,14 @@ Issues: <ISSUES_DIR>
             mock_which.return_value = '/usr/bin/gemini'
             
             # Mock successful execution
-            mock_run.return_value = MagicMock(returncode=0)
+            mock_run.return_value = MagicMock(returncode=0, stdout='{"tasks": {"create": [], "update": []}, "issues": {"update": []}}')
             
             # Run refresh with --no-dry-run
-            result = runner.invoke(
-                main, 
-                ['customers', 'refresh', 'fakecorp', '--no-dry-run'],
+                            result = runner.invoke(
+                main,
+                ['refresh', 'fakecorp', '--no-dry-run'],
                 env=env
-            )
-            
+            )            
             # Should succeed
             assert result.exit_code == 0, f"Command failed: {result.output}"
             assert 'Fetched 1 emails and 1 tasks.' in result.output
@@ -169,8 +165,8 @@ Issues: <ISSUES_DIR>
             
             # Verify command structure
             assert call_args[0][0][0] == 'gemini'
-            assert call_args[0][0][1] == 'chat'
-            assert call_args[0][0][2] == '--stdin'
+            # We don't strictly check index 1 as it might be --model or --allowed-mcp-server-names depending on config
+            assert '--allowed-mcp-server-names' in call_args[0][0]
             
             # Verify prompt was passed as input
             assert 'input' in call_args[1]

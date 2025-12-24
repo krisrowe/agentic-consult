@@ -119,31 +119,70 @@ def load_tasks_from_json(tasks_dir: Path) -> List[Dict]:
         return []
 
 
-def fetch_and_cache_tasks(customer: Dict, customer_dir: Path, project: str = 'Work', use_gemini: bool = False) -> int:
+def fetch_and_cache_tasks(customer: Dict, customer_dir: Path, project: str = 'Work', use_gemini: bool = False, use_mock_data: bool = False) -> (int, Dict):
     """
-    Fetch TickTick tasks and cache them locally.
+    Fetch TickTick tasks, compare with cache, and save locally.
     
     Args:
         customer: Customer config dict
         customer_dir: Customer's data directory
         project: TickTick project name
         use_gemini: Whether to fall back to Gemini settings if auth fails.
+        use_mock_data: Whether to use mock-server-tasks.json if available
     
     Returns:
-        Number of tasks available (newly fetched or from cache)
+        A tuple containing:
+        - Total number of tasks available.
+        - A dict with stats: {'new': int, 'updated': int, 'unchanged': int}.
     """
     tasks_dir = customer_dir / 'tasks'
+    stats = {'new': 0, 'updated': 0, 'unchanged': 0}
     
+    # Check for mock data
+    if use_mock_data:
+        mock_file = customer_dir / 'mock-server-tasks.json'
+        if mock_file.exists():
+            click.echo(f"Using mock tasks from {mock_file}")
+            try:
+                with open(mock_file, 'r') as f:
+                    tasks = json.load(f)
+                save_tasks_to_json(tasks, tasks_dir)
+                # In mock mode, we can't calculate stats, so we assume all are new
+                stats['new'] = len(tasks)
+                return len(tasks), stats
+            except Exception as e:
+                click.echo(f"Error reading mock tasks: {e}", err=True)
+                return 0, stats
+        else:
+             click.echo(f"Warning: use_mock_data is true but {mock_file} not found.", err=True)
+
+    # Load old tasks for comparison
+    old_tasks_list = load_tasks_from_json(tasks_dir)
+    old_tasks_map = {task['id']: task for task in old_tasks_list}
+
     # Fetch tasks
-    tasks = fetch_tasks(customer, project=project, use_gemini=use_gemini)
+    click.echo(f"Fetching tasks from project '{project}'...", err=True)
+    new_tasks = fetch_tasks(customer, project=project, use_gemini=use_gemini)
     
+    if not new_tasks and old_tasks_list:
+        click.echo(f"Task fetch failed. Using {len(old_tasks_list)} cached tasks for {customer.get('name')}.", err=True)
+        return len(old_tasks_list), stats
+
+    # Compare and calculate stats
+    if not isinstance(new_tasks, list):
+        click.echo(f"Warning: Expected a list of tasks but got {type(new_tasks)}. Treating as empty.", err=True)
+        new_tasks = []
+
+    new_tasks_map = {task['id']: task for task in new_tasks}
+    for task_id, task in new_tasks_map.items():
+        if task_id not in old_tasks_map:
+            stats['new'] += 1
+        elif task != old_tasks_map[task_id]:
+            stats['updated'] += 1
+        else:
+            stats['unchanged'] += 1
+            
     # Save tasks
-    if tasks:
-        save_tasks_to_json(tasks, tasks_dir)
-        return len(tasks)
-    else:
-        # Fallback to cache if fetch returned nothing (likely an error)
-        cached_tasks = load_tasks_from_json(tasks_dir)
-        if cached_tasks:
-            click.echo(f"Using {len(cached_tasks)} cached tasks for {customer.get('name')}.", err=True)
-        return len(cached_tasks)
+    save_tasks_to_json(new_tasks, tasks_dir)
+    
+    return len(new_tasks), stats

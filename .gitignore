@@ -1,3 +1,4 @@
+config.yaml
 customer.yaml
 customers/
 issues/
@@ -11,4 +12,7 @@ TODO.md
 *.egg-info/
 .pytest_cache/
 *.log
+*.txt
+mock-deltas.json
 .venv/
+temp/

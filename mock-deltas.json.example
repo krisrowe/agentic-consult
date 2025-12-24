@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "create": [
+      {
+        "title": "Example Task",
+        "priority": 1,
+        "content": "Task description",
+        "email_id": "example_email_id_123"
+      }
+    ],
+    "update": []
+  },
+  "ignoring": [
+    {
+      "email_id": "example_email_id_456",
+      "disposition": "ack_only",
+      "reason": "Customer acknowledged receipt"
+    }
+  ],
+  "issues": {
+    "update": []
+  }
+}

@@ -125,6 +125,32 @@ consult precommit --include-ignored
    git push origin feature/your-feature
    ```
 
+## Gemini CLI Usage
+
+When using the `gemini` CLI for automated processing (e.g., in `customers refresh`), follow these best practices for clean, predictable, and fast output:
+
+### Disabling Extensions and MCP
+To prevent `gemini` from loading extensions or MCP servers (which is slow and can clutter output), use empty strings for the following flags. This reduces startup time from several seconds to milliseconds.
+
+```bash
+gemini --allowed-mcp-server-names "" --extensions "" "Your prompt"
+```
+
+### Requesting Raw JSON
+Do not use `--output-format json` if you need raw JSON without the metadata envelope. Instead, request raw JSON in the prompt and return it directly.
+
+**Example Prompt Snippet:**
+```
+Return ONLY a raw JSON object with the following structure. Do not include markdown code blocks, preamble, or any other text.
+{
+  "create": [...],
+  "update": [...]
+}
+```
+
+### Handling Output
+Redirect `stderr` to `/dev/null` if you want to hide any remaining warnings or loading messages.
+
 ## Common Issues
 
 **Tests failing:**

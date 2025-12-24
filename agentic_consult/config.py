@@ -2,29 +2,18 @@ import os
 import yaml
 import click
 from pathlib import Path
+from pathlib import Path
 from agentic_consult.schema import validate_yaml
+from agentic_consult.customers import get_active_customers_root
 
 CONFIG_FILENAME = "config.yaml"
 
 def get_config_path(filename=CONFIG_FILENAME):
     """
-    Searches for a config file in:
-    1. Current directory
-    2. XDG App Config Directory (~/.config/agentic-consult)
+    Searches for a config file in the active customers root directory.
     """
-    # 1. CWD
-    cwd_path = Path.cwd() / filename
-    if cwd_path.exists():
-        return cwd_path
-        
-    # 2. XDG
-    app_config_dir = Path(click.get_app_dir('agentic-consult'))
-    xdg_path = app_config_dir / filename
-    if xdg_path.exists():
-        return xdg_path
-    
-    # Return XDG path as default for writing if neither exists
-    return app_config_dir / filename
+    root = get_active_customers_root()
+    return root / filename
 
 def load_yaml_file(path):
     if not path or not os.path.exists(path):
