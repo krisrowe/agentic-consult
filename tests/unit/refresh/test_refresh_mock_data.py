@@ -33,7 +33,9 @@ keywords: ['fake']
 
         # 3. Create Mock Input Data
         mock_emails = [
-            {"id": "email1", "subject": "Mock Email 1", "sender": "test@fake.com", "body": "Body 1", "date": "2025-01-01"}
+            {"id": "email1", "subject": "Mock Email 1", "sender": "test@fake.com", "body": "Body 1", "date": "2025-01-01"},
+            {"id": "email2", "subject": "Mock Email 2", "sender": "test@fake.com", "body": "Body 2", "date": "2025-01-01"},
+            {"id": "email3", "subject": "Mock Email 3", "sender": "test@fake.com", "body": "Body 3", "date": "2025-01-01"}
         ]
         (fakecorp_dir / 'mock-emails.json').write_text(json.dumps(mock_emails))
         
@@ -66,6 +68,7 @@ Tasks: <TASKS>
         # but cli.py logic for finding config.yaml relies on get_active_customers_root.
         # get_active_customers_root checks CUSTOMERS_DIR first.
         env['CUSTOMERS_DIR'] = str(customers_dir)
+        env['XDG_CONFIG_HOME'] = str(tmp_path)
         
         # 7. Run Refresh Command
         result = runner.invoke(main, ['refresh', 'fakecorp', '--no-dry-run', '--gemini-cmd', str(mock_script)], env=env)
@@ -79,18 +82,13 @@ Tasks: <TASKS>
         
         # Verify deltas.json generation (Mock Gemini script generates this)
         deltas_path = fakecorp_dir / 'deltas.json'
-        assert deltas_path.exists()
+        # Since skip_task_writes is True, it should NOT be archived
+        assert deltas_path.exists(), "deltas.json should still exist because skip_task_writes is True"
         
-        # Verify content of deltas (Mock script uses mock-deltas.json or canned response)
-        # We can't strictly assert content unless we know what mock-gemini.sh uses.
-        # But existence proves the flow worked.
-        
-        # Verify that task update logic was triggered (if the mock script returned updates)
-        # Since we are using the real mock-gemini.sh, it uses mock-deltas.json from the repo root if present.
-        # To be safe and deterministic, we should probably force the mock script behavior or check for generic success.
-        # But if we want to test the END-TO-END flow including the new update logic, we should look for the log.
-        
-        # The current mock-deltas.json in the repo (which mock-gemini.sh reads) has an update.
-        # So we should see the SKIPPED message.
-        if "ticktick tasks update" in result.output:
-             assert "SKIPPED: Would run command: ticktick tasks update" in result.output
+        # Verify processing state
+        processed_file = fakecorp_dir / 'emails_processed.txt'
+        assert processed_file.exists()
+        processed_content = processed_file.read_text()
+        assert "email1" in processed_content
+        assert "email2" in processed_content
+        assert "email3" not in processed_content, "email3 should not be processed as it wasn't in mock-deltas.json"

@@ -78,17 +78,22 @@ Tasks: <TASKS>
         # Setup mock Gemini script response
         repo_root = Path(__file__).parent.parent.parent.parent
         mock_deltas = {
-            "tasks": {
-                "create": [
-                    {"title": "Task from email1", "priority": 1, "content": "Test", "email_id": "email1"}
-                ],
-                "update": []
-            },
-            "ignoring": [
-                {"email_id": "email2", "disposition": "informational", "reason": "No action needed"},
-                {"email_id": "email3", "disposition": "informational", "reason": "No action needed"}
-            ],
-            "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "email1",
+                    "deltas": [
+                        {"type": "task_create", "title": "Task from email1", "priority": 1, "content": "Test"}
+                    ]
+                },
+                {
+                    "id": "email2",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                },
+                {
+                    "id": "email3",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                }
+            ]
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
@@ -170,12 +175,16 @@ Tasks: <TASKS>
         # Setup mock Gemini response
         repo_root = Path(__file__).parent.parent.parent.parent
         mock_deltas = {
-            "tasks": {"create": [], "update": []},
-            "ignoring": [
-                {"email_id": "email1", "disposition": "informational", "reason": "No action needed"},
-                {"email_id": "email2", "disposition": "informational", "reason": "No action needed"}
-            ],
-            "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "email1",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                },
+                {
+                    "id": "email2",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                }
+            ]
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
@@ -271,8 +280,12 @@ Tasks: <TASKS>
         # Setup mock Gemini response
         repo_root = Path(__file__).parent.parent.parent.parent
         mock_deltas = {
-            "tasks": {"create": [], "update": []},
-            "ignoring": [{"email_id": "email3", "disposition": "informational", "reason": "No action needed"}], "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "email3",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                }
+            ]
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
@@ -326,9 +339,6 @@ slug: testcorp
         ]
         (emails_dir / 'emails.json').write_text(json.dumps(mock_emails))
         
-        # No emails_processed.txt file (all emails are new)
-        
-        # Setup mock tasks
         # Setup config
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: true
 use_mock_data: true
@@ -340,12 +350,20 @@ skip_task_writes: false
 Emails: <EMAILS>
 Tasks: <TASKS>
 """)
-        
+
         # Setup mock Gemini response
         repo_root = Path(__file__).parent.parent.parent.parent
         mock_deltas = {
-            "tasks": {"create": [], "update": []},
-            "ignoring": [{"email_id": "email1", "disposition": "informational", "reason": "No action needed"}, {"email_id": "email2", "disposition": "informational", "reason": "No action needed"}], "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "email1",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                },
+                {
+                    "id": "email2",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                }
+            ]
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
@@ -417,8 +435,12 @@ Tasks: <TASKS>
         # Setup mock Gemini response
         repo_root = Path(__file__).parent.parent.parent.parent
         mock_deltas = {
-            "tasks": {"create": [], "update": []},
-            "ignoring": [{"email_id": "email3", "disposition": "informational", "reason": "No action needed"}], "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "email3",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                }
+            ]
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
@@ -494,8 +516,16 @@ Tasks: <TASKS>
         # Setup mock Gemini response
         repo_root = Path(__file__).parent.parent.parent.parent
         mock_deltas = {
-            "tasks": {"create": [], "update": []},
-            "ignoring": [{"email_id": "email1", "disposition": "informational", "reason": "No action needed"}, {"email_id": "email2", "disposition": "informational", "reason": "No action needed"}], "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "email1",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                },
+                {
+                    "id": "email2",
+                    "ignore": {"reason": "informational", "notes": "No action needed"}
+                }
+            ]
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         

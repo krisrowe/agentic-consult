@@ -23,7 +23,7 @@ PROMPT_TPL_FILENAME = "prompt.tpl"
 def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected_max_deltas: int = None):
     """
     Parses a deltas.json file and applies the changes (Tasks & Issues).
-    Recreated logic including safety checks, TickTick CLI integration, and issue file updates.
+    Handles the new email-centric structure.
     """
     if not deltas_path.exists():
         return
@@ -35,12 +35,23 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
         click.echo(f"Warning: Could not read or parse '{deltas_path.name}'.", err=True)
         return
 
+    # Flatten the new structure for processing and safety checks
+    tasks_create = []
+    tasks_update = []
+    issues_update = []
+    
+    for email_entry in data.get('emails', []):
+        for delta in email_entry.get('deltas', []):
+            dtype = delta.get('type')
+            if dtype == 'task_create':
+                tasks_create.append(delta)
+            elif dtype == 'task_update':
+                tasks_update.append(delta)
+            elif dtype == 'issue_update':
+                issues_update.append(delta)
+
     # --- 1. Safety Checks ---
-    total_ops = 0
-    if 'tasks' in data:
-        total_ops += len(data['tasks'].get('create', []))
-        total_ops += len(data['tasks'].get('update', []))
-    # We could count issue updates too if desired, but usually tasks are the critical safety concern
+    total_ops = len(tasks_create) + len(tasks_update)
     
     click.echo(f"\n=== Proposed Plan ({deltas_path.name}) ===")
     click.echo(json.dumps(data, indent=2))
@@ -54,10 +65,9 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
     project = config.get('ticktick_project', 'Work')
 
     # --- 2. Task Management (TickTick) ---
-    tasks_data = data.get('tasks', {})
     
     # Create Tasks
-    for task in tasks_data.get('create', []):
+    for task in tasks_create:
         title = task.get('title')
         if not title: continue
         
@@ -77,12 +87,11 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
                 click.echo(f"Failed to create task '{title}': {e}", err=True)
 
     # Update Tasks
-    for task in tasks_data.get('update', []):
+    for task in tasks_update:
         task_id = task.get('id')
         if not task_id: continue
         
-        cmd = ['ticktick', 'tasks', 'update', task_id] # Note: 'tasks update' based on typical CLI, or 'task update'
-        # Assuming we might map fields. For now, let's assume specific flags or just content
+        cmd = ['ticktick', 'tasks', 'update', task_id]
         if task.get('content'):
              cmd.extend(['--content', task['content']])
         
@@ -99,13 +108,16 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
     issues_dir = customer_dir / 'issues'
     issues_dir.mkdir(exist_ok=True)
     
-    for issue in data.get('issues', {}).get('update', []):
-        issue_id = issue.get('id')
+    for issue in issues_update:
+        # The 'file' field in the new format corresponds to the issue filename/ID
+        issue_id = issue.get('file')
         if not issue_id: continue
         
         # Sanitize filename
-        safe_id = "".join([c for c in issue_id if c.isalpha() or c.isdigit() or c in ('-','_')]).rstrip()
-        filename = f"{safe_id}.md"
+        safe_id = "".join([c for c in issue_id if c.isalpha() or c.isdigit() or c in ('-','_','.')]).rstrip()
+        filename = safe_id
+        if not filename.endswith('.md'):
+            filename += '.md'
         file_path = issues_dir / filename
         
         content = issue.get('content', '')
@@ -128,7 +140,7 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
         archive_dir = customer_dir / 'deltas_archive'
         archive_dir.mkdir(exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        archive_path = archive_dir / f"deltas-{timestamp}.json"
+        archive_path = archive_dir / f"done_deltas_{timestamp}.json"
         try:
             shutil.move(deltas_path, archive_path)
             click.echo(f"Archived processed deltas to {archive_path}")
@@ -146,9 +158,9 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
 @click.option('--skip-fetch', is_flag=True, help="Skip fetching and use cache.")
 @click.option('--expected-max-deltas', type=int, help="Fail if deltas exceed this.")
 @click.option('--skip-task-writes/--no-skip-task-writes', default=None)
-@click.option('--retry-deltas', 'retry_deltas_file', is_flag=True, help="Retry processing an existing deltas file.")
+@click.option('--retry-deltas', 'retry_deltas_arg', type=str, is_flag=False, flag_value='deltas.json', default=None, help="Retry processing an existing deltas file.")
 @click.option('--force-refresh', is_flag=True, help="Force refresh even if no new emails.") 
-def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, since, skip_fetch, expected_max_deltas, skip_task_writes, retry_deltas_file, force_refresh):
+def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, since, skip_fetch, expected_max_deltas, skip_task_writes, retry_deltas_arg, force_refresh):
     """Refreshes customer context by fetching, analyzing, and preparing a plan."""
     
     # 1. Load Customer
@@ -192,7 +204,44 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
     # 3. Processed Emails Tracking
     processed_emails = load_processed_emails(customer_dir)
     
-    # 4. Fetch Emails
+    # 4. Handle --retry-deltas
+    if retry_deltas_arg:
+        # Determine deltas path
+        retry_path = Path(retry_deltas_arg)
+        if not retry_path.is_absolute():
+            retry_path = customer_dir / retry_path
+            
+        if not retry_path.exists():
+            click.echo(f"Error: Retry deltas file not found at {retry_path}", err=True)
+            sys.exit(1)
+            
+        # Skip fetching and Gemini call
+        click.echo(f"Retrying deltas from: {retry_path}")
+        
+        # Load deltas for acknowledgment
+        try:
+            with open(retry_path, 'r') as f:
+                deltas = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            click.echo(f"Error: Could not read retry deltas: {e}", err=True)
+            sys.exit(1)
+            
+        # Process deltas (this will archive it)
+        process_deltas(retry_path, config, customer_dir, expected_max_deltas)
+        
+        # Update acknowledgment state
+        if deltas:
+            ack_ids = set()
+            for email_entry in deltas.get('emails', []):
+                if 'id' in email_entry:
+                    ack_ids.add(email_entry['id'])
+            
+            if ack_ids:
+                mark_emails_processed(customer_dir, ack_ids)
+                click.echo(f"Marked {len(ack_ids)} emails as processed (from retry deltas)")
+        return
+
+    # 5. Fetch Emails
     unprocessed_emails = []
     use_mock_data = config.get('use_mock_data', False)
     if not skip_fetch:
@@ -207,19 +256,15 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
             all_emails = json.load(f)
     unprocessed_emails, _ = filter_unprocessed_emails(all_emails, processed_emails)
 
-    if not unprocessed_emails and not force_refresh and not retry_deltas_file:
+    if not unprocessed_emails and not force_refresh:
         click.echo("No new unprocessed emails. Exiting.", err=True)
         return
 
-    # 5. Fetch Tasks
+    # 6. Fetch Tasks
     tasks = []
     if not skip_fetch:
-        click.echo(f"DEBUG: Type of cust before fetch_and_cache_tasks: {type(cust)}")
-        click.echo(f"DEBUG: Type of config before fetch_and_cache_tasks: {type(config)}")
-        click.echo(f"DEBUG: Content of cust before fetch_and_cache_tasks: {cust}")
-        click.echo(f"DEBUG: Content of config before fetch_and_cache_tasks: {config}")
         click.echo(f"Fetching tasks for {cust['name']}...")
-        tasks_count, _ = fetch_and_cache_tasks(cust, customer_dir, project=config.get('ticktick_project', 'Work'), use_mock_data=use_mock_data)
+        fetch_and_cache_tasks(cust, customer_dir, project=config.get('ticktick_project', 'Work'), use_mock_data=use_mock_data)
         # Load the actual tasks to pass to prompt
         task_cache = customer_dir / 'tasks' / 'tasks.json'
         if task_cache.exists():
@@ -229,24 +274,24 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
          if task_cache.exists():
              with open(task_cache) as f: tasks = json.load(f)
 
-    # 6. Prepare Prompt
+    # 7. Prepare Prompt
     prompt_input = build_prompt(template, config, cust, unprocessed_emails, tasks, customer_dir)
     
     gemini_input_path = customer_dir / "gemini-input.txt"
     gemini_input_path.write_text(prompt_input)
 
-    # 7. Check Existing Deltas
+    # 8. Check Existing Deltas
     deltas_path = customer_dir / "deltas.json"
-    if deltas_path.exists() and not retry_deltas_file and not dry_run:
+    if deltas_path.exists() and not dry_run:
         # Archive existing deltas.json before creating new one
         # Use "abandoned_" prefix to distinguish from successfully processed "done_deltas_"
-        timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         archive_name = f"abandoned_deltas_{timestamp}.json"
         archive_path = customer_dir / archive_name
         shutil.move(str(deltas_path), str(archive_path))
         click.echo(f"Archived existing deltas.json to {archive_name}")
 
-    # 8. Execution / Dry Run
+    # 9. Execution / Dry Run
     if dry_run:
         click.echo(f"\nDRY_RUN=1")
         click.echo(f"Customer: {cust['name']}")
@@ -255,69 +300,42 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
         click.echo(f"\n=== Prompt for Gemini MCP ===\n{prompt_input[:500]}...\n(truncated)")
         return
 
-    # 9. Run Gemini
-    if not retry_deltas_file:
-        click.echo(f"Executing Gemini...")
-        try:
-            # Need to pass CUSTOMERS_DIR for script to find config.yaml if it relies on it
-            env_vars = os.environ.copy()
-            # If we are in a test env, this might be set
-            
-            # Construct command: pipe input file to gemini, output to deltas.json
-            # We use --allowed-mcp-server-names="gemini" as a safe default we discussed
-            cmd_str = f"{gemini_cmd} --allowed-mcp-server-names=\"gemini\" < {gemini_input_path} > {deltas_path}"
-            
-            # If gemini_cmd is an absolute path (like in tests), use it directly. 
-            # If it's just 'gemini', shell=True handles path resolution.
-            subprocess.run(
-                cmd_str,
-                shell=True,
-                check=True,
-                text=True,
-                env=env_vars
-            )
-            click.echo(f"Gemini output saved to {deltas_path}")
-            
-        except subprocess.CalledProcessError as e:
-            click.echo(f"Gemini command failed: {e}", err=True)
-            sys.exit(1)
+    # 10. Run Gemini
+    click.echo(f"Executing Gemini...")
+    try:
+        env_vars = os.environ.copy()
+        cmd_str = f"{gemini_cmd} --allowed-mcp-server-names=\"gemini\" < {gemini_input_path} > {deltas_path}"
+        subprocess.run(
+            cmd_str,
+            shell=True,
+            check=True,
+            text=True,
+            env=env_vars
+        )
+        click.echo(f"Gemini output saved to {deltas_path}")
+        
+    except subprocess.CalledProcessError as e:
+        click.echo(f"Gemini command failed: {e}", err=True)
+        sys.exit(1)
 
-    # 10. Load Deltas for Acknowledgment (before process_deltas archives it)
+    # 11. Load Deltas for Acknowledgment (before process_deltas archives it)
     deltas = None
-    if not dry_run:
-        try:
-            with open(deltas_path, 'r') as f:
-                deltas = json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError) as e:
-            click.echo(f"Warning: Could not read deltas for acknowledgment tracking: {e}", err=True)
+    try:
+        with open(deltas_path, 'r') as f:
+            deltas = json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        click.echo(f"Warning: Could not read deltas for acknowledgment tracking: {e}", err=True)
     
-    # 11. Process Deltas (this will archive the file)
+    # 12. Process Deltas (this will archive the file)
     process_deltas(deltas_path, config, customer_dir, expected_max_deltas)
     
-    # 12. Update State (Mark processed based on Gemini acknowledgment)
-    if not dry_run and deltas:
-        # Collect acknowledged IDs from all sections of the deltas response
+    # 13. Update State (Mark processed based on Gemini acknowledgment)
+    if deltas:
+        # Collect acknowledged IDs from emails array
         ack_ids = set()
-        
-        # From tasks.create
-        for t in deltas.get('tasks', {}).get('create', []):
-            if 'email_id' in t:
-                ack_ids.add(t['email_id'])
-        
-        # From tasks.update
-        for t in deltas.get('tasks', {}).get('update', []):
-            if 'email_id' in t:
-                ack_ids.add(t['email_id'])
-        
-        # From issues.update
-        for i in deltas.get('issues', {}).get('update', []):
-            if 'email_ids' in i:
-                ack_ids.update(i['email_ids'])
-        
-        # From ignoring array (emails Gemini explicitly chose to ignore)
-        for i in deltas.get('ignoring', []):
-            if 'email_id' in i:
-                ack_ids.add(i['email_id'])
+        for email_entry in deltas.get('emails', []):
+            if 'id' in email_entry:
+                ack_ids.add(email_entry['id'])
         
         # Mark only acknowledged emails as processed
         if ack_ids:

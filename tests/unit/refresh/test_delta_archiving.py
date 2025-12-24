@@ -11,11 +11,12 @@ def test_delta_archiving():
         
         # Create deltas with 1 item
         deltas = {
-            "tasks": {
-                "create": [{"title": "Test Task"}],
-                "update": []
-            },
-            "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "msg1",
+                    "deltas": [{"type": "task_create", "title": "Test Task"}]
+                }
+            ]
         }
         deltas_path.write_text(json.dumps(deltas))
         
@@ -26,9 +27,9 @@ def test_delta_archiving():
         assert not deltas_path.exists(), "deltas.json should have been renamed"
         
         # Verify archived file exists
-        archived_files = list((tmp_path / 'deltas_archive').glob("deltas-*.json"))
+        archived_files = list((tmp_path / 'deltas_archive').glob("done_deltas_*.json"))
         assert len(archived_files) == 1, "Should have exactly one archived delta file"
-        assert archived_files[0].name.startswith("deltas-"), "Archived file should have correct prefix"
+        assert archived_files[0].name.startswith("done_deltas_"), "Archived file should have correct prefix"
 
 def test_delta_not_archived_when_skipping():
     """Test that deltas.json is NOT archived when skip_task_writes is True."""
@@ -38,11 +39,12 @@ def test_delta_not_archived_when_skipping():
         
         # Create deltas with 1 item
         deltas = {
-            "tasks": {
-                "create": [{"title": "Test Task"}],
-                "update": []
-            },
-            "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "msg1",
+                    "deltas": [{"type": "task_create", "title": "Test Task"}]
+                }
+            ]
         }
         deltas_path.write_text(json.dumps(deltas))
         
@@ -53,5 +55,5 @@ def test_delta_not_archived_when_skipping():
         assert deltas_path.exists(), "deltas.json should still exist when skipping writes"
         
         # Verify no archived files
-        archived_files = list((tmp_path / 'deltas_archive').glob("deltas-*.json"))
+        archived_files = list((tmp_path / 'deltas_archive').glob("done_deltas_*.json"))
         assert len(archived_files) == 0, "Should have no archived files when skipping writes"

@@ -28,37 +28,32 @@ Reminder Window: <REMINDER_MINUTES> minutes
 Return ONLY a raw JSON object with the following structure. Do not include markdown code blocks, preamble, or any other text.
 
 {
-  "tasks": {
-    "create": [
-      {
-        "title": "Task title",
-        "priority": 1,
-        "content": "Task description/context",
-        "email_id": "email_message_id"
-      }
-    ],
-    "update": [
-      {
-        "id": "task_id",
-        "title": "New title (optional)",
-        "email_id": "email_message_id"
-      }
-    ]
-  },
-  "ignoring": [
+  "emails": [
     {
-      "email_id": "email_message_id",
-      "disposition": "ack_only|informational|already_handled|out_of_scope|other",
-      "reason": "Brief explanation (required for 'other' disposition)"
-    }
-  ],
-  "issues": {
-    "update": [
-      {
-        "file": "issue-file.md",
-        "content": "Information to append",
-        "email_id": "email_message_id"
+      "id": "email_message_id",
+      "deltas": [
+        {
+          "type": "task_create",
+          "title": "Task title",
+          "priority": 1,
+          "content": "Task description/context"
+        },
+        {
+          "type": "task_update",
+          "id": "task_id",
+          "title": "New title (optional)",
+          "content": "New content (optional)"
+        },
+        {
+          "type": "issue_update",
+          "file": "issue-file.md",
+          "content": "Information to append"
+        }
+      ],
+      "ignore": {
+        "reason": "ack_only|informational|already_handled|out_of_scope|other",
+        "notes": "Brief explanation (required for 'other' reason)"
       }
-    ]
-  }
+    }
+  ]
 }

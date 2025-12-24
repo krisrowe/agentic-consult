@@ -15,11 +15,15 @@ def test_safety_limit_exceeded():
         
         # Create deltas with 2 items (1 create, 1 update)
         deltas = {
-            "tasks": {
-                "create": [{"title": "Task 1"}],
-                "update": [{"id": "1", "title": "Task 2"}]
-            },
-            "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "msg1",
+                    "deltas": [
+                        {"type": "task_create", "title": "Task 1"},
+                        {"type": "task_update", "id": "1", "title": "Task 2"}
+                    ]
+                }
+            ]
         }
         deltas_path.write_text(json.dumps(deltas))
         
@@ -37,11 +41,12 @@ def test_safety_limit_respected():
         
         # Create deltas with 1 item
         deltas = {
-            "tasks": {
-                "create": [{"title": "Task 1"}],
-                "update": []
-            },
-            "issues": {"update": []}
+            "emails": [
+                {
+                    "id": "msg1",
+                    "deltas": [{"type": "task_create", "title": "Task 1"}]
+                }
+            ]
         }
         deltas_path.write_text(json.dumps(deltas))
         
