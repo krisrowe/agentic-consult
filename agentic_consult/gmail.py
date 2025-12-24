@@ -155,6 +155,9 @@ def fetch_and_cache_emails(customer: Dict, customer_dir: Path, processed_ids: se
     # 4. Create a clean list for saving and downstream processing
     clean_emails = [{k: v for k, v in email.items() if k != '_source'} for email in source_aware_emails]
     
+    if not clean_emails:
+        return 0, stats
+    
     # 5. Save the combined list to the main emails.json for the prompt
     if clean_emails:
         save_emails_to_json(clean_emails, emails_dir)

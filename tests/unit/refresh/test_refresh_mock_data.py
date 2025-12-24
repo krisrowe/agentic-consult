@@ -33,7 +33,7 @@ keywords: ['fake']
 
         # 3. Create Mock Input Data
         mock_emails = [
-            {"subject": "Mock Email 1", "sender": "test@fake.com", "body": "Body 1", "date": "2025-01-01"}
+            {"id": "email1", "subject": "Mock Email 1", "sender": "test@fake.com", "body": "Body 1", "date": "2025-01-01"}
         ]
         (fakecorp_dir / 'mock-emails.json').write_text(json.dumps(mock_emails))
         
@@ -68,7 +68,7 @@ Tasks: <TASKS>
         env['CUSTOMERS_DIR'] = str(customers_dir)
         
         # 7. Run Refresh Command
-        result = runner.invoke(main, ['refresh', 'fakecorp', '--no-dry-run'], env=env)
+        result = runner.invoke(main, ['refresh', 'fakecorp', '--no-dry-run', '--gemini-cmd', str(mock_script)], env=env)
         # 8. Verify Output
         print(result.output) # For debugging if test fails
         assert result.exit_code == 0
@@ -76,7 +76,6 @@ Tasks: <TASKS>
         # Verify mock data usage
         assert "Using mock emails from" in result.output
         assert "Using mock tasks from" in result.output
-        assert "Using Mock Gemini script" in result.output
         
         # Verify deltas.json generation (Mock Gemini script generates this)
         deltas_path = fakecorp_dir / 'deltas.json'

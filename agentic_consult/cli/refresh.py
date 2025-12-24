@@ -194,19 +194,18 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
     
     # 4. Fetch Emails
     unprocessed_emails = []
+    use_mock_data = config.get('use_mock_data', False)
     if not skip_fetch:
-        click.echo(f"DEBUG: Type of cust before fetch_and_cache_emails: {type(cust)}")
-        click.echo(f"DEBUG: Content of cust before fetch_and_cache_emails: {cust}")
         click.echo(f"Fetching emails for {cust['name']}...")
-        all_emails = fetch_and_cache_emails(cust, customer_dir, max_emails=max_emails, since=since, processed_ids=processed_emails)
-        unprocessed_emails = filter_unprocessed_emails(all_emails, processed_emails)
-    else:
-        # Load from cache if skip_fetch
-        email_cache = customer_dir / 'emails' / 'emails.json'
-        if email_cache.exists():
-            with open(email_cache) as f:
-                all_emails = json.load(f)
-            unprocessed_emails = filter_unprocessed_emails(all_emails, processed_emails)
+        fetch_and_cache_emails(cust, customer_dir, max_emails=max_emails, since=since, processed_ids=processed_emails, use_mock_data=use_mock_data)
+    
+    # Load from cache (whether fetched or skipped)
+    email_cache = customer_dir / 'emails' / 'emails.json'
+    all_emails = []
+    if email_cache.exists():
+        with open(email_cache) as f:
+            all_emails = json.load(f)
+    unprocessed_emails, _ = filter_unprocessed_emails(all_emails, processed_emails)
 
     if not unprocessed_emails and not force_refresh and not retry_deltas_file:
         click.echo("No new unprocessed emails. Exiting.", err=True)
@@ -220,7 +219,7 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
         click.echo(f"DEBUG: Content of cust before fetch_and_cache_tasks: {cust}")
         click.echo(f"DEBUG: Content of config before fetch_and_cache_tasks: {config}")
         click.echo(f"Fetching tasks for {cust['name']}...")
-        tasks_count, _ = fetch_and_cache_tasks(cust, customer_dir, project=config.get('ticktick_project', 'Work'))
+        tasks_count, _ = fetch_and_cache_tasks(cust, customer_dir, project=config.get('ticktick_project', 'Work'), use_mock_data=use_mock_data)
         # Load the actual tasks to pass to prompt
         task_cache = customer_dir / 'tasks' / 'tasks.json'
         if task_cache.exists():

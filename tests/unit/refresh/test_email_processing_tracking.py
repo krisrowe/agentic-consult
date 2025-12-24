@@ -52,10 +52,8 @@ skip_task_writes: false
 ticktick_project: Work
 """)
 
-        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
-        config_dir_for_prompt = tmp_path / 'agentic-consult'
-        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
-        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+        # Create prompt.tpl in the customers dir (global default)
+        (customers_dir / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
 Emails: <EMAILS>
 Tasks: <TASKS>
 """)
@@ -81,7 +79,7 @@ Tasks: <TASKS>
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
             
-            env = {'CUSTOMERS_DIR': str(customers_dir)}
+            env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             result = runner.invoke(
                 main,
                 ['refresh', 'testcorp', '--no-dry-run', '--skip-fetch'],
@@ -145,10 +143,8 @@ use_mock_data: true
 skip_task_writes: false
 """)
 
-        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
-        config_dir_for_prompt = tmp_path / 'agentic-consult'
-        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
-        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+        # Create prompt.tpl in the customers dir (global default)
+        (customers_dir / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
 Emails: <EMAILS>
 Tasks: <TASKS>
 """)
@@ -169,7 +165,7 @@ Tasks: <TASKS>
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
             
-            env = {'CUSTOMERS_DIR': str(customers_dir)}
+            env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
             # First run - should process both emails
             result1 = runner.invoke(
@@ -197,10 +193,10 @@ Tasks: <TASKS>
             # Should succeed but skip all emails
             assert result2.exit_code == 0
             
-            # Verify emails.json was filtered to empty list
+            # Verify emails.json was NOT filtered (it should contain all emails)
             with open(emails_dir / 'emails.json', 'r') as f:
-                filtered_emails = json.load(f)
-            assert filtered_emails == [], "All emails should have been filtered out on second run"
+                all_emails = json.load(f)
+            assert len(all_emails) == 2, "emails.json should still contain all emails"
 
 
 def test_local_emails_already_processed_are_skipped():
@@ -248,10 +244,8 @@ use_mock_data: true
 skip_task_writes: false
 """)
 
-        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
-        config_dir_for_prompt = tmp_path / 'agentic-consult'
-        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
-        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+        # Create prompt.tpl in the customers dir (global default)
+        (customers_dir / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
 Emails: <EMAILS>
 Tasks: <TASKS>
 """)
@@ -268,19 +262,17 @@ Tasks: <TASKS>
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
             
-            env = {'CUSTOMERS_DIR': str(customers_dir)}
+            env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
             result = runner.invoke(
                 main,
                 ['refresh', 'testcorp', '--no-dry-run', '--skip-fetch'],
                 env=env
             )
+            # Verify emails.json was NOT filtered
             with open(emails_dir / 'emails.json', 'r') as f:
-                filtered_emails = json.load(f)
-            
-            # Should only have email3 (the unprocessed one)
-            assert len(filtered_emails) == 1
-            assert filtered_emails[0]['id'] == 'email3'
+                all_emails = json.load(f)
+            assert len(all_emails) == 3
             
             # Verify email3 was added to processed list
             processed = load_processed_emails(test_customer_dir)
@@ -325,10 +317,8 @@ use_mock_data: true
 skip_task_writes: false
 """)
 
-        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
-        config_dir_for_prompt = tmp_path / 'agentic-consult'
-        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
-        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+        # Create prompt.tpl in the customers dir (global default)
+        (customers_dir / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
 Emails: <EMAILS>
 Tasks: <TASKS>
 """)
@@ -345,7 +335,7 @@ Tasks: <TASKS>
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
             
-            env = {'CUSTOMERS_DIR': str(customers_dir)}
+            env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
             result = runner.invoke(
                 main,
@@ -400,10 +390,8 @@ use_mock_data: true
 skip_task_writes: false
 """)
 
-        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
-        config_dir_for_prompt = tmp_path / 'agentic-consult'
-        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
-        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+        # Create prompt.tpl in the customers dir (global default)
+        (customers_dir / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
 Emails: <EMAILS>
 Tasks: <TASKS>
 """)
@@ -420,7 +408,7 @@ Tasks: <TASKS>
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
             
-            env = {'CUSTOMERS_DIR': str(customers_dir)}
+            env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
             result = runner.invoke(
                 main,
@@ -429,14 +417,11 @@ Tasks: <TASKS>
             )
             assert result.exit_code == 0
             
-            # Verify only email3 was processed
+            # Verify emails.json contains all emails (not filtered on disk)
             emails_dir = test_customer_dir / 'emails'
             with open(emails_dir / 'emails.json', 'r') as f:
                 cached_emails = json.load(f)
-            
-            # Should only have email3 after filtering
-            assert len(cached_emails) == 1
-            assert cached_emails[0]['id'] == 'email3'
+            assert len(cached_emails) == 3
             
             # Verify email3 was added to processed list
             processed = load_processed_emails(test_customer_dir)
@@ -482,10 +467,8 @@ use_mock_data: true
 skip_task_writes: false
 """)
 
-        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
-        config_dir_for_prompt = tmp_path / 'agentic-consult'
-        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
-        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+        # Create prompt.tpl in the customers dir (global default)
+        (customers_dir / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
 Emails: <EMAILS>
 Tasks: <TASKS>
 """)
@@ -502,7 +485,7 @@ Tasks: <TASKS>
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps(mock_deltas), stderr='')
             
-            env = {'CUSTOMERS_DIR': str(customers_dir)}
+            env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
             # Run WITHOUT --skip-fetch to trigger "Gmail" fetch
             result = runner.invoke(

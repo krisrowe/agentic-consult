@@ -34,11 +34,9 @@ def load_yaml_file(path):
 
 def load_main_config():
     path = get_config_path(CONFIG_FILENAME)
-    # If path doesn't exist, get_config_path returns the XDG path where it *would* be.
-    # So we check existence here.
     if not path.exists():
         return {}
-    return load_yaml_file(path)
+    return load_yaml_file(path) or {}
 
 def save_main_config(data):
     path = get_config_path(CONFIG_FILENAME)

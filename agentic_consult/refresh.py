@@ -3,7 +3,7 @@ import datetime
 from pathlib import Path
 import click
 
-def build_prompt(tpl, config, customer):
+def build_prompt(tpl, config, customer, emails=None, tasks=None, customer_dir=None):
     """
     Substitutes placeholders in the prompt template.
     """
@@ -15,11 +15,14 @@ def build_prompt(tpl, config, customer):
     ticktick_project = config.get("ticktick_project", "Work")
     
     from agentic_consult.customers import get_active_customers_root
-    customers_root = get_active_customers_root()
     
-    customer_issues = customers_root / customer_slug / "issues"
-    customer_emails = customers_root / customer_slug / "emails"
-    customer_tasks = customers_root / customer_slug / "tasks"
+    if not customer_dir:
+        customers_root = get_active_customers_root()
+        customer_dir = customers_root / customer_slug
+
+    customer_issues = customer_dir / "issues"
+    customer_emails = customer_dir / "emails"
+    customer_tasks = customer_dir / "tasks"
     
     default_issues = Path(click.get_app_dir('agentic-consult')).parent.parent / 'share' / 'agentic-consult' / 'issues'
     
@@ -38,7 +41,9 @@ def build_prompt(tpl, config, customer):
     import json
     
     emails_content = []
-    if customer_emails.exists():
+    if emails is not None:
+        emails_content = emails
+    elif customer_emails.exists():
         for f in customer_emails.glob("*.json"):
             try:
                 with open(f, 'r') as fh:
@@ -51,7 +56,9 @@ def build_prompt(tpl, config, customer):
                 pass
                 
     tasks_content = []
-    if customer_tasks.exists():
+    if tasks is not None:
+        tasks_content = tasks
+    elif customer_tasks.exists():
         for f in customer_tasks.glob("*.json"):
             try:
                 with open(f, 'r') as fh:
