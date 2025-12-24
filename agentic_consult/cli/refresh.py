@@ -282,19 +282,20 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
             click.echo(f"Gemini command failed: {e}", err=True)
             sys.exit(1)
 
-    # 10. Process Deltas
-    process_deltas(deltas_path, config, customer_dir, expected_max_deltas)
-    
-    # 11. Update State (Mark processed based on Gemini acknowledgment)
+    # 10. Load Deltas for Acknowledgment (before process_deltas archives it)
+    deltas = None
     if not dry_run:
-        # Load deltas to collect acknowledged email IDs
         try:
             with open(deltas_path, 'r') as f:
                 deltas = json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            click.echo("Warning: Could not read deltas for acknowledgment tracking", err=True)
-            return
-        
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            click.echo(f"Warning: Could not read deltas for acknowledgment tracking: {e}", err=True)
+    
+    # 11. Process Deltas (this will archive the file)
+    process_deltas(deltas_path, config, customer_dir, expected_max_deltas)
+    
+    # 12. Update State (Mark processed based on Gemini acknowledgment)
+    if not dry_run and deltas:
         # Collect acknowledged IDs from all sections of the deltas response
         ack_ids = set()
         
