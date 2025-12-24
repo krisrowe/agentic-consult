@@ -15,8 +15,9 @@ def create_mock_subprocess_with_deltas(customer_dir, mock_deltas):
     """
     def mock_subprocess_side_effect(*args, **kwargs):
         cmd = args[0] if args else kwargs.get('args', '')
-        # If this is the Gemini command (contains redirection to deltas.json)
-        if isinstance(cmd, str) and 'deltas.json' in cmd:
+        # Only write deltas.json when the Gemini command runs (has shell redirection)
+        # Check for both 'deltas.json' and shell=True to avoid writing on other subprocess calls
+        if isinstance(cmd, str) and 'deltas.json' in cmd and '>' in cmd:
             # Write the deltas file that would have been created by shell redirection
             deltas_path = customer_dir / 'deltas.json'
             deltas_path.write_text(json.dumps(mock_deltas))

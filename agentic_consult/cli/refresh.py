@@ -238,8 +238,13 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
     # 7. Check Existing Deltas
     deltas_path = customer_dir / "deltas.json"
     if deltas_path.exists() and not retry_deltas_file and not dry_run:
-        click.echo(f"Existing deltas.json found at {deltas_path}. Please process or remove it first.", err=True)
-        sys.exit(1)
+        # Archive existing deltas.json before creating new one
+        # Use "abandoned_" prefix to distinguish from successfully processed "done_deltas_"
+        timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
+        archive_name = f"abandoned_deltas_{timestamp}.json"
+        archive_path = customer_dir / archive_name
+        shutil.move(str(deltas_path), str(archive_path))
+        click.echo(f"Archived existing deltas.json to {archive_name}")
 
     # 8. Execution / Dry Run
     if dry_run:
