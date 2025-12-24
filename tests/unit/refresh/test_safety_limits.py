@@ -1,6 +1,7 @@
 import json
 import tempfile
 from pathlib import Path
+import pytest
 from click.testing import CliRunner
 from agentic_consult.cli.refresh import process_deltas
 
@@ -23,11 +24,8 @@ def test_safety_limit_exceeded():
         deltas_path.write_text(json.dumps(deltas))
         
         # Run with limit 1 (should fail)
-        try:
+        with pytest.raises(SystemExit):
             process_deltas(deltas_path, {}, tmp_path, expected_max_deltas=1)
-            assert False, "Should have raised SystemExit"
-        except SystemExit as e:
-            assert e.code == 1
 
 def test_safety_limit_respected():
     """Test that process_deltas proceeds when limit is respected."""

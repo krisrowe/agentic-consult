@@ -51,6 +51,14 @@ use_mock_data: true
 skip_task_writes: false
 ticktick_project: Work
 """)
+
+        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
+        config_dir_for_prompt = tmp_path / 'agentic-consult'
+        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
+        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+Emails: <EMAILS>
+Tasks: <TASKS>
+""")
         
         # Setup mock Gemini script response
         repo_root = Path(__file__).parent.parent.parent.parent
@@ -135,6 +143,14 @@ drive_folder_id: "test123"
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: true
 use_mock_data: true
 skip_task_writes: false
+""")
+
+        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
+        config_dir_for_prompt = tmp_path / 'agentic-consult'
+        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
+        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+Emails: <EMAILS>
+Tasks: <TASKS>
 """)
         
         # Setup mock Gemini response
@@ -231,6 +247,14 @@ drive_folder_id: "test123"
 use_mock_data: true
 skip_task_writes: false
 """)
+
+        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
+        config_dir_for_prompt = tmp_path / 'agentic-consult'
+        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
+        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+Emails: <EMAILS>
+Tasks: <TASKS>
+""")
         
         # Setup mock Gemini response
         repo_root = Path(__file__).parent.parent.parent.parent
@@ -295,14 +319,18 @@ slug: testcorp
         # No emails_processed.txt file (all emails are new)
         
         # Setup mock tasks
-        tasks_dir = test_customer_dir / 'tasks'
-        tasks_dir.mkdir()
-        (tasks_dir / 'tasks.json').write_text(json.dumps([]))
-        
         # Setup config
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: true
 use_mock_data: true
 skip_task_writes: false
+""")
+
+        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
+        config_dir_for_prompt = tmp_path / 'agentic-consult'
+        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
+        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+Emails: <EMAILS>
+Tasks: <TASKS>
 """)
         
         # Setup mock Gemini response
@@ -370,6 +398,14 @@ keywords: ["testcorp"]
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: true
 use_mock_data: true
 skip_task_writes: false
+""")
+
+        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
+        config_dir_for_prompt = tmp_path / 'agentic-consult'
+        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
+        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+Emails: <EMAILS>
+Tasks: <TASKS>
 """)
         
         # Setup mock Gemini response
@@ -444,6 +480,14 @@ keywords: ["testcorp"]
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: true
 use_mock_data: true
 skip_task_writes: false
+""")
+
+        # Create prompt.tpl in the XDG config home (tmp_path is set as XDG_CONFIG_HOME)
+        config_dir_for_prompt = tmp_path / 'agentic-consult'
+        config_dir_for_prompt.mkdir(parents=True, exist_ok=True)
+        (config_dir_for_prompt / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
+Emails: <EMAILS>
+Tasks: <TASKS>
 """)
         
         # Setup mock Gemini response

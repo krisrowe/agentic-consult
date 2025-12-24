@@ -25,8 +25,8 @@ def test_ticktick_fallback_to_cache():
             mock_fetch.return_value = []
             
             # Should return 1 (from cache)
-            count = fetch_and_cache_tasks(customer, customer_dir)
-            
+            count, _ = fetch_and_cache_tasks(customer, customer_dir)
+                
             assert count == 1
             mock_fetch.assert_called_once()
 
@@ -42,6 +42,6 @@ def test_ticktick_no_cache_no_fetch():
         with patch("agentic_consult.ticktick.fetch_tasks") as mock_fetch:
             mock_fetch.return_value = []
             
-            count = fetch_and_cache_tasks(customer, customer_dir)
-            
+            count, _ = fetch_and_cache_tasks(customer, customer_dir)
+                
             assert count == 0
