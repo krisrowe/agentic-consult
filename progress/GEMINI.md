@@ -12,12 +12,15 @@ This directory (`progress/`) contains work-in-progress artifacts, Proof-of-Conce
 
 # Project Handoff Status
 
-## Snapshot: 2025-12-24 12:45 UTC
+## Snapshot: 2025-12-24 13:05 UTC
 
 **Test Status**: ALL GREEN ✅
 - **Unit Tests**: 24/24 PASSED (`tests/unit`)
 - **Integration Tests**: 1/1 PASSED (`tests/integration`)
 - **Gemini CLI Test**: PASSED (`progress/gemini-cli-test.py`)
+- **Gemini API POC**: PASSED (`progress/gemini-api-poc.py`)
+
+**Latest Verified Commit**: `bfefd7f` - "docs: Clarify progress/ folder removal criteria in GEMINI.md"
 
 ## Current Status: Features Implemented & Verified ✅
 
