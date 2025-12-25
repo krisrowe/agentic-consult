@@ -1,13 +1,21 @@
-# Project Handoff - Agentic Consult
+# Agentic Consult - Progress & Status
+
+This directory (`progress/`) contains work-in-progress artifacts, Proof-of-Concept (POC) scripts, and temporary documentation. These files are safe for public history but are intended for eventual removal or integration into the main codebase.
+
+**Current Artifacts:**
+- `gemini-cli-test.py`: Verifies local `gemini` CLI wrapper execution.
+- `gemini-api-poc.py`: Performance comparison using `google-generativeai` SDK.
+
+---
+
+# Project Handoff Status
 
 ## Snapshot: 2025-12-24 12:45 UTC
 
 **Test Status**: ALL GREEN ✅
 - **Unit Tests**: 24/24 PASSED (`tests/unit`)
 - **Integration Tests**: 1/1 PASSED (`tests/integration`)
-- **Gemini CLI Test**: PASSED (`gemini-test.py` in repo root)
-
-**Latest Commit**: `2a54d56` - "chore: Add gemini CLI integration test script"
+- **Gemini CLI Test**: PASSED (`progress/gemini-cli-test.py`)
 
 ## Current Status: Features Implemented & Verified ✅
 
