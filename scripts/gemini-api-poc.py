@@ -10,11 +10,11 @@ def test_api_poc():
         print("FAILURE: GEMINI_API_KEY not found in environment.")
         return False
         
-    print(f"Configuring Gemini API with key: {api_key[:5]}...{api_key[-5:]}")
+    print("Configuring Gemini API...")
     genai.configure(api_key=api_key)
     
-    # Use Flash model for speed/cost efficiency, similar to CLI default often
-    model_name = "models/gemini-2.0-flash" 
+    # Use Flash model for speed/cost efficiency
+    model_name = "models/gemini-2.5-flash" 
     print(f"Creating model: {model_name}")
     
     try:

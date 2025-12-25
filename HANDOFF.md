@@ -47,22 +47,28 @@ Now invokes `gemini` CLI directly using `subprocess.run`.
 This handles cases where the LLM outputs conversational preamble or markdown blocks before the JSON.
 This fixed the integration test failures.
 
-### 5. Gemini CLI POC Script ✅
-**File**: `gemini-cli-test.py` (Repo Root)
+### 5. Gemini CLI Integration Script ✅
+**File**: `scripts/gemini-cli-test.py`
 
 **Status**: **Committed**
 A standalone script to verify the local `gemini` CLI environment and subprocess execution.
-Run with: `python3 gemini-cli-test.py`
+Run with: `python3 scripts/gemini-cli-test.py`
 
-### 6. Gemini API (SDK) Comparison POC ⚠️
-**File**: `gemini-api-poc.py` (Repo Root)
+### 6. Gemini API (SDK) Comparison POC ✅
+**File**: `scripts/gemini-api-poc.py`
 
 **Status**: **Committed (Experimental)**
 A script using the `google-generativeai` SDK to compare performance against the CLI wrapper.
 **Findings**:
+- **Model**: `gemini-2.5-flash`
 - **API (SDK)**: ~3.1s total execution (~0.7s latency).
 - **CLI Wrapper**: ~4.9s total execution.
-- **Recommendation**: The API approach is ~1.8s faster and produces less log noise, but requires managing the `google-generativeai` (or newer `google-genai`) dependency. For now, the CLI wrapper is sufficient, but migrating to the SDK is a valid optimization for the future.
+- **Recommendation**: The API approach is faster and cleaner. Migrating to the SDK is a valid optimization.
+
+## Artifact Management
+The following scripts are temporary development artifacts and should eventually be removed after explicit approval:
+- `scripts/gemini-cli-test.py`
+- `scripts/gemini-api-poc.py`
 
 ## Outstanding Work - Priority Order
 
