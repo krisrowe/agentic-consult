@@ -48,14 +48,14 @@ This handles cases where the LLM outputs conversational preamble or markdown blo
 This fixed the integration test failures.
 
 ### 5. Gemini CLI Integration Script ✅
-**File**: `scripts/gemini-cli-test.py`
+**File**: `progress/gemini-cli-test.py`
 
 **Status**: **Committed**
 A standalone script to verify the local `gemini` CLI environment and subprocess execution.
-Run with: `python3 scripts/gemini-cli-test.py`
+Run with: `python3 progress/gemini-cli-test.py`
 
 ### 6. Gemini API (SDK) Comparison POC ✅
-**File**: `scripts/gemini-api-poc.py`
+**File**: `progress/gemini-api-poc.py`
 
 **Status**: **Committed (Experimental)**
 A script using the `google-generativeai` SDK to compare performance against the CLI wrapper.
@@ -67,8 +67,8 @@ A script using the `google-generativeai` SDK to compare performance against the 
 
 ## Artifact Management
 The following scripts are temporary development artifacts and should eventually be removed after explicit approval:
-- `scripts/gemini-cli-test.py`
-- `scripts/gemini-api-poc.py`
+- `progress/gemini-cli-test.py`
+- `progress/gemini-api-poc.py`
 
 ## Outstanding Work - Priority Order
 
