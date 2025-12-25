@@ -15,6 +15,7 @@ from agentic_consult.processing_state import load_processed_emails, mark_emails_
 from agentic_consult.gmail import fetch_and_cache_emails
 from agentic_consult.ticktick import fetch_and_cache_tasks
 from agentic_consult.refresh import build_prompt
+from agentic_consult.utils import clean_json_output
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,14 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
 
     try:
         with open(deltas_path, 'r') as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, FileNotFoundError):
-        click.echo(f"Warning: Could not read or parse '{deltas_path.name}'.", err=True)
+            content = f.read()
+            # Attempt to strip markdown code blocks if simple parse fails? 
+            # For now, let's just log it if it fails.
+            data = json.loads(content)
+    except (json.JSONDecodeError, FileNotFoundError) as e:
+        if deltas_path.exists():
+            click.echo(f"Debug: Raw deltas content:\n{deltas_path.read_text()}", err=True)
+        click.echo(f"Warning: Could not read or parse '{deltas_path.name}'. Error: {e}", err=True)
         return
 
     # Flatten the new structure for processing and safety checks
@@ -180,26 +186,35 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
     if skip_task_writes is not None:
         config['skip_task_writes'] = skip_task_writes
     
-    prompt_path = customer_dir / PROMPT_TPL_FILENAME
-    if not prompt_path.exists():
-        # Fallback to global/default
-        prompt_path = get_config_path(PROMPT_TPL_FILENAME)
-        if not prompt_path or not prompt_path.exists():
-             # Fallback to packaged default relative to this file? 
-             # For now, let's assume it exists or fail
-             pass 
-
-    if not prompt_path or not prompt_path.exists():
-         # Last ditch: check repo root if we are dev mode? 
-         # Or just fail gracefully
-         if os.environ.get('CUSTOMERS_DIR'): # Testing env often sets this
-             prompt_path = Path(os.environ['CUSTOMERS_DIR']).parent / PROMPT_TPL_FILENAME
+    # Logic to find prompt.tpl:
+    # 1. Customer specific override: customers/<slug>/prompt.tpl
+    # 2. User global config override: ~/.config/agentic-consult/prompt.tpl
+    # 3. Bundled default: agentic_consult/prompt.tpl (packaged with code)
     
-    if not prompt_path or not prompt_path.exists():
-        click.echo(f"Error: No prompt template found. Checked {customer_dir}.", err=True)
-        sys.exit(1)
+    # 1. Customer override
+    prompt_path = customer_dir / PROMPT_TPL_FILENAME
+    template = None
+    
+    if prompt_path.exists():
+        template = prompt_path.read_text()
+    else:
+        # 2. Global override
+        global_path = get_config_path(PROMPT_TPL_FILENAME)
+        if global_path and global_path.exists():
+            template = global_path.read_text()
+        else:
+            # 3. Bundled default
+            try:
+                from importlib import resources
+                # Python 3.9+ API
+                pkg_files = resources.files('agentic_consult')
+                template = (pkg_files / PROMPT_TPL_FILENAME).read_text()
+            except Exception as e:
+                click.echo(f"Warning: Failed to load bundled template: {e}", err=True)
 
-    template = prompt_path.read_text()
+    if not template:
+        click.echo(f"Error: No prompt template found. Searched:\n 1. {customer_dir / PROMPT_TPL_FILENAME}\n 2. Global config\n 3. Bundled default", err=True)
+        sys.exit(1)
     
     # 3. Processed Emails Tracking
     processed_emails = load_processed_emails(customer_dir)
@@ -304,18 +319,38 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
     click.echo(f"Executing Gemini...")
     try:
         env_vars = os.environ.copy()
-        cmd_str = f"{gemini_cmd} --allowed-mcp-server-names=\"gemini\" < {gemini_input_path} > {deltas_path}"
-        subprocess.run(
-            cmd_str,
-            shell=True,
-            check=True,
+        
+        # Match successful test pattern: prompt first, then flags with empty strings
+        # Use list arguments and shell=False for safety and robustness
+        cmd_parts = [gemini_cmd, prompt_input]
+        
+        if config.get('gemini', {}).get('debug', False):
+            cmd_parts.append('--debug')
+            
+        # Disable MCP servers and extensions using empty strings
+        cmd_parts.extend(['--allowed-mcp-server-names', '', '--extensions', ''])
+        
+        # Capture stdout only for JSON, let stderr (logs) flow to console
+        result = subprocess.run(
+            cmd_parts,
+            capture_output=True,
             text=True,
             env=env_vars
         )
+        
+        # Check return code
+        result.check_returncode()
+        
+        # Write clean stdout to file
+        with open(deltas_path, 'w') as f:
+            f.write(result.stdout)
+            
         click.echo(f"Gemini output saved to {deltas_path}")
         
     except subprocess.CalledProcessError as e:
         click.echo(f"Gemini command failed: {e}", err=True)
+        if e.stderr:
+            click.echo(f"Stderr: {e.stderr}", err=True)
         sys.exit(1)
 
     # 11. Load Deltas for Acknowledgment (before process_deltas archives it)

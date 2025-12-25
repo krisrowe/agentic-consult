@@ -70,13 +70,32 @@ def build_prompt(tpl, config, customer, emails=None, tasks=None, customer_dir=No
             except Exception:
                 pass
 
+    # Read issues content
+    issues_content = []
+    issues_path = Path(issues_dir)
+    if issues_path.exists():
+        for f in issues_path.glob("*.md"):
+            try:
+                issues_content.append({
+                    "file": f.name,
+                    "content": f.read_text()[:2000] # Truncate to avoid context limit issues
+                })
+            except Exception:
+                pass
+
     prompt = tpl.replace("<PROJECT>", ticktick_project)
     prompt = prompt.replace("<CUSTOMER>", customer_name)
     prompt = prompt.replace("<CUSTOMER_SEARCH>", customer_name)
     prompt = prompt.replace("<CUSTOMER_PREFIX>", customer_name)
     prompt = prompt.replace("<TODAY>", today_str)
     prompt = prompt.replace("<REMINDER_MINUTES>", str(reminder_minutes))
-    prompt = prompt.replace("<ISSUES_DIR>", str(Path(issues_dir).resolve()))
+    
+    # Inject issues content or fallback to directory path if empty/too large (but prefer content)
+    if issues_content:
+        prompt = prompt.replace("<ISSUES_DIR>", json.dumps(issues_content, indent=2))
+    else:
+        prompt = prompt.replace("<ISSUES_DIR>", str(Path(issues_dir).resolve()))
+        
     prompt = prompt.replace("<EMAILS>", json.dumps(emails_content, indent=2))
     prompt = prompt.replace("<TASKS>", json.dumps(tasks_content, indent=2))
     
