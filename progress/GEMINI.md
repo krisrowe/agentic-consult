@@ -2,6 +2,8 @@
 
 This directory (`progress/`) contains work-in-progress artifacts, Proof-of-Concept (POC) scripts, and temporary documentation. These files are safe for public history but are intended for eventual removal or integration into the main codebase.
 
+**Note**: We plan to `git rm` this entire folder once the system reaches a stable state where unit tests, integration tests, and live end-to-end tests are all consistently passing.
+
 **Current Artifacts:**
 - `gemini-cli-test.py`: Verifies local `gemini` CLI wrapper execution.
 - `gemini-api-poc.py`: Performance comparison using `google-generativeai` SDK.
