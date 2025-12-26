@@ -40,9 +40,10 @@ Return ONLY a raw JSON object with the following structure. Do not include markd
         },
         {
           "type": "task_update",
-          "id": "task_id",
+          "id": "task_id_from_context",
           "title": "New title (optional)",
-          "content": "New content (optional)"
+          "content": "New content (optional)",
+          "status": 2  (Optional: 2=Completed, 0=Open)
         },
         {
           "type": "issue_update",

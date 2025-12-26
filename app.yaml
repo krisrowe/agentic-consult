@@ -22,3 +22,7 @@ skip_task_writes: true
 use_mock_gemini: false
 use_mock_data: false
 ticktick_project: Work
+
+# Task Provider Configuration
+task_provider: ticktick
+sync_tasks: true

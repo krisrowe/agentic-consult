@@ -1,14 +1,11 @@
-import json
 import tempfile
-from pathlib import Path
+import json
 import pytest
-from click.testing import CliRunner
+from pathlib import Path
 from agentic_consult.cli.refresh import process_deltas
 
 def test_safety_limit_exceeded():
     """Test that process_deltas aborts when expected_max_deltas is exceeded."""
-    runner = CliRunner()
-    
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         deltas_path = tmp_path / 'deltas.json'
@@ -27,14 +24,14 @@ def test_safety_limit_exceeded():
         }
         deltas_path.write_text(json.dumps(deltas))
         
+        tasks = []
+        
         # Run with limit 1 (should fail)
         with pytest.raises(SystemExit):
-            process_deltas(deltas_path, {}, tmp_path, expected_max_deltas=1)
+            process_deltas(deltas_path, {}, tmp_path, tasks, expected_max_deltas=1)
 
 def test_safety_limit_respected():
     """Test that process_deltas proceeds when limit is respected."""
-    runner = CliRunner()
-    
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         deltas_path = tmp_path / 'deltas.json'
@@ -50,7 +47,9 @@ def test_safety_limit_respected():
         }
         deltas_path.write_text(json.dumps(deltas))
         
+        tasks = []
+        
         # Run with limit 1 (should pass)
         # Note: process_deltas might try to run subprocess commands if not mocked/skipped.
         # We pass skip_task_writes=True in config to avoid side effects.
-        process_deltas(deltas_path, {'skip_task_writes': True}, tmp_path, expected_max_deltas=1)
+        process_deltas(deltas_path, {'skip_task_writes': True}, tmp_path, tasks, expected_max_deltas=1)
