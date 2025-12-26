@@ -20,6 +20,18 @@ This tool helps automate customer support workflows by:
 
 **AI Agent Integration**: This tool is designed to work with AI assistants like Gemini CLI. See [GEMINI.md](GEMINI.md) for the agent-facing guide.
 
+## Installation
+
+The recommended way to install `agentic-consult` is via `pipx` to ensure isolation and global availability.
+
+```bash
+# Install from source
+pipx install .
+
+# If you encounter import errors, try forcing a reinstall
+pipx install . --force
+```
+
 ## Prerequisites
 
 - Python 3.8+
