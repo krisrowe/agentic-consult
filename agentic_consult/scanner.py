@@ -1,8 +1,11 @@
 import os
 import re
 import subprocess
+import logging
 from pathlib import Path
 from agentic_consult.utils import is_drive_id_candidate
+
+logger = logging.getLogger(__name__)
 
 # Regex definitions
 EMAIL_RE = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
@@ -71,9 +74,11 @@ def read_file_content(path, staged=False):
         except OSError:
             return ""
 
-def scan_text(text, patterns, line_offset=0):
+def scan_text(text, patterns, line_offset=0, allowed_emails=None):
     """Scans a block of text for patterns."""
     findings = []
+    allowed_emails = set(allowed_emails or [])
+    
     for i, line in enumerate(text.splitlines(), start=1 + line_offset):
         line = line.strip()
         if not line: continue
@@ -84,7 +89,12 @@ def scan_text(text, patterns, line_offset=0):
                  
         email_match = EMAIL_RE.search(line)
         if email_match:
-            findings.append(f"Line {i}: Found email '{email_match.group(0)}'")
+            email = email_match.group(0)
+            if email not in allowed_emails:
+                findings.append(f"Line {i}: Found email '{email}'")
+            else:
+                logger.debug(f"Ignoring allowed email '{email}' at Line {i}")
+                
         if TICKET_ID_RE.search(line):
             findings.append(f"Line {i}: Found ticket ID")
             
@@ -96,7 +106,7 @@ def scan_text(text, patterns, line_offset=0):
                     findings.append(f"Line {i}: Found Drive ID '{val}' in context")
     return findings
 
-def scan_target(path, patterns, staged=False):
+def scan_target(path, patterns, staged=False, allowed_emails=None):
     """
     Scans a single target (file path).
     Checks filename and content (staged or disk).
@@ -112,7 +122,7 @@ def scan_target(path, patterns, staged=False):
     # 2. Check Content
     content = read_file_content(path, staged=staged)
     if content:
-        findings.extend(scan_text(content, patterns))
+        findings.extend(scan_text(content, patterns, allowed_emails=allowed_emails))
         
     return findings
 

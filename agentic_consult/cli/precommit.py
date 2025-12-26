@@ -1,6 +1,8 @@
 import click
 import os
 import sys
+import yaml
+from pathlib import Path
 
 from agentic_consult.customers import load_customer_config
 from agentic_consult.scanner import scan_target, get_staged_files, get_disk_files, check_git_identity
@@ -11,6 +13,18 @@ from agentic_consult.scanner import scan_target, get_staged_files, get_disk_file
 def precommit(include_ignored, path):
     """Scans files for sensitive data."""
     config = load_customer_config()
+    
+    # Load app.yaml from CWD if it exists
+    allowed_emails = []
+    app_yaml_path = Path("app.yaml")
+    if app_yaml_path.exists():
+        try:
+            with open(app_yaml_path, 'r') as f:
+                app_config = yaml.safe_load(f) or {}
+                allowed_emails = app_config.get('precommit', {}).get('allowed_emails', [])
+        except Exception:
+            pass # Ignore if invalid yaml
+            
     patterns = {}
     local_user = os.environ.get("USER") or os.environ.get("USERNAME")
     if local_user:
@@ -30,11 +44,11 @@ def precommit(include_ignored, path):
     all_issues = {}
     if staged:
         for f in staged:
-            issues = scan_target(f, patterns, staged=True)
+            issues = scan_target(f, patterns, staged=True, allowed_emails=allowed_emails)
             if issues: all_issues[f"{f} (staged)"] = issues
     if disk:
         for f in disk:
-            issues = scan_target(f, patterns, staged=False)
+            issues = scan_target(f, patterns, staged=False, allowed_emails=allowed_emails)
             if issues: all_issues[f"{f} (disk)"] = issues
 
     # 3. Check Git Identity

@@ -95,13 +95,13 @@ keywords: ["gemini"]
 """)
         
         # Global Config
-        # sync_tasks: false to avoid provider calls
+        # tasks.cloud_sync: false to avoid provider calls
         (customers_dir / 'config.yaml').write_text(f"""
 use_mock_data: true
 use_mock_gemini: false
-skip_task_writes: false
-sync_tasks: false
-ticktick_project: Work
+tasks:
+  cloud_sync: false
+  default_project: Work
 customers_local_path: {customers_dir}
 gemini:
   debug: false

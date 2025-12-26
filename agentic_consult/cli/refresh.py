@@ -70,28 +70,25 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, tasks: l
         click.echo(f"SAFETY LIMIT EXCEEDED: Proposed {total_ops} changes, limit is {expected_max_deltas}.", err=True)
         sys.exit(1)
 
-    skip_writes = config.get('skip_task_writes', False) if config else False
-
     # --- Task Management (Local) ---
-    if not skip_writes:
-        for task_delta in tasks_create:
-            new_task = add_new_task(tasks, task_delta)
-            click.echo(f"Created local task #{new_task['sequence_number']}: {new_task['title']}")
+    for task_delta in tasks_create:
+        new_task = add_new_task(tasks, task_delta)
+        click.echo(f"Created local task #{new_task['sequence_number']}: {new_task['title']}")
 
-        for task_delta in tasks_update:
-            # Gemini provides 'id' which corresponds to our sequence_number
-            try:
-                seq_num = int(task_delta.get('id'))
-                updated = update_task(tasks, seq_num, task_delta)
-                if updated:
-                    click.echo(f"Updated local task #{seq_num}")
-                else:
-                    click.echo(f"Warning: Could not find task #{seq_num} to update", err=True)
-            except (ValueError, TypeError):
-                click.echo(f"Warning: Invalid task ID format in delta: {task_delta.get('id')}", err=True)
-                
-        # Save updated local state
-        save_tasks(customer_dir, tasks)
+    for task_delta in tasks_update:
+        # Gemini provides 'id' which corresponds to our sequence_number
+        try:
+            seq_num = int(task_delta.get('id'))
+            updated = update_task(tasks, seq_num, task_delta)
+            if updated:
+                click.echo(f"Updated local task #{seq_num}")
+            else:
+                click.echo(f"Warning: Could not find task #{seq_num} to update", err=True)
+        except (ValueError, TypeError):
+            click.echo(f"Warning: Invalid task ID format in delta: {task_delta.get('id')}", err=True)
+            
+    # Save updated local state
+    save_tasks(customer_dir, tasks)
 
     # --- Issue Tracking ---
     issues_dir = customer_dir / 'issues'
@@ -109,29 +106,25 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, tasks: l
         
         content = issue.get('content', '')
         
-        if skip_writes:
-             click.echo(f"SKIPPED: Would update issue file {filename}")
-        else:
-            mode = 'a' if file_path.exists() else 'w'
-            try:
-                with open(file_path, mode) as f:
-                    if mode == 'a': f.write("\n\n")
-                    f.write(content)
-                click.echo(f"Updated issue file: {filename}")
-            except Exception as e:
-                click.echo(f"Failed to write issue file {filename}: {e}", err=True)
+        mode = 'a' if file_path.exists() else 'w'
+        try:
+            with open(file_path, mode) as f:
+                if mode == 'a': f.write("\n\n")
+                f.write(content)
+            click.echo(f"Updated issue file: {filename}")
+        except Exception as e:
+            click.echo(f"Failed to write issue file {filename}: {e}", err=True)
 
     # --- Archive the Delta File ---
-    if not skip_writes:
-        archive_dir = customer_dir / 'deltas_archive'
-        archive_dir.mkdir(exist_ok=True)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        archive_path = archive_dir / f"done_deltas_{timestamp}.json"
-        try:
-            shutil.move(deltas_path, archive_path)
-            click.echo(f"Archived processed deltas to {archive_path}")
-        except Exception as e:
-            click.echo(f"Warning: Failed to archive deltas.json: {e}", err=True)
+    archive_dir = customer_dir / 'deltas_archive'
+    archive_dir.mkdir(exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    archive_path = archive_dir / f"done_deltas_{timestamp}.json"
+    try:
+        shutil.move(deltas_path, archive_path)
+        click.echo(f"Archived processed deltas to {archive_path}")
+    except Exception as e:
+        click.echo(f"Warning: Failed to archive deltas.json: {e}", err=True)
 
 
 @click.command(name='refresh')
@@ -142,10 +135,9 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, tasks: l
 @click.option('--since', help="Filter emails after date (YYYY-MM-DD).")
 @click.option('--skip-fetch', is_flag=True, help="Skip fetching and use cache.")
 @click.option('--expected-max-deltas', type=int, help="Fail if deltas exceed this.")
-@click.option('--skip-task-writes/--no-skip-task-writes', default=None)
 @click.option('--retry-deltas', 'retry_deltas_arg', type=str, is_flag=False, flag_value='deltas.json', default=None, help="Retry processing an existing deltas file.")
 @click.option('--force-refresh', is_flag=True, help="Force refresh even if no new emails.") 
-def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fetch, expected_max_deltas, skip_task_writes, retry_deltas_arg, force_refresh):
+def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fetch, expected_max_deltas, retry_deltas_arg, force_refresh):
     """Refreshes customer context by fetching, analyzing, and preparing a plan."""
     
     # 1. Load Customer
@@ -160,8 +152,6 @@ def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fe
 
     # 2. Load Config & Prompt Template
     config = load_main_config() or {}
-    if skip_task_writes is not None:
-        config['skip_task_writes'] = skip_task_writes
     
     prompt_path = customer_dir / PROMPT_TPL_FILENAME
     template = None
@@ -195,7 +185,7 @@ def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fe
         click.echo(f"Retrying deltas from: {retry_path}")
         process_deltas(retry_path, config, customer_dir, tasks, expected_max_deltas)
         
-        if config.get("sync_tasks", True):
+        if config.get("tasks", {}).get("cloud_sync", True):
             provider = get_task_provider()
             if provider:
                 click.echo("Syncing tasks to provider...")
@@ -224,7 +214,7 @@ def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fe
     tasks = load_tasks(customer_dir)
 
     # Sync tasks BEFORE Gemini call to ensure latest context
-    if config.get("sync_tasks", True):
+    if config.get("tasks", {}).get("cloud_sync", True):
         provider = get_task_provider()
         if provider:
             click.echo("Syncing tasks from provider (pre-analysis)...")
@@ -288,7 +278,7 @@ def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fe
     process_deltas(deltas_path, config, customer_dir, tasks, expected_max_deltas)
     
     # 13. Sync Tasks to Provider (Optional)
-    if config.get("sync_tasks", True):
+    if config.get("tasks", {}).get("cloud_sync", True):
         provider = get_task_provider()
         if provider:
             click.echo("Syncing tasks to provider...")

@@ -17,7 +17,8 @@ def get_task_provider() -> Optional[TaskProvider]:
     if not config:
         return None
 
-    provider_name = config.get("task_provider")
+    tasks_config = config.get("tasks", {})
+    provider_name = tasks_config.get("provider")
     if not provider_name:
         return None
 

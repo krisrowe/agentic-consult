@@ -5,11 +5,17 @@
     "issues_dir": { "type": "string" },
     "gemini_cmd": { "type": "string" },
     "dry_run": { "type": ["integer", "boolean"] },
-    "ticktick_project": { "type": "string" },
     "tasks_json": { "type": "string" },
     "completed_tasks_json": { "type": "string" },
     "google_drive_all_customers_folder_id": { "type": "string" },
-    "skip_task_updates": { "type": "boolean" },
+    "tasks": {
+      "type": "object",
+      "properties": {
+        "cloud_sync": { "type": "boolean" },
+        "provider": { "type": "string" },
+        "default_project": { "type": "string" }
+      }
+    },
     "ticktick": {
       "type": "object",
       "properties": {

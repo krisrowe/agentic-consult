@@ -50,6 +50,4 @@ def test_safety_limit_respected():
         tasks = []
         
         # Run with limit 1 (should pass)
-        # Note: process_deltas might try to run subprocess commands if not mocked/skipped.
-        # We pass skip_task_writes=True in config to avoid side effects.
-        process_deltas(deltas_path, {'skip_task_writes': True}, tmp_path, tasks, expected_max_deltas=1)
+        process_deltas(deltas_path, {}, tmp_path, tasks, expected_max_deltas=1)

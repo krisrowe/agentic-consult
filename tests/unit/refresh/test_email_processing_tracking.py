@@ -45,12 +45,11 @@ keywords: [\"testcorp\"]
         tasks_dir.mkdir()
         (tasks_dir / 'tasks.json').write_text(json.dumps([]))
         
-        # Setup config: Disable sync_tasks to avoid network/provider calls
+        # Setup config: Disable cloud_sync to avoid network/provider calls
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: false
 use_mock_data: true
-skip_task_writes: false
-sync_tasks: false
-ticktick_project: Work
+tasks:
+  cloud_sync: false
 """)
 
         # Create prompt.tpl in the customers dir (global default)
@@ -150,8 +149,8 @@ drive_folder_id: \"test123\"
         
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: false
 use_mock_data: true
-skip_task_writes: false
-sync_tasks: false
+tasks:
+  cloud_sync: false
 """)
 
         (customers_dir / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
@@ -235,8 +234,8 @@ drive_folder_id: \"test123\"
         
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: false
 use_mock_data: true
-skip_task_writes: false
-sync_tasks: false
+tasks:
+  cloud_sync: false
 """)
         (customers_dir / 'prompt.tpl').write_text("Prompt")
         
@@ -287,8 +286,8 @@ slug: testcorp
         
         (customers_dir / 'config.yaml').write_text("""use_mock_gemini: false
 use_mock_data: true
-skip_task_writes: false
-sync_tasks: false
+tasks:
+  cloud_sync: false
 """)
         (customers_dir / 'prompt.tpl').write_text("Prompt")
 
@@ -332,7 +331,7 @@ keywords: [\"testcorp\"]
         (test_customer_dir / 'tasks').mkdir()
         (test_customer_dir / 'tasks' / 'tasks.json').write_text("[]")
         
-        (customers_dir / 'config.yaml').write_text("use_mock_gemini: false\nuse_mock_data: true\nsync_tasks: false\n")
+        (customers_dir / 'config.yaml').write_text("use_mock_gemini: false\nuse_mock_data: true\ntasks:\n  cloud_sync: false\n")
         (customers_dir / 'prompt.tpl').write_text("Prompt")
         
         mock_deltas = {"emails": [{"id": "email3", "ignore": {"reason": "informational"}}]}
@@ -375,7 +374,7 @@ keywords: [\"testcorp\"]
         (test_customer_dir / 'tasks').mkdir()
         (test_customer_dir / 'tasks' / 'tasks.json').write_text("[]")
         
-        (customers_dir / 'config.yaml').write_text("use_mock_gemini: true\nuse_mock_data: true\nsync_tasks: false\n")
+        (customers_dir / 'config.yaml').write_text("use_mock_gemini: true\nuse_mock_data: true\ntasks:\n  cloud_sync: false\n")
         (customers_dir / 'prompt.tpl').write_text("Prompt")
         
         # Write emails.json directly (simulating successful fetch)

@@ -15,12 +15,16 @@ gemini:
   # Enable debug logging for the Gemini CLI (shows MCP/extension loading)
   debug: false
 
-# Default TickTick project
-ticktick_project: Work
-
-# If true, `refresh` will echo the 'ticktick' commands instead of executing them.
-# The generated `task-deltas.json` file will also be preserved.
-skip_task_writes: true
+# Task Management Configuration
+tasks:
+  # The task provider to use (e.g., ticktick)
+  provider: ticktick
+  
+  # Set to false to work in local-only mode (no cloud sync)
+  cloud_sync: true
+  
+  # Default project/list name in the provider
+  default_project: Work
 
 # Use mock Gemini script for testing/development
 use_mock_gemini: false
@@ -31,7 +35,7 @@ use_mock_data: false
 # Root Google Drive folder for all customer data backups
 google_drive_all_customers_folder_id: "<DRIVE_PARENT_ID>"
 
-# TickTick Authentication
+# TickTick Authentication (Provider-specific)
 ticktick:
   auth:
     # Set to true to allow falling back to ~/.gemini/settings.json for the access token

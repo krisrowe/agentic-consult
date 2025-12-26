@@ -17,12 +17,20 @@ email:
   max_prompt_content_chars: 100000  # Stop adding emails after this limit is reached/exceeded
   max_email_chars: 100000           # Truncate individual emails exceeding this limit
 
-# Default Settings
-skip_task_writes: true
+# Global Settings
 use_mock_gemini: false
 use_mock_data: false
-ticktick_project: Work
 
-# Task Provider Configuration
-task_provider: ticktick
-sync_tasks: true
+# Task Management Configuration
+tasks:
+  provider: ticktick
+  cloud_sync: true
+  default_project: Work
+
+# Pre-commit Scanner Configuration
+precommit:
+  allowed_emails:
+    - boss@gemini-test.com
+    - pm@gemini-test.com
+    - test@testcorp.com
+    - test@fake.com

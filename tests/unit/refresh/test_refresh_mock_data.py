@@ -55,9 +55,9 @@ keywords: ['fake']
 use_mock_data: true
 use_mock_gemini: true
 gemini_cmd: {mock_script}
-skip_task_writes: true
-sync_tasks: false
-ticktick_project: Work
+tasks:
+  cloud_sync: false
+  default_project: Work
 customers_local_path: {customers_dir}
 """)
         
