@@ -245,8 +245,9 @@ def test_exit_code_not_zero_on_multiple_failures(tmp_path):
     subprocess.run(['git', '-C', str(tmp), 'add', str(f1)], check=True)
 
     # 2. Email failure
+    domain = "example.org"
     f2 = tmp / 'file2.txt'
-    f2.write_text('secret@example.com')
+    f2.write_text(f'sensitive@{domain}')
     subprocess.run(['git', '-C', str(tmp), 'add', str(f2)], check=True)
 
     out = run_checker(repo_root, tmp, customers, expect_ok=False)

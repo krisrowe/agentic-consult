@@ -34,4 +34,3 @@ precommit:
     - pm@gemini-test.com
     - test@testcorp.com
     - test@fake.com
-    - secret@example.com
