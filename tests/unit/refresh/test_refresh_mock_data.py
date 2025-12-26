@@ -71,7 +71,7 @@ Tasks: <TASKS>
         env['XDG_CONFIG_HOME'] = str(tmp_path)
         
         # 7. Run Refresh Command
-        result = runner.invoke(main, ['refresh', 'fakecorp', '--no-dry-run', '--gemini-cmd', str(mock_script)], env=env)
+        result = runner.invoke(main, ['refresh', 'fakecorp', '--no-dry-run'], env=env)
         # 8. Verify Output
         print(result.output) # For debugging if test fails
         assert result.exit_code == 0

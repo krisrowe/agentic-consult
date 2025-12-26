@@ -156,8 +156,9 @@ gemini:
         # Note: If skip_task_writes is True, deltas.json is NOT archived, so it should exist
         assert deltas_path.exists(), "deltas.json was not generated or was archived unexpectedly"
         
+        from agentic_consult.utils import clean_json_output
         with open(deltas_path, 'r') as f:
-            data = json.load(f)
+            data = json.loads(clean_json_output(f.read()))
             
         emails = data.get('emails', [])
         assert emails, "No emails found in response"

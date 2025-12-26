@@ -16,6 +16,7 @@ from agentic_consult.gmail import fetch_and_cache_emails
 from agentic_consult.ticktick import fetch_and_cache_tasks
 from agentic_consult.refresh import build_prompt
 from agentic_consult.utils import clean_json_output
+from agentic_consult.gemini import GeminiAPIClient, GeminiOutputError
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,12 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
             content = f.read()
             # Attempt to strip markdown code blocks if simple parse fails? 
             # For now, let's just log it if it fails.
-            data = json.loads(content)
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                # Fallback: try cleaning the output
+                cleaned = clean_json_output(content)
+                data = json.loads(cleaned)
     except (json.JSONDecodeError, FileNotFoundError) as e:
         if deltas_path.exists():
             click.echo(f"Debug: Raw deltas content:\n{deltas_path.read_text()}", err=True)
@@ -157,7 +163,6 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
 @click.command(name='refresh')
 @click.argument('identifier', required=False)
 @click.option('--dry-run/--no-dry-run', default=True)
-@click.option('--gemini-cmd', default='gemini')
 @click.option('--max-emails', type=int, default=10, help="Max emails to fetch.")
 @click.option('--read-archived-email/--no-read-archived-email', default=None)
 @click.option('--since', help="Filter emails after date (YYYY-MM-DD).")
@@ -166,7 +171,7 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
 @click.option('--skip-task-writes/--no-skip-task-writes', default=None)
 @click.option('--retry-deltas', 'retry_deltas_arg', type=str, is_flag=False, flag_value='deltas.json', default=None, help="Retry processing an existing deltas file.")
 @click.option('--force-refresh', is_flag=True, help="Force refresh even if no new emails.") 
-def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, since, skip_fetch, expected_max_deltas, skip_task_writes, retry_deltas_arg, force_refresh):
+def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fetch, expected_max_deltas, skip_task_writes, retry_deltas_arg, force_refresh):
     """Refreshes customer context by fetching, analyzing, and preparing a plan."""
     
     # 1. Load Customer
@@ -311,55 +316,56 @@ def refresh(identifier, dry_run, gemini_cmd, max_emails, read_archived_email, si
         click.echo(f"\nDRY_RUN=1")
         click.echo(f"Customer: {cust['name']}")
         click.echo(f"New Emails: {len(unprocessed_emails)}")
-        click.echo(f"Would execute: {gemini_cmd} < {gemini_input_path}")
-        click.echo(f"\n=== Prompt for Gemini MCP ===\n{prompt_input[:500]}...\n(truncated)")
+        click.echo(f"Would execute: Gemini API generation (2.0-flash)")
+        click.echo(f"\n=== Prompt Preview ===\n{prompt_input[:500]}...\n(truncated)")
         return
 
     # 10. Run Gemini
-    click.echo(f"Executing Gemini...")
-    try:
-        env_vars = os.environ.copy()
-        
-        # Match successful test pattern: prompt first, then flags with empty strings
-        # Use list arguments and shell=False for safety and robustness
-        cmd_parts = [gemini_cmd, prompt_input]
-        
-        if config.get('gemini', {}).get('debug', False):
-            cmd_parts.append('--debug')
+    click.echo(f"Executing Gemini API...")
+    
+    if config.get('use_mock_gemini'):
+        click.echo("Using mock Gemini data.")
+        # Find mock data
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        mock_path = repo_root / 'mock-deltas.json'
+        if not mock_path.exists():
+             mock_path = repo_root / 'mock-deltas.json.example'
+             
+        try:
+            with open(mock_path, 'r') as f:
+                data = json.load(f)
+            with open(deltas_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            click.echo(f"Mock Gemini output saved to {deltas_path}")
+        except Exception as e:
+            click.echo(f"Error reading mock Gemini data: {e}", err=True)
+            sys.exit(1)
+    else:
+        try:
+            client = GeminiAPIClient()
+            data = client.generate_prompt_driven_json(prompt_input)
             
-        # Disable MCP servers and extensions using empty strings
-        cmd_parts.extend(['--allowed-mcp-server-names', '', '--extensions', ''])
-        
-        # Capture stdout only for JSON, let stderr (logs) flow to console
-        result = subprocess.run(
-            cmd_parts,
-            capture_output=True,
-            text=True,
-            env=env_vars
-        )
-        
-        # Check return code
-        result.check_returncode()
-        
-        # Write clean stdout to file
-        with open(deltas_path, 'w') as f:
-            f.write(result.stdout)
+            # Write JSON to file
+            with open(deltas_path, 'w') as f:
+                json.dump(data, f, indent=2)
+                
+            click.echo(f"Gemini output saved to {deltas_path}")
             
-        click.echo(f"Gemini output saved to {deltas_path}")
-        
-    except subprocess.CalledProcessError as e:
-        click.echo(f"Gemini command failed: {e}", err=True)
-        if e.stderr:
-            click.echo(f"Stderr: {e.stderr}", err=True)
-        sys.exit(1)
+        except GeminiOutputError as e:
+            click.echo(f"Gemini generation failed: {e}", err=True)
+            sys.exit(1)
+        except Exception as e:
+            click.echo(f"Unexpected error during Gemini generation: {e}", err=True)
+            sys.exit(1)
 
     # 11. Load Deltas for Acknowledgment (before process_deltas archives it)
-    deltas = None
+    # We already have 'data' in memory if it was a real call, but if it was mock, we reload
     try:
         with open(deltas_path, 'r') as f:
             deltas = json.load(f)
     except (json.JSONDecodeError, FileNotFoundError) as e:
         click.echo(f"Warning: Could not read deltas for acknowledgment tracking: {e}", err=True)
+
     
     # 12. Process Deltas (this will archive the file)
     process_deltas(deltas_path, config, customer_dir, expected_max_deltas)

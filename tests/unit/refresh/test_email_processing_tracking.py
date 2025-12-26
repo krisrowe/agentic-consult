@@ -6,6 +6,7 @@ from unittest.mock import patch
 from click.testing import CliRunner
 from agentic_consult.cli.main import main
 from agentic_consult.processing_state import load_processed_emails
+from agentic_consult.gemini import GeminiAPIClient
 
 
 def create_mock_subprocess_with_deltas(customer_dir, mock_deltas):
@@ -62,8 +63,8 @@ keywords: ["testcorp"]
         tasks_dir.mkdir()
         (tasks_dir / 'tasks.json').write_text(json.dumps([]))
         
-        # Setup config with mock Gemini
-        (customers_dir / 'config.yaml').write_text("""use_mock_gemini: true
+        # Setup config with mock Gemini set to FALSE so it tries to use the API client (which we will mock)
+        (customers_dir / 'config.yaml').write_text("""use_mock_gemini: false
 use_mock_data: true
 skip_task_writes: false
 ticktick_project: Work
@@ -97,9 +98,16 @@ Tasks: <TASKS>
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
-        # Mock subprocess.run to avoid actual ticktick CLI calls
-        with patch('subprocess.run') as mock_run:
-            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
+        # Mock GeminiAPIClient and subprocess
+        with patch('agentic_consult.cli.refresh.GeminiAPIClient') as MockClient, \
+             patch('subprocess.run') as mock_run:
+            
+            # Setup Gemini mock
+            mock_client_instance = MockClient.return_value
+            mock_client_instance.generate_prompt_driven_json.return_value = mock_deltas
+            
+            # Setup TickTick subprocess mock
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             result = runner.invoke(
@@ -111,19 +119,14 @@ Tasks: <TASKS>
             # Verify command succeeded
             assert result.exit_code == 0, f"Command failed: {result.output}"
             
+            # Verify Gemini was called
+            assert mock_client_instance.generate_prompt_driven_json.called
+            
             # Verify emails_processed.txt was created with acknowledged email IDs
             # email1 was acknowledged in tasks.create, email2 and email3 in ignoring
             processed_emails = load_processed_emails(test_customer_dir)
             assert processed_emails == {"email1", "email2", "email3"}, \
                 f"Expected all 3 emails to be marked as processed (all acknowledged), got: {processed_emails}"
-            
-            # Verify the file exists and has correct content
-            processed_file = test_customer_dir / 'emails_processed.txt'
-            assert processed_file.exists(), "emails_processed.txt should exist"
-            
-            with open(processed_file, 'r') as f:
-                lines = [line.strip() for line in f if line.strip()]
-            assert set(lines) == {"email1", "email2", "email3"}
 
 
 def test_end_to_end_skip_processed_emails_on_rerun():
@@ -161,7 +164,7 @@ drive_folder_id: "test123"
         (tasks_dir / 'tasks.json').write_text(json.dumps([]))
         
         # Setup config
-        (customers_dir / 'config.yaml').write_text("""use_mock_gemini: true
+        (customers_dir / 'config.yaml').write_text("""use_mock_gemini: false
 use_mock_data: true
 skip_task_writes: false
 """)
@@ -188,9 +191,16 @@ Tasks: <TASKS>
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
-        # Mock subprocess
-        with patch('subprocess.run') as mock_run:
-            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
+        # Mock GeminiAPIClient and subprocess
+        with patch('agentic_consult.cli.refresh.GeminiAPIClient') as MockClient, \
+             patch('subprocess.run') as mock_run:
+            
+            # Setup Gemini mock
+            mock_client_instance = MockClient.return_value
+            mock_client_instance.generate_prompt_driven_json.return_value = mock_deltas
+            
+            # Setup TickTick subprocess mock
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -201,6 +211,7 @@ Tasks: <TASKS>
                 env=env
             )
             assert result1.exit_code == 0
+            assert mock_client_instance.generate_prompt_driven_json.call_count == 1
             
             # Verify both emails were marked as processed (both in ignoring array)
             processed = load_processed_emails(test_customer_dir)
@@ -217,8 +228,9 @@ Tasks: <TASKS>
                 catch_exceptions=False
             )
             
-            # Should succeed but skip all emails
+            # Should succeed but skip all emails (so Gemini won't be called again)
             assert result2.exit_code == 0
+            assert mock_client_instance.generate_prompt_driven_json.call_count == 1  # Still 1, no new call
             
             # Verify emails.json was NOT filtered (it should contain all emails)
             with open(emails_dir / 'emails.json', 'r') as f:
@@ -289,9 +301,15 @@ Tasks: <TASKS>
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
-        # Mock subprocess
-        with patch('subprocess.run') as mock_run:
-            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
+        # Mock GeminiAPIClient and subprocess
+        with patch('agentic_consult.cli.refresh.GeminiAPIClient') as MockClient, \
+             patch('subprocess.run') as mock_run:
+            
+            # Setup Gemini mock
+            mock_client_instance = MockClient.return_value
+            mock_client_instance.generate_prompt_driven_json.return_value = mock_deltas
+            
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -367,9 +385,15 @@ Tasks: <TASKS>
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
-        # Mock subprocess
-        with patch('subprocess.run') as mock_run:
-            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
+        # Mock GeminiAPIClient and subprocess
+        with patch('agentic_consult.cli.refresh.GeminiAPIClient') as MockClient, \
+             patch('subprocess.run') as mock_run:
+            
+            # Setup Gemini mock
+            mock_client_instance = MockClient.return_value
+            mock_client_instance.generate_prompt_driven_json.return_value = mock_deltas
+            
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -444,9 +468,15 @@ Tasks: <TASKS>
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
-        # Mock subprocess
-        with patch('subprocess.run') as mock_run:
-            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
+        # Mock GeminiAPIClient and subprocess
+        with patch('agentic_consult.cli.refresh.GeminiAPIClient') as MockClient, \
+             patch('subprocess.run') as mock_run:
+            
+            # Setup Gemini mock
+            mock_client_instance = MockClient.return_value
+            mock_client_instance.generate_prompt_driven_json.return_value = mock_deltas
+            
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             
@@ -529,9 +559,15 @@ Tasks: <TASKS>
         }
         (repo_root / 'mock-deltas.json').write_text(json.dumps(mock_deltas))
         
-        # Mock subprocess
-        with patch('subprocess.run') as mock_run:
-            mock_run.side_effect = create_mock_subprocess_with_deltas(test_customer_dir, mock_deltas)
+        # Mock GeminiAPIClient and subprocess
+        with patch('agentic_consult.cli.refresh.GeminiAPIClient') as MockClient, \
+             patch('subprocess.run') as mock_run:
+            
+            # Setup Gemini mock
+            mock_client_instance = MockClient.return_value
+            mock_client_instance.generate_prompt_driven_json.return_value = mock_deltas
+            
+            mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="")
             
             env = {'CUSTOMERS_DIR': str(customers_dir), 'XDG_CONFIG_HOME': str(tmp_path)}
             

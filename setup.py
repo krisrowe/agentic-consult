@@ -9,6 +9,8 @@ setup(
     install_requires=[
         "click>=8.0",
         "pyyaml>=6.0",
+        "google-genai",
+        "jsonschema",
     ],
     extras_require={
         "dev": [
