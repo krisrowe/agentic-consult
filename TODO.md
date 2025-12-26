@@ -20,11 +20,11 @@
         - `add()` was called exactly once with the correct task data.
         - `update()` was called exactly twice with the correct task data and remote IDs.
         - Verify the exact arguments and call counts for each provider operation.
-- [ ] **Live Sync Test (Create & Update)**:
-    - [ ] Enable cloud sync in `config.yaml` (`tasks: cloud_sync: true`).
-    - [ ] **Step 1 (Create):** Process Email `19b4d241895a52ea` (Support Case). Verify task creation in TickTick.
-    - [ ] **Step 2 (Update):** Process Email `19b50b660c62deec` (Reply). Verify task update in TickTick.
-    - [ ] Verify `tasks.json` reflects remote IDs and `is_dirty: false` after sync.
+- [x] **Live Sync Test (Create & Update)**:
+    - [x] Enable cloud sync in `config.yaml` (`tasks: cloud_sync: true`).
+    - [x] **Step 1 (Create):** Process Email `19b4d241895a52ea` (Support Case). Verify task creation in TickTick.
+    - [x] **Step 2 (Update):** Process Email `19b50b660c62deec` (Reply). Verify task update in TickTick.
+    - [x] Verify `tasks.json` reflects remote IDs and `is_dirty: false` after sync.
 
 ### Phase 3: Full End-to-End Revalidation
 - [ ] Repeat the 2-email sequence with cloud sync enabled from the start (effectively covered by Phase 2 Live Test, but confirming clean-slate behavior).

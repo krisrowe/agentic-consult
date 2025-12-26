@@ -11,9 +11,12 @@ import datetime
 from agentic_consult.tasks.providers import TaskProvider
 from agentic_consult.tasks import add_new_task, get_next_sequence_number
 
+from agentic_consult.config import load_main_config
+
 class TicktickProvider(TaskProvider):
     def __init__(self):
-        self.project = "Work" # Default project, can be overridden in sync
+        config = load_main_config() or {}
+        self.project = config.get("tasks", {}).get("default_project", "Work")
 
     def _get_env(self) -> dict:
         env = os.environ.copy()
@@ -55,39 +58,31 @@ class TicktickProvider(TaskProvider):
 
     def create_task(self, task: Dict) -> Optional[str]:
         # 'ticktick tasks create TITLE --project ...'
-        # The CLI returns the ID of the created task?
-        # We need to verify what 'ticktick tasks create' output looks like.
-        # Assuming it prints the ID or JSON. 
-        # Wait, the CLI might not output the ID easily.
-        # Let's assume for now we match by title after refresh if ID isn't returned.
-        # But ideally the CLI should return the ID.
-        # Based on previous logs: "Creating task: ..."
-        # Let's try to parse output.
-        cmd = ["ticktick", "tasks", "create", task["title"], "--project", self.project, "--format", "json"]
+        cmd = ["ticktick", "tasks", "create", task["title"], "--project", self.project]
         if task.get("content"):
             cmd.extend(["--content", task["content"]])
         if task.get("priority"):
             cmd.extend(["--priority", str(task["priority"])])
             
         output = self._run_cmd(cmd)
-        # Assuming JSON output with ID if --format json is supported for create
-        # If not, we might need to fetch list and match.
+        
+        # Parse output for "Task ID: <ID>"
         if output:
-            try:
-                data = json.loads(output)
-                return data.get("id")
-            except json.JSONDecodeError:
-                # Fallback or regex parsing if text output
-                pass
+            for line in output.splitlines():
+                if "Task ID:" in line:
+                    return line.split("Task ID:")[-1].strip()
         return None
 
     def update_task(self, provider_id: str, task: Dict) -> bool:
-        cmd = ["ticktick", "tasks", "update", provider_id]
+        cmd = ["ticktick", "tasks", "update", provider_id, "--project", self.project]
         if task.get("title"):
              cmd.extend(["--title", task["title"]])
         if task.get("content"):
              cmd.extend(["--content", task["content"]])
-        # Add priority etc
+        if "priority" in task:
+             cmd.extend(["--priority", str(task["priority"])])
+        if "status" in task:
+             cmd.extend(["--status", str(task["status"])])
         
         return self._run_cmd(cmd) is not None
 
