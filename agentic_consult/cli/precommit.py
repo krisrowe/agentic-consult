@@ -124,9 +124,16 @@ def precommit(include_ignored, verbose, path):
     # General Checks
     for cat_key, cat_name in CHECK_CATEGORIES.items():
         issues = results.get(cat_key, [])
+        
+        display_name = cat_name
+        if cat_key == 'email':
+            allowlist_count = len(allowed_emails)
+            if allowlist_count > 0:
+                display_name = f"{cat_name} ({allowlist_count} configured to be ignored)"
+        
         if issues:
             failed_checks += 1
-        print_check_result(cat_name, issues, verbose)
+        print_check_result(display_name, issues, verbose)
 
     # Customer Specific Checks
     failed_customers = 0
