@@ -29,9 +29,6 @@ tasks:
 # Use mock Gemini script for testing/development
 use_mock_gemini: false
 
-# Use mock input data (emails/tasks) if available in customer directory
-use_mock_data: false
-
 # Root Google Drive folder for all customer data backups
 google_drive_all_customers_folder_id: "<DRIVE_PARENT_ID>"
 

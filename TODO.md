@@ -20,15 +20,14 @@
         - `add()` was called exactly once with the correct task data.
         - `update()` was called exactly twice with the correct task data and remote IDs.
         - Verify the exact arguments and call counts for each provider operation.
-- [ ] Enable cloud sync in `config.yaml` (set `tasks: cloud_sync: true` and `tasks: provider: ticktick`).
-- [ ] Pre-Analysis Sync: Pull manually created remote tasks into `tasks.json`.
-- [ ] Post-Analysis Sync: Push local tasks (`provider_id: null`) and capture remote IDs.
-- [ ] Update Sync: Modify local task and verify `is_dirty` triggers remote update.
-- [ ] Conflict Resolution: Test behavior when local and remote tasks are both modified.
+- [ ] **Live Sync Test (Create & Update)**:
+    - [ ] Enable cloud sync in `config.yaml` (`tasks: cloud_sync: true`).
+    - [ ] **Step 1 (Create):** Process Email `19b4d241895a52ea` (Support Case). Verify task creation in TickTick.
+    - [ ] **Step 2 (Update):** Process Email `19b50b660c62deec` (Reply). Verify task update in TickTick.
+    - [ ] Verify `tasks.json` reflects remote IDs and `is_dirty: false` after sync.
 
 ### Phase 3: Full End-to-End Revalidation
-- [ ] Repeat 10+ email sequence with cloud sync enabled.
-- [ ] Verify TickTick dashboard matches local `tasks.json` state exactly.
+- [ ] Repeat the 2-email sequence with cloud sync enabled from the start (effectively covered by Phase 2 Live Test, but confirming clean-slate behavior).
 - [ ] Verify `emails_processed.txt` correctly prevents duplicates in a synced environment.
 
 ---

@@ -19,7 +19,6 @@ email:
 
 # Global Settings
 use_mock_gemini: false
-use_mock_data: false
 
 # Task Management Configuration
 tasks:
