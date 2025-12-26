@@ -75,7 +75,7 @@ def read_file_content(path, staged=False):
             return ""
 
 def scan_text(text, patterns, line_offset=0, allowed_emails=None):
-    """Scans a block of text for patterns."""
+    """Scans a block of text for patterns. Returns list of dicts."""
     findings = []
     allowed_emails = set(allowed_emails or [])
     
@@ -85,31 +85,52 @@ def scan_text(text, patterns, line_offset=0, allowed_emails=None):
         
         for p_val, p_meta in patterns.items():
             if p_val.lower() in line.lower():
-                 findings.append(f"Line {i}: Found {p_meta['type']} '{p_val}'")
+                 findings.append({
+                     'type': 'keyword',
+                     'subtype': p_meta['type'],
+                     'customer': p_meta.get('customer'),
+                     'value': p_val,
+                     'line': i,
+                     'msg': f"Found {p_meta['type']} '{p_val}' ({p_meta.get('customer', 'unknown')})"
+                 })
                  
         email_match = EMAIL_RE.search(line)
         if email_match:
             email = email_match.group(0)
             if email not in allowed_emails:
-                findings.append(f"Line {i}: Found email '{email}'")
+                findings.append({
+                    'type': 'email',
+                    'value': email,
+                    'line': i,
+                    'msg': f"Found email '{email}'"
+                })
             else:
                 logger.debug(f"Ignoring allowed email '{email}' at Line {i}")
                 
         if TICKET_ID_RE.search(line):
-            findings.append(f"Line {i}: Found ticket ID")
+            findings.append({
+                'type': 'ticket_id',
+                'line': i,
+                'msg': "Found ticket ID"
+            })
             
         for regex in [DRIVE_KEY_RE, DRIVE_URL_RE, QUERY_ID_RE, PARENT_ID_RE]:
             m = regex.search(line)
             if m:
                 val = m.group('id')
                 if is_drive_id_candidate(val):
-                    findings.append(f"Line {i}: Found Drive ID '{val}' in context")
+                    findings.append({
+                        'type': 'drive_id',
+                        'value': val,
+                        'line': i,
+                        'msg': f"Found Drive ID '{val}' in context"
+                    })
     return findings
 
 def scan_target(path, patterns, staged=False, allowed_emails=None):
     """
     Scans a single target (file path).
-    Checks filename and content (staged or disk).
+    Checks filename and content. Returns list of dicts.
     """
     findings = []
     fname = Path(path).name
@@ -117,12 +138,20 @@ def scan_target(path, patterns, staged=False, allowed_emails=None):
     # 1. Check Filename
     for p_val, p_meta in patterns.items():
         if p_val.lower() in fname.lower():
-             findings.append(f"Filename contains sensitive term '{p_val}' ({p_meta['type']})")
+             findings.append({
+                 'type': 'filename',
+                 'subtype': p_meta['type'],
+                 'customer': p_meta.get('customer'),
+                 'value': p_val,
+                 'msg': f"Filename contains sensitive term '{p_val}' ({p_meta['type']})"
+             })
 
     # 2. Check Content
     content = read_file_content(path, staged=staged)
     if content:
-        findings.extend(scan_text(content, patterns, allowed_emails=allowed_emails))
+        # Pass filename context? No, just return list
+        res = scan_text(content, patterns, allowed_emails=allowed_emails)
+        findings.extend(res)
         
     return findings
 
