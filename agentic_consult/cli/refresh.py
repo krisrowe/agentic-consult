@@ -370,6 +370,11 @@ def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fe
     # 12. Process Deltas (this will archive the file)
     process_deltas(deltas_path, config, customer_dir, expected_max_deltas)
     
+    # After processing deltas (which may include creating tasks), ensure task cache is updated
+    # This is critical for subsequent runs to have correct context
+    click.echo(f"Updating cached tasks after delta processing...")
+    fetch_and_cache_tasks(cust, customer_dir, project=config.get('ticktick_project', 'Work'), use_mock_data=config.get('use_mock_data', False))
+
     # 13. Update State (Mark processed based on Gemini acknowledgment)
     if deltas:
         # Collect acknowledged IDs from emails array
