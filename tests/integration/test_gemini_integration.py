@@ -66,21 +66,21 @@ def test_gemini_integration_real_model():
             {
                 "id": "email_update",
                 "subject": "Re: Q3 Report",
-                "sender": "boss@fakecorp.com",
+                "sender": "boss@gemini-test.com",
                 "body": "Please rename the Q3 report task to 'Q3 Financial Analysis' and bump priority to high.",
                 "date": "2025-01-01"
             },
             {
                 "id": "email_create",
                 "subject": "New Project Alpha",
-                "sender": "pm@fakecorp.com",
+                "sender": "pm@gemini-test.com",
                 "body": "We need to start Project Alpha. Please create a task for 'Project Alpha Kickoff' with high priority.",
                 "date": "2025-01-02"
             },
             {
                 "id": "email_ignore",
                 "subject": "Automatic Reply: Out of Office",
-                "sender": "boss@fakecorp.com",
+                "sender": "boss@gemini-test.com",
                 "body": "I am out of the office until next week. For urgent matters, contact support.",
                 "date": "2025-01-03"
             }

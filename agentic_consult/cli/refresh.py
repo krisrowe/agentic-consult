@@ -220,25 +220,17 @@ def refresh(identifier, dry_run, max_emails, read_archived_email, since, skip_fe
         click.echo("No new unprocessed emails. Exiting.", err=True)
         return
 
-    # 6. Load Local Tasks (RESTORED MOCK DATA LOGIC)
-    if use_mock_data:
-        mock_file = customer_dir / 'mock-server-tasks.json'
-        if mock_file.exists():
-            try:
-                with open(mock_file, 'r') as f:
-                    mock_tasks = json.load(f)
-                # Assign sequence numbers and default fields if missing
-                for i, t in enumerate(mock_tasks, 1):
-                    if 'sequence_number' not in t: t['sequence_number'] = i
-                    if 'is_dirty' not in t: t['is_dirty'] = False
-                    if 'provider_id' not in t: t['provider_id'] = f"mock_{i}"
-                save_tasks(customer_dir, mock_tasks)
-                click.echo(f"Loaded {len(mock_tasks)} tasks from mock file.")
-            except Exception as e:
-                click.echo(f"Warning: Failed to load mock tasks: {e}", err=True)
-
+    # 6. Load Local Tasks
     tasks = load_tasks(customer_dir)
-    
+
+    # Sync tasks BEFORE Gemini call to ensure latest context
+    if config.get("sync_tasks", True):
+        provider = get_task_provider()
+        if provider:
+            click.echo("Syncing tasks from provider (pre-analysis)...")
+            if provider.sync(tasks):
+                save_tasks(customer_dir, tasks)
+
     # Prepare tasks for prompt
     prompt_tasks = []
     for t in tasks:
