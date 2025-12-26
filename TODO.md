@@ -14,9 +14,9 @@
 
 ### Phase 2: Independent Provider Sync Validation
 - [x] **Automated Sync Test**: Create `tests/unit/tasks/test_tasks_cloud_sync.py`.
-    - Implement `test_create_and_update` method.
-    - Prepare a `deltas.json` with 3 task deltas: **1 task_create** and **2 task_updates**.
-    - Mock the TaskProvider and assert:
+    - [x] Implement `test_create_and_update` method.
+    - [x] Prepare a `deltas.json` with 3 task deltas: **1 task_create** and **2 task_updates**.
+    - [x] Mock the TaskProvider and assert:
         - `add()` was called exactly once with the correct task data.
         - `update()` was called exactly twice with the correct task data and remote IDs.
         - Verify the exact arguments and call counts for each provider operation.
@@ -36,7 +36,9 @@
 ## Technical Tasks
 - [x] **Verified**: Scanner catches customer names/slugs in tracked files.
 - [x] **Verified**: Scanner respects `.gitignore`.
-- [ ] **Scanner Improvement**: Implement configurable allowlist for fake test data.
+- [x] **Scanner Improvement**: Implement configurable allowlist for fake test data in `app.yaml`.
+- [x] **Scanner Improvement**: Itemize checks and provide structured summary with icons (✅/❌).
+- [x] **Test Coverage**: Added explicit exit code verification (Success/Fail/Multi-fail).
 - [ ] **Refactor**: Consolidate `consult precommit` to proxy `devws precommit`.
 - [x] **Config Cleanup**: 
     - [x] Remove `skip_task_writes` and `sync_tasks` from code and schemas.

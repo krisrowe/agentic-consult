@@ -38,8 +38,8 @@ def get_disk_files(path=".", include_ignored=False):
             cmd = ['git', 'ls-files', '--cached', '--others', '--exclude-standard']
             result = subprocess.run(cmd, cwd=path, capture_output=True, text=True, check=True)
             return [str(path / f) for f in result.stdout.splitlines()]
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass # Fallback to walk
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.debug(f"git ls-files failed or not found, falling back to os.walk: {e}")
             
     all_files = []
     for root, dirs, files in os.walk(path):
