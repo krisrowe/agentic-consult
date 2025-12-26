@@ -82,8 +82,9 @@ def scan_text(text, patterns, line_offset=0):
             if p_val.lower() in line.lower():
                  findings.append(f"Line {i}: Found {p_meta['type']} '{p_val}'")
                  
-        if EMAIL_RE.search(line):
-            findings.append(f"Line {i}: Found email")
+        email_match = EMAIL_RE.search(line)
+        if email_match:
+            findings.append(f"Line {i}: Found email '{email_match.group(0)}'")
         if TICKET_ID_RE.search(line):
             findings.append(f"Line {i}: Found ticket ID")
             
