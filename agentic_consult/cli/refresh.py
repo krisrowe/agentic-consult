@@ -83,7 +83,7 @@ def process_deltas(deltas_path: Path, config: dict, customer_dir: Path, expected
         title = task.get('title')
         if not title: continue
         
-        cmd = ['ticktick', 'task', 'create', '--title', title, '--project', project]
+        cmd = ['ticktick', 'tasks', 'create', title, '--project', project]
         if task.get('content'):
             cmd.extend(['--content', task['content']])
         if task.get('priority'):

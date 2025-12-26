@@ -69,7 +69,13 @@ def fetch_tasks(customer: Dict, project: str = 'Work', use_gemini: bool = False)
         # Run ticktick tasks list [project] --format json
         cmd = ["ticktick", "tasks", "list", project, "--format", "json"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
-        tasks = json.loads(result.stdout)
+        data = json.loads(result.stdout)
+        
+        # Handle dict response (e.g. wrapper with metadata)
+        if isinstance(data, dict) and "tasks" in data:
+            tasks = data["tasks"]
+        else:
+            tasks = data
         
         # Filter tasks by customer name or keywords if needed
         # For now, we return all tasks in the project as the LLM will filter them
