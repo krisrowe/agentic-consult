@@ -49,7 +49,7 @@ def clean_json_output(content: str) -> str:
     raise GeminiJSONExtractionError("No recognizable JSON structure found in response.")
 
 class GeminiAPIClient:
-    def __init__(self, api_key=None, model_name="gemini-2.0-flash"):
+    def __init__(self, api_key=None, model_name="gemini-3-flash"):
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not found in environment or provided arguments.")
