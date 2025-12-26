@@ -20,7 +20,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "consult=agentic_consult.cli:main",
+            "consult=agentic_consult.cli.main:main",
         ],
     },
     python_requires=">=3.8",
