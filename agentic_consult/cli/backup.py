@@ -94,8 +94,8 @@ def run(force, skip_dirty, non_interactive, format):
                     type_text = f"{type_icon} {item.type}"
                     
                     msg = item.message.replace('\n', ' ')
-                    if len(msg) > 25:
-                        msg = msg[:22] + "..."
+                    if len(msg) > 30:
+                        msg = msg[:27] + "..."
                         
                     click.echo(f"{item_name:<{ITEM_WIDTH}} | {type_text:<{TYPE_WIDTH}} | {full_status} | {msg}")
             

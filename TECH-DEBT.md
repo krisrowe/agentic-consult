@@ -24,3 +24,6 @@ This document tracks known architectural issues and areas for improvement in the
     - Modify the email fetching logic (e.g., in `gmail.py`) to pass the `--message <id>` constraint directly to the `gwsa` search query when this flag is used.
     - Ensure that when `--message <id>` is provided, only that specific email is fetched and subsequently processed, effectively bypassing unnecessary fetching, loading from cache, and batching logic for other emails.
     - The goal is true isolation and efficiency from the earliest possible stage in the refresh workflow.
+
+- [ ] **Orphaned Backup File Handling**: In `UserHomeBackup`, detect files that exist on Drive but not locally. Implement a strategy for handling these orphans, such as prompting the user for deletion (in interactive mode) or skipping them. Consider a `--prune` flag for non-interactive cleanup. An alternative could be archiving all home files into a single `.zip` per run, similar to how repos are handled, which would simplify cleanup.
+
