@@ -41,11 +41,12 @@ Issues Dir: <ISSUES_DIR>
         env['CUSTOMERS_DIR'] = str(customers_dir.parent)
         env['XDG_CONFIG_HOME'] = str(tmp_path)
         
-        (customers_dir.parent / 'agentic-consult').mkdir(parents=True, exist_ok=True)
-        (customers_dir.parent / 'agentic-consult' / 'prompt.tpl').write_text(prompt_tpl.read_text())
+        config_dir = tmp_path / 'agentic-consult'
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / 'prompt.tpl').write_text(prompt_tpl.read_text())
         
         # Ensure sync_tasks is false for unit tests to avoid network calls
-        (customers_dir.parent / 'agentic-consult' / 'config.yaml').write_text("sync_tasks: false\n")
+        (config_dir / 'settings.json').write_text(json.dumps({"sync_tasks": False}))
 
         with patch('agentic_consult.cli.refresh.fetch_and_cache_emails') as mock_fetch_and_cache_emails:
             
@@ -126,7 +127,11 @@ Issues: <ISSUES_DIR>
         (config_dir / 'prompt.tpl').write_text(prompt_tpl.read_text())
         
         # sync_tasks: false ensures we don't call the provider (network)
-        (config_dir / 'config.yaml').write_text("use_mock_gemini: true\nuse_mock_data: true\nsync_tasks: false\n")
+        (config_dir / 'settings.json').write_text(json.dumps({
+            "use_mock_gemini": True,
+            "use_mock_data": True,
+            "sync_tasks": False
+        }))
         
         env = os.environ.copy()
         env['CUSTOMERS_DIR'] = str(customers_dir.parent)
@@ -136,12 +141,17 @@ Issues: <ISSUES_DIR>
             
             mock_fetch_and_cache_emails.return_value = (1, {'remote': 1, 'cache': 0})
             
+            # Pre-check: No archived files yet
+            archive_dir = customers_dir / 'deltas_archive'
+            assert not archive_dir.exists() or len(list(archive_dir.glob("*.json"))) == 0
+
             result = runner.invoke(main, ['refresh', 'fakecorp', '--no-dry-run'], env=env)
             
             assert result.exit_code == 0, f"Command failed with: {result.output}"
-            assert 'Gemini output saved' in result.output or 'Mock Gemini output saved' in result.output
             
-            # Verify local tasks.json was created (since use_mock_gemini creates a mock delta usually)
-            # Wait, default mock-deltas.json might be empty or create something.
-            # Assuming mock logic creates a default response.
+            # Outcome Verification: Check that a delta file was archived (implies created, processed, and moved)
+            archive_dir = customers_dir / 'deltas_archive'
+            assert archive_dir.exists()
+            archived_files = list(archive_dir.glob("done_deltas_*.json"))
+            assert len(archived_files) == 1, "Expected one archived delta file"
 

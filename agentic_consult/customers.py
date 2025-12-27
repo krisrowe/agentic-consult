@@ -5,6 +5,8 @@ import click
 from pathlib import Path
 from pathlib import Path
 
+from agentic_consult.config import get_local_data_root
+
 DEFAULT_CUSTOMERS_DIR_NAME = "customers"
 
 def get_active_customers_root():
@@ -12,9 +14,8 @@ def get_active_customers_root():
     Resolves the single authoritative root directory for customers.
     Priority:
     1. CUSTOMERS_DIR environment variable
-    2. customers_local_path in config.yaml
-    3. XDG App Config Directory / customers
-    4. Local ./customers (fallback/legacy)
+    2. get_local_data_root() / "customers"
+    3. Local ./customers (fallback/legacy)
     """
     # 1. Env Var
     if os.environ.get("CUSTOMERS_DIR"):
@@ -25,9 +26,8 @@ def get_active_customers_root():
     if local_root.exists():
         return local_root
 
-    # 3. XDG (Default for User usage)
-    xdg_root = Path(click.get_app_dir('agentic-consult')) / DEFAULT_CUSTOMERS_DIR_NAME
-    return xdg_root
+    # 3. Data Root / customers
+    return get_local_data_root() / DEFAULT_CUSTOMERS_DIR_NAME
 
 def load_customer_config(customers_dir=None):
     """

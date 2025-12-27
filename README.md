@@ -147,12 +147,41 @@ setup.py                  # Package config
 Makefile                  # Build targets
 ```
 
-## Configuration Files
+## Configuration & Data Storage
 
-- **Customer config**: `~/.config/agentic-consult/customers/<slug>/customer.yaml`
-  - **Note**: The slug should typically be the customer's email domain without the suffix (e.g., "acme" for "acme.com"). If the slug differs from the email domain, add the domain name (without suffix) to keywords to help detect customer data.
-- **Global config**: `~/.config/agentic-consult/config.yaml`
-- **Example templates**: `customer.yaml.example`, `config.yaml.example`
+The tool separates **global configuration** from **user data** (customers, tasks, etc.), adhering to XDG standards by default but allowing for overrides.
+
+### Global Settings
+Stored in `~/.config/agentic-consult/settings.json`. This file controls how the tool behaves and where it looks for data.
+
+**Key Setting:** `local_data`
+- Defines the root directory for all user data.
+- **Default:** `~/.local/share/agentic-consult/` (Linux/Mac)
+- **Override:** Set this to any path (e.g., a private git repo) to store your customer data there.
+
+### Data Structure
+Whether using the default or a custom `local_data` path, the structure remains the same:
+
+```text
+[local_data]/
+├── customers/
+│   ├── acme/
+│   │   ├── customer.yaml  <-- Customer-specific config
+│   │   └── ...
+│   └── ...
+└── ...
+```
+
+### CLI Management
+Use the CLI to manage these settings without editing files manually.
+
+```bash
+# Show current configuration and resolved data paths
+consult config show
+
+# Change the storage location (e.g., to a private configuration repo)
+consult config set local_data /home/user/private-config-repo/agentic-consult/data
+```
 
 ## Development
 

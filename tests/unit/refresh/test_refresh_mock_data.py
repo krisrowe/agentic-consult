@@ -50,16 +50,19 @@ keywords: ['fake']
         ]
         (tasks_dir / 'tasks.json').write_text(json.dumps(mock_tasks))
         
-        # 4. Create config.yaml in customers root
-        (customers_dir / 'config.yaml').write_text(f"""
-use_mock_data: true
-use_mock_gemini: true
-gemini_cmd: {mock_script}
-tasks:
-  cloud_sync: false
-  default_project: Work
-customers_local_path: {customers_dir}
-""")
+        # 4. Create settings.json in XDG config dir
+        config_dir = tmp_path / 'agentic-consult'
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / 'settings.json').write_text(json.dumps({
+            "use_mock_data": True,
+            "use_mock_gemini": True,
+            "gemini_cmd": str(mock_script),
+            "tasks": {
+                "cloud_sync": False,
+                "default_project": "Work"
+            },
+            "local_data": str(customers_dir.parent)
+        }))
         
         # 5. Create prompt.tpl
         (customers_dir / 'prompt.tpl').write_text("""Customer: <CUSTOMER>
@@ -78,8 +81,12 @@ Tasks: <TASKS>
         # 8. Verify Output
         assert result.exit_code == 0, f"Command failed: {result.output}"
         
-        # Verify mock data usage
-        assert "Using mock emails from" in result.output
+        # Verify outcome: Emails cache should be populated from mock data
+        cache_file = fakecorp_dir / 'emails' / 'emails.json'
+        assert cache_file.exists()
+        with open(cache_file) as f:
+            cached_emails = json.load(f)
+        assert len(cached_emails) == 3  # Matches mock_emails length
         # Note: "Loaded ... tasks from mock file" is gone now.
         # We can check prompt/preview content if we were in dry run, 
         # or implicitly trust it worked if command succeeded.
