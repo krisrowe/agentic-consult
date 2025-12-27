@@ -90,14 +90,16 @@ def run(force, skip_dirty, non_interactive, format):
                     if len(item_name) > ITEM_WIDTH:
                         item_name = item_name[:ITEM_WIDTH-3] + "..."
                         
-                    type_icon = "🏠" if item.type == "Home" else "🗂️" if item.type == "Repo" else ""
-                    type_text = f"{type_icon} {item.type}"
+                    type_icon = "🏠" if item.type == "Home" else "📂" if item.type == "Repo" else ""
+                    # Pad the type name first, then add icon
+                    padded_type = f"{item.type:<{TYPE_WIDTH - 2}}"
+                    type_text = f"{type_icon} {padded_type}"
                     
                     msg = item.message.replace('\n', ' ')
                     if len(msg) > 30:
                         msg = msg[:27] + "..."
                         
-                    click.echo(f"{item_name:<{ITEM_WIDTH}} | {type_text:<{TYPE_WIDTH}} | {full_status} | {msg}")
+                    click.echo(f"{item_name:<{ITEM_WIDTH}} | {type_text} | {full_status} | {msg}")
             
             click.echo("="*80 + "\n")
 
