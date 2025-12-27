@@ -1,11 +1,20 @@
 import os
 import sys
+import hashlib
 from pathlib import Path
 from typing import Dict, Any, List
 from agentic_consult.backup.providers.base import BackupProvider
 from agentic_consult.backup.folder_providers.factory import get_folder_provider
 from agentic_consult.config import get_backups_google_drive_folder_id, get_consult_config_dir
 from agentic_consult.backup.results import ProviderResult, BackupItemResult, BackupStatus
+
+def get_local_md5(file_path):
+    """Calculates the MD5 hash of a local file."""
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 class UserHomeBackup(BackupProvider):
     @property
@@ -54,6 +63,14 @@ class UserHomeBackup(BackupProvider):
                     current_drive_parent_id = provider_root_id
                     if drive_parent_parts:
                         current_drive_parent_id = folder_provider.ensure_folder_path(drive_parent_parts, root_id=provider_root_id)
+                    
+                    # MD5 Check
+                    remote_file = folder_provider.find_file(file_name_for_drive, parent_id=current_drive_parent_id)
+                    if remote_file and remote_file.get('md5Checksum'):
+                        local_md5 = get_local_md5(local_path)
+                        if local_md5 == remote_file['md5Checksum']:
+                            items.append(BackupItemResult(rel_path, BackupStatus.NO_CHANGE, "No change (MD5 match)", type="Home"))
+                            continue
                     
                     folder_provider.sync_file(local_path, current_drive_parent_id, name=file_name_for_drive)
                     items.append(BackupItemResult(rel_path, BackupStatus.SUCCESS, "Synced", type="Home"))

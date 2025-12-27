@@ -70,7 +70,7 @@ def run(force, skip_dirty, non_interactive, format):
             STATUS_WIDTH = 12
             
             click.echo("\n" + "="*80)
-            click.echo(f"{ 'ITEM':<{ITEM_WIDTH}} | {'TYPE':<{TYPE_WIDTH}} | {'STATUS':<{STATUS_WIDTH}} | {'DETAILS'}")
+            click.echo(f"{'ITEM':<{ITEM_WIDTH}} | {'TYPE':<{TYPE_WIDTH}} | {'STATUS':<{STATUS_WIDTH}} | {'DETAILS'}")
             click.echo("-" * 80)
             
             for group_name in sorted(grouped_items.keys()):
@@ -89,12 +89,15 @@ def run(force, skip_dirty, non_interactive, format):
                     item_name = item.name
                     if len(item_name) > ITEM_WIDTH:
                         item_name = item_name[:ITEM_WIDTH-3] + "..."
+                        
+                    type_icon = "🏠" if item.type == "Home" else "🗂️" if item.type == "Repo" else ""
+                    type_text = f"{type_icon} {item.type}"
                     
                     msg = item.message.replace('\n', ' ')
                     if len(msg) > 25:
                         msg = msg[:22] + "..."
                         
-                    click.echo(f"{item_name:<{ITEM_WIDTH}} | {item.type:<{TYPE_WIDTH}} | {full_status} | {msg}")
+                    click.echo(f"{item_name:<{ITEM_WIDTH}} | {type_text:<{TYPE_WIDTH}} | {full_status} | {msg}")
             
             click.echo("="*80 + "\n")
 

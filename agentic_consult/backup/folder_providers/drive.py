@@ -35,7 +35,7 @@ class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
             results = self.service.files().list(
                 q=query,
                 spaces='drive',
-                fields='nextPageToken, files(id, name, mimeType, appProperties)',
+                fields='nextPageToken, files(id, name, mimeType, appProperties, md5Checksum)',
                 pageSize=10
             ).execute()
             return results.get('files', [])
@@ -52,7 +52,7 @@ class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
         try:
             return self.service.files().get(
                 fileId=file_id,
-                fields='id, name, mimeType, createdTime, modifiedTime'
+                fields='id, name, mimeType, createdTime, modifiedTime, appProperties, md5Checksum'
             ).execute()
         except HttpError:
             return None
