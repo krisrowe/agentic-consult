@@ -55,8 +55,9 @@ def run(force, skip_dirty, non_interactive, format):
             
         else:
             # Print ASCII Table to stdout
+            ITEM_WIDTH = 38
             click.echo("\n" + "="*80)
-            click.echo(f"{ 'ITEM':<30} | {'STATUS':<10} | {'DETAILS'}")
+            click.echo(f"{'ITEM':<{ITEM_WIDTH}} | {'STATUS':<10} | {'DETAILS'}")
             click.echo("-" * 80)
             
             for provider_res in results:
@@ -64,16 +65,21 @@ def run(force, skip_dirty, non_interactive, format):
                     status_icon = "✅" if item.status == BackupStatus.SUCCESS \
                                   else "❌" if item.status == BackupStatus.FAILED \
                                   else "⚠️ " if item.status == BackupStatus.DIRTY \
-                                  else "⏩" # NO_CHANGE, NOT_FOUND, USER_SKIPPED
+                                  else "⏩" # NO_CHANGE, NOT_FOUND
 
                     status_text = f"{status_icon} {item.status.value}"
+                    
+                    # Truncate item name if too long
+                    item_name = item.name
+                    if len(item_name) > ITEM_WIDTH:
+                        item_name = item_name[:ITEM_WIDTH-3] + "..."
                     
                     # Truncate message if too long
                     msg = item.message.replace('\n', ' ')
                     if len(msg) > 35:
                         msg = msg[:32] + "..."
                         
-                    click.echo(f"{item.name:<30} | {status_text:<10} | {msg}")
+                    click.echo(f"{item_name:<{ITEM_WIDTH}} | {status_text:<10} | {msg}")
             
             click.echo("="*80 + "\n")
 
