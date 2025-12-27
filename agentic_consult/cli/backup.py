@@ -15,7 +15,7 @@ def backup():
 @backup.command()
 @click.option('--folder-name', help="Name of the Google Drive folder to use.")
 @click.option('--folder-id', help="ID of an existing Google Drive folder.")
-@click.option('--create', is_flag=True, help="Create the folder if it doesn't exist (used with --folder-name).")
+@click.option('--create', is_flag=True, help="Create the folder if it doesn't exist.")
 def config(folder_name, folder_id, create):
     """Configures the Google Drive folder for backups."""
     manager = BackupConfigManager()
@@ -27,10 +27,10 @@ def config(folder_name, folder_id, create):
         sys.exit(1)
 
 @backup.command()
-@click.option('--force', is_flag=True, help="Force backup even if repositories are dirty (Non-interactive mode).")
-@click.option('--skip-dirty', is_flag=True, help="Skip dirty repositories instead of failing (Non-interactive mode).")
+@click.option('--force', is_flag=True, help="Force backup of dirty repositories (non-interactive).")
+@click.option('--skip-dirty', is_flag=True, help="Skip dirty repositories (non-interactive).")
 @click.option('--non-interactive', is_flag=True, help="Disable interactive prompts.")
-@click.option('--format', type=click.Choice(['text', 'json']), default='text', help="Output format for the summary.")
+@click.option('--format', type=click.Choice(['text', 'json']), default='text', help="Output format.")
 def run(force, skip_dirty, non_interactive, format):
     """Runs the backup process."""
     is_interactive = sys.stdin.isatty() and not non_interactive
@@ -39,47 +39,62 @@ def run(force, skip_dirty, non_interactive, format):
     try:
         results = orchestrator.run_backups(force=force, skip_dirty=skip_dirty, interactive=is_interactive)
         
+        # Combine all items and group by type for printing
+        all_items = []
+        for res in results:
+            all_items.extend(res.items)
+            
+        # Group by type (Home, Repo, etc.)
+        grouped_items = {}
+        for item in all_items:
+            if item.type not in grouped_items:
+                grouped_items[item.type] = []
+            grouped_items[item.type].append(item)
+
         if format == 'json':
-            # Serialize to JSON
-            output_data = []
-            for provider_res in results:
-                # Convert dataclass to dict
-                p_dict = asdict(provider_res)
-                # Convert Enums to string in items
-                p_dict['items'] = [
-                    {k: (v.value if isinstance(v, BackupStatus) else v) for k, v in asdict(item).items()}
-                    for item in provider_res.items
-                ]
-                output_data.append(p_dict)
-            click.echo(json.dumps(output_data, indent=2))
+            # Create a serializable version of the grouped items
+            json_output = {
+                group: [asdict(item) for item in items]
+                for group, items in grouped_items.items()
+            }
+            # Convert enums to strings for JSON
+            for group, items in json_output.items():
+                for item in items:
+                    item['status'] = item['status'].value
+            click.echo(json.dumps(json_output, indent=2))
             
         else:
-            # Print ASCII Table to stdout
+            # Print ASCII Table
             ITEM_WIDTH = 38
+            TYPE_WIDTH = 8
+            STATUS_WIDTH = 12
+            
             click.echo("\n" + "="*80)
-            click.echo(f"{'ITEM':<{ITEM_WIDTH}} | {'STATUS':<10} | {'DETAILS'}")
+            click.echo(f"{ 'ITEM':<{ITEM_WIDTH}} | {'TYPE':<{TYPE_WIDTH}} | {'STATUS':<{STATUS_WIDTH}} | {'DETAILS'}")
             click.echo("-" * 80)
             
-            for provider_res in results:
-                for item in provider_res.items:
-                    status_icon = "✅" if item.status == BackupStatus.SUCCESS \
-                                  else "❌" if item.status == BackupStatus.FAILED \
-                                  else "⚠️ " if item.status == BackupStatus.DIRTY \
-                                  else "ℹ️ " # NO_CHANGE, NOT_FOUND
-
-                    status_text = f"{status_icon} {item.status.value}"
+            for group_name in sorted(grouped_items.keys()):
+                for item in grouped_items[group_name]:
+                    status_icon = "✅" if item.status == BackupStatus.SUCCESS else \
+                                  "❌" if item.status == BackupStatus.FAILED else \
+                                  "⚠️ " if item.status == BackupStatus.DIRTY else \
+                                  "ℹ️ " # NO_CHANGE or NOT_FOUND
                     
-                    # Truncate item name if too long
+                    status_text = item.status.value
+                    
+                    # Pad status text *before* adding icon for alignment
+                    padded_status = f"{status_text:<{STATUS_WIDTH - 2}}" # -2 for icon and space
+                    full_status = f"{status_icon} {padded_status}"
+                    
                     item_name = item.name
                     if len(item_name) > ITEM_WIDTH:
                         item_name = item_name[:ITEM_WIDTH-3] + "..."
                     
-                    # Truncate message if too long
                     msg = item.message.replace('\n', ' ')
-                    if len(msg) > 35:
-                        msg = msg[:32] + "..."
+                    if len(msg) > 25:
+                        msg = msg[:22] + "..."
                         
-                    click.echo(f"{item_name:<{ITEM_WIDTH}} | {status_text:<10} | {msg}")
+                    click.echo(f"{item_name:<{ITEM_WIDTH}} | {item.type:<{TYPE_WIDTH}} | {full_status} | {msg}")
             
             click.echo("="*80 + "\n")
 

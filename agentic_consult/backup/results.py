@@ -14,10 +14,11 @@ class BackupItemResult:
     name: str
     status: BackupStatus
     message: str
+    type: str  # e.g., "Repo", "Home"
 
 @dataclass
 class ProviderResult:
     provider_name: str
-    status: str # "success", "failure", "skipped" for the provider as a whole
+    status: str
     message: str
     items: List[BackupItemResult]
