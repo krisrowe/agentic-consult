@@ -70,7 +70,7 @@ def run(force, skip_dirty, non_interactive, format):
             STATUS_WIDTH = 12
             
             click.echo("\n" + "="*92)
-            click.echo(f"{'ITEM':<{ITEM_WIDTH}} | {'TYPE':<{TYPE_WIDTH}} | {'STATUS':<{STATUS_WIDTH}} | {'DETAILS'}")
+            click.echo(f"{ 'ITEM':<{ITEM_WIDTH}} | { 'TYPE':<{TYPE_WIDTH}} | { 'STATUS':<{STATUS_WIDTH}} | {'DETAILS'}")
             click.echo("-" * 92)
             
             for group_name in sorted(grouped_items.keys()):
@@ -101,7 +101,65 @@ def run(force, skip_dirty, non_interactive, format):
                         
                     click.echo(f"{item_name:<{ITEM_WIDTH}} | {type_text} | {full_status} | {msg}")
             
-            click.echo("="*80 + "\n")
+            click.echo("="*92 + "\n")
+
+    except (ValueError, BackupError) as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+@backup.command(name='local-repo')
+@click.argument('path', default='.', type=click.Path(exists=True))
+@click.option('--force', is_flag=True, help="Force backup even if repository is dirty.")
+@click.option('--skip-dirty', is_flag=True, help="Skip if dirty instead of prompting/failing.")
+@click.option('--non-interactive', is_flag=True, help="Disable interactive prompts.")
+def local_repo(path, force, skip_dirty, non_interactive):
+    """Backs up a single git repository, regardless of whether it has remotes."""
+    import os
+    from agentic_consult.backup.providers.local_repos import LocalRepoBackup
+    from agentic_consult.backup.folder_providers.factory import get_folder_provider
+    from agentic_consult.config import get_backups_google_drive_folder_id
+    import tempfile
+    import shutil
+
+    repo_path = os.path.abspath(path)
+    if not os.path.isdir(os.path.join(repo_path, ".git")):
+        click.echo(f"Error: Not a git repository: {repo_path}", err=True)
+        sys.exit(1)
+
+    try:
+        # Initial Setup (similar to orchestrator)
+        folder_id = get_backups_google_drive_folder_id()
+        if not folder_id:
+            raise BackupError("Backup folder not configured. Run 'consult backup config' first.")
+
+        folder_provider = get_folder_provider()
+        provider_folder_id = folder_provider.ensure_folder_path(["local-only-repos"], root_id=folder_id)
+
+        # Execute
+        provider = LocalRepoBackup()
+        options = {
+            'force': force,
+            'skip_dirty': skip_dirty,
+            'interactive': sys.stdin.isatty() and not non_interactive
+        }
+        
+        temp_dir = tempfile.mkdtemp(prefix="consult_single_backup_")
+        try:
+            result = provider.backup_single_repo(
+                repo_path=repo_path,
+                folder_provider=folder_provider,
+                provider_folder_id=provider_folder_id,
+                temp_dir=temp_dir,
+                options=options
+            )
+            # Verbose output for single run
+            click.echo(f"Backup of '{result.name}' repo: {result.status.value.upper()} ({result.message})")
+            if result.status == BackupStatus.FAILED:
+                sys.exit(1)
+
+        finally:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
 
     except (ValueError, BackupError) as e:
         click.echo(f"Error: {e}", err=True)

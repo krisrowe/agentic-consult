@@ -11,10 +11,6 @@ from agentic_consult.backup.exceptions import (
 )
 
 class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
-    """
-    Google Drive implementation of the BackupsFolderProvider.
-    Uses google-api-python-client to interact with Drive API v3.
-    """
     SCOPES = ['https://www.googleapis.com/auth/drive']
 
     def __init__(self):
@@ -83,18 +79,16 @@ class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
             current_parent_id = folder_id
         return current_parent_id
 
-    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None) -> str:
+    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         file_name = name or os.path.basename(local_path)
         existing_file = self.find_file(file_name, parent_id)
         
         if existing_file:
-            print(f"Updating existing file: {file_name} (ID: {existing_file['id']})", file=sys.stderr)
             return self._update_file(existing_file['id'], local_path, app_properties)
         else:
-            print(f"Uploading new file: {file_name}", file=sys.stderr)
             return self._upload_file(local_path, parent_id, name, app_properties)
 
-    def _upload_file(self, local_path: str, parent_id: str, name: Optional[str], app_properties: Optional[Dict[str, str]]) -> str:
+    def _upload_file(self, local_path: str, parent_id: str, name: Optional[str], app_properties: Optional[Dict[str, str]]) -> Dict[str, Any]:
         if not self.service: raise FolderAccessError("Drive client not initialized")
         file_metadata = {'name': name or os.path.basename(local_path), 'parents': [parent_id]}
         if app_properties:
@@ -102,12 +96,13 @@ class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
             
         media = MediaFileUpload(local_path, resumable=True)
         try:
-            file = self.service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-            return file.get('id')
+            # Request 'id' and 'name' in response
+            file = self.service.files().create(body=file_metadata, media_body=media, fields='id, name').execute()
+            return file
         except HttpError as error:
             raise FolderAccessError(f"Upload failed: {error}")
 
-    def _update_file(self, file_id: str, local_path: str, app_properties: Optional[Dict[str, str]]) -> str:
+    def _update_file(self, file_id: str, local_path: str, app_properties: Optional[Dict[str, str]]) -> Dict[str, Any]:
         if not self.service: raise FolderAccessError("Drive client not initialized")
         file_metadata = {}
         if app_properties:
@@ -115,7 +110,8 @@ class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
             
         media = MediaFileUpload(local_path, resumable=True)
         try:
-            file = self.service.files().update(fileId=file_id, body=file_metadata, media_body=media, fields='id').execute()
-            return file.get('id')
+            # Request 'id' and 'name' in response
+            file = self.service.files().update(fileId=file_id, body=file_metadata, media_body=media, fields='id, name').execute()
+            return file
         except HttpError as error:
             raise FolderAccessError(f"Update failed: {error}")

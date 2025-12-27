@@ -29,12 +29,7 @@ class LocalRepoBackup(BackupProvider):
         ws_dir = os.path.expanduser(ws_dir)
 
         folder_provider = get_folder_provider()
-        force = options.get('force', False)
-        skip_dirty = options.get('skip_dirty', False)
-        interactive = options.get('interactive', True)
-        
         items = []
-
         target_folder_id = get_backups_google_drive_folder_id()
         if not target_folder_id:
              return ProviderResult(self.name, "failure", "Backup folder not configured.", [])
@@ -51,65 +46,85 @@ class LocalRepoBackup(BackupProvider):
         if not repos_to_backup:
             return ProviderResult(self.name, "success", "No local-only repositories found", [])
 
-        import click 
-
         temp_dir = tempfile.mkdtemp(prefix="consult_backups_")
         try:
             for repo_path in repos_to_backup:
-                repo_name = os.path.basename(repo_path)
-                
-                # Dirty Check
-                if self._is_dirty(repo_path):
-                    stats = self._get_git_status_stats(repo_path)
-                    dirty_details = f"Staged: {stats['staged']}, Unstaged: {stats['unstaged']}, Untracked: {stats['untracked']}"
-                    
-                    if interactive and not force and not skip_dirty:
-                        click.echo(f"\nRepository '{repo_name}' is dirty.\n  - {dirty_details}", err=True)
-                        if not click.confirm(f"Do you want to backup ONLY committed changes for '{repo_name}'?"):
-                            items.append(BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)", type="Repo"))
-                            continue
-                    else:
-                        if skip_dirty or force:
-                            if force: print(f"Warning: {repo_name} is dirty. Backing up committed code only.", file=sys.stderr)
-                            items.append(BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)", type="Repo"))
-                            continue
-                        else:
-                            items.append(BackupItemResult(repo_name, BackupStatus.FAILED, f"Dirty: {dirty_details}", type="Repo"))
-                            return ProviderResult(self.name, "failure", f"Repository '{repo_name}' is dirty.", items)
-                
-                current_hash = self._get_repo_state_hash(repo_path)
-                
-                bundle_filename = f"{repo_name}.bundle"
-                remote_file = folder_provider.find_file(bundle_filename, provider_folder_id)
-                
-                last_hash = None
-                if remote_file and 'appProperties' in remote_file:
-                    last_hash = remote_file['appProperties'].get('state_hash')
-                
-                if current_hash == last_hash and remote_file:
-                    items.append(BackupItemResult(repo_name, BackupStatus.NO_CHANGE, "No new commits", type="Repo"))
-                    continue
-
-                bundle_path = os.path.join(temp_dir, bundle_filename)
-                print(f"Bundling {repo_name}...", file=sys.stderr)
-                try:
-                    subprocess.run(["git", "bundle", "create", bundle_path, "--all"], cwd=repo_path, check=True, capture_output=True)
-                    folder_provider.sync_file(bundle_path, provider_folder_id, name=bundle_filename, app_properties={'state_hash': current_hash})
-                    items.append(BackupItemResult(repo_name, BackupStatus.SUCCESS, "Synced", type="Repo"))
-                except subprocess.CalledProcessError as e:
-                    items.append(BackupItemResult(repo_name, BackupStatus.FAILED, f"Bundle failed: {e.stderr.decode().strip()}", type="Repo"))
-                finally:
-                    if os.path.exists(bundle_path):
-                        os.remove(bundle_path)
+                item_result = self.backup_single_repo(
+                    repo_path=repo_path,
+                    folder_provider=folder_provider,
+                    provider_folder_id=provider_folder_id,
+                    temp_dir=temp_dir,
+                    options=options
+                )
+                items.append(item_result)
+                if item_result.status == BackupStatus.FAILED:
+                    return ProviderResult(self.name, "failure", item_result.message, items)
 
             success_count = len([i for i in items if i.status == BackupStatus.SUCCESS])
             return ProviderResult(self.name, "success", f"Backed up {success_count} repositories", items)
             
-        except Exception as e:
-            return ProviderResult(self.name, "failure", str(e), items)
         finally:
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
+
+    def backup_single_repo(self, repo_path: str, folder_provider, provider_folder_id: str, temp_dir: str, options: Dict[str, Any]) -> BackupItemResult:
+        """Handles the backup logic for a single repository."""
+        import click 
+
+        repo_name = os.path.basename(repo_path)
+        force = options.get('force', False)
+        skip_dirty = options.get('skip_dirty', False)
+        interactive = options.get('interactive', True)
+
+        # Dirty Check
+        if self._is_dirty(repo_path):
+            stats = self._get_git_status_stats(repo_path)
+            dirty_details = f"Staged: {stats['staged']}, Unstaged: {stats['unstaged']}, Untracked: {stats['untracked']}"
+            
+            if interactive and not force and not skip_dirty:
+                click.echo(f"\nRepository '{repo_name}' is dirty.\n  - {dirty_details}", err=True)
+                if not click.confirm(f"Do you want to backup ONLY committed changes for '{repo_name}'?"):
+                    return BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)", type="Repo")
+            else:
+                if skip_dirty:
+                    return BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)", type="Repo")
+                if not force:
+                    return BackupItemResult(repo_name, BackupStatus.FAILED, f"Dirty: {dirty_details}", type="Repo")
+                else: # force=True
+                    print(f"Warning: {repo_name} is dirty. Backing up committed code only.", file=sys.stderr)
+        
+        current_hash = self._get_repo_state_hash(repo_path)
+        bundle_filename = f"{repo_name}.bundle"
+        remote_file = folder_provider.find_file(bundle_filename, provider_folder_id)
+        
+        last_hash = remote_file['appProperties'].get('state_hash') if remote_file and 'appProperties' in remote_file else None
+        
+        verb = "updated" if remote_file else "added"
+
+        if current_hash == last_hash and remote_file:
+            return BackupItemResult(repo_name, BackupStatus.NO_CHANGE, "No new commits", type="Repo")
+
+        bundle_path = os.path.join(temp_dir, bundle_filename)
+        print(f"Bundling {repo_name}...", file=sys.stderr)
+        try:
+            subprocess.run(["git", "bundle", "create", bundle_path, "--all"], cwd=repo_path, check=True, capture_output=True)
+            
+            sync_result = folder_provider.sync_file(
+                bundle_path, 
+                provider_folder_id, 
+                name=bundle_filename, 
+                app_properties={'state_hash': current_hash}
+            )
+            
+            file_id = sync_result.get('id', 'unknown')
+            msg = f"COMPLETED ({verb} {bundle_filename} on Google Drive as {file_id})"
+            
+            return BackupItemResult(repo_name, BackupStatus.SUCCESS, msg, type="Repo")
+        except subprocess.CalledProcessError as e:
+            return BackupItemResult(repo_name, BackupStatus.FAILED, f"Bundle failed: {e.stderr.decode().strip()}", type="Repo")
+        finally:
+            if os.path.exists(bundle_path):
+                os.remove(bundle_path)
 
     def _find_local_repos(self, root_dir: str) -> List[str]:
         # ... (rest of the file is the same)

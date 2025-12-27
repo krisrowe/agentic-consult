@@ -37,7 +37,8 @@ class LocalBackupsFolderProvider(BackupsFolderProvider):
                 "id": target_path,
                 "name": name,
                 "mimeType": "application/vnd.google-apps.folder" if os.path.isdir(target_path) else "application/octet-stream",
-                "appProperties": app_properties
+                "appProperties": app_properties,
+                "md5Checksum": self._get_local_md5(target_path) if os.path.isfile(target_path) else None
             }]
         return []
 
@@ -56,7 +57,10 @@ class LocalBackupsFolderProvider(BackupsFolderProvider):
                 "id": file_id,
                 "name": os.path.basename(file_id),
                 "mimeType": "application/vnd.google-apps.folder" if os.path.isdir(file_id) else "application/octet-stream",
-                "appProperties": app_properties
+                "appProperties": app_properties,
+                "md5Checksum": self._get_local_md5(file_id) if os.path.isfile(file_id) else None,
+                "createdTime": os.path.getctime(file_id), # Emulate
+                "modifiedTime": os.path.getmtime(file_id) # Emulate
             }
         return None
 
@@ -79,7 +83,7 @@ class LocalBackupsFolderProvider(BackupsFolderProvider):
             os.makedirs(current_path, exist_ok=True)
         return current_path
 
-    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None) -> str:
+    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         parent_dir = self._resolve_path(parent_id)
         file_name = name or os.path.basename(local_path)
         target_path = os.path.join(parent_dir, file_name)
@@ -90,4 +94,12 @@ class LocalBackupsFolderProvider(BackupsFolderProvider):
             with open(meta_path, 'w') as f:
                 json.dump(app_properties, f)
                 
-        return target_path
+        return {"id": target_path, "name": file_name}
+
+    def _get_local_md5(self, file_path):
+        import hashlib
+        hash_md5 = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
