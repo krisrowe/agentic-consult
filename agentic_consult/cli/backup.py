@@ -65,7 +65,7 @@ def run(force, skip_dirty, non_interactive, format):
                     status_icon = "✅" if item.status == BackupStatus.SUCCESS \
                                   else "❌" if item.status == BackupStatus.FAILED \
                                   else "⚠️ " if item.status == BackupStatus.DIRTY \
-                                  else "⏩" # NO_CHANGE, NOT_FOUND
+                                  else "ℹ️ " # NO_CHANGE, NOT_FOUND
 
                     status_text = f"{status_icon} {item.status.value}"
                     

@@ -116,7 +116,7 @@ class LocalRepoBackup(BackupProvider):
                 
                 if current_hash == last_hash and remote_file:
                     print(f"Skipping {repo_name}: No changes detected.", file=sys.stderr)
-                    items.append(BackupItemResult(repo_name, BackupStatus.NO_CHANGE, "No changes"))
+                    items.append(BackupItemResult(repo_name, BackupStatus.NO_CHANGE, "No new commits since last backup."))
                     continue
 
                 bundle_path = os.path.join(temp_dir, bundle_filename)
