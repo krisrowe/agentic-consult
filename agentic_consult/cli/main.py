@@ -7,6 +7,7 @@ from .precommit import precommit
 from .issues import issues
 from .tasks import tasks
 from .refresh import refresh
+from .user_home import user_home_cli
 
 @click.group()
 def main():
@@ -20,6 +21,7 @@ main.add_command(precommit)
 main.add_command(issues)
 main.add_command(tasks)
 main.add_command(refresh)
+main.add_command(user_home_cli)
 
 if __name__ == "__main__":
     main()

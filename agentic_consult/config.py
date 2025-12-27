@@ -7,19 +7,24 @@ from agentic_consult.schema import validate_yaml
 
 SETTINGS_FILENAME = "settings.json"
 
-def get_config_path(filename=None):
+def get_consult_config_dir() -> Path:
     """
-    Returns the authoritative path for the global settings file or a specific file.
+    Returns the base directory for agentic-consult's own settings.
     Priority:
     1. CONSULT_CONFIG_DIR environment variable
     2. XDG App Config Directory (via click.get_app_dir)
     """
     env_config_dir = os.environ.get('CONSULT_CONFIG_DIR')
     if env_config_dir:
-        base_dir = Path(env_config_dir)
-    else:
-        base_dir = Path(click.get_app_dir('agentic-consult'))
-    
+        return Path(env_config_dir)
+    return Path(click.get_app_dir('agentic-consult'))
+
+def get_config_path(filename=None):
+    """
+    Returns the authoritative path for the global settings file or a specific file.
+    Always uses the result from get_consult_config_dir.
+    """
+    base_dir = get_consult_config_dir()
     if filename:
         return base_dir / filename
     return base_dir / SETTINGS_FILENAME
@@ -36,7 +41,10 @@ def load_main_config():
         return {}
 
 def save_main_config(data):
-    """Saves settings to settings.json."""
+    """
+    Saves settings to settings.json.
+    Creates parent directories if they don't exist.
+    """
     path = get_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, 'w', encoding='utf-8') as f:
@@ -54,21 +62,27 @@ def get_local_data_root():
     if config.get('local_data'):
         return Path(config['local_data'])
     
-    # Default XDG Data location
+    # Default XDG Data location (relative to actual HOME, not BACKUPS_HOME_LOCAL_PATH)
     return Path.home() / ".local" / "share" / "agentic-consult"
 
 def load_yaml_file(path):
-    """Helper to load generic YAML files."""
+    """
+    Helper to load generic YAML files.
+    Returns an empty dict if file not found or invalid.
+    """
     if not path or not os.path.exists(path):
         return {}
-    with open(path, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
+    except (yaml.YAMLError, IOError):
+        return {}
 
 def get_backups_google_drive_folder_id() -> str:
     """
     Returns the Google Drive folder ID for backups.
     Checks environment variable 'BACKUPS_GOOGLE_DRIVE_FOLDER_ID' first,
-    then the 'backups_google_drive_folder_id' in settings.json.
+    then the 'backups.google_drive_folder_id' in settings.json.
     """
     env_id = os.environ.get('BACKUPS_GOOGLE_DRIVE_FOLDER_ID')
     if env_id:

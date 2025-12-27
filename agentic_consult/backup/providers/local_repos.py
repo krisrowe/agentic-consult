@@ -2,6 +2,8 @@ import os
 import subprocess
 import hashlib
 import sys
+import tempfile
+import shutil
 from typing import Dict, Any, List
 from agentic_consult.backup.providers.base import BackupProvider
 from agentic_consult.backup.folder_providers.factory import get_folder_provider
@@ -14,8 +16,26 @@ class LocalRepoBackup(BackupProvider):
         return "Local-Only Git Repositories"
 
     def run(self, config: Dict[str, Any], options: Dict[str, Any]) -> ProviderResult:
+        local_repos_config = config.get('backups', {}).get('local_repos', {})
+        enabled = local_repos_config.get('enabled', True)
+        
+        if not enabled:
+            return ProviderResult(self.name, "skipped", "Provider disabled in configuration", [])
+
+        ws_dir = local_repos_config.get('path')
+        if not ws_dir:
+             return ProviderResult(
+                 self.name, 
+                 "failure", 
+                 "Configuration missing: backups.local_repos.path is required. "
+                 "Set it with 'consult config set backups.local_repos.path <PATH>' "
+                 "or disable with 'consult config set backups.local_repos.enabled false'.", 
+                 []
+             )
+        
+        ws_dir = os.path.expanduser(ws_dir)
+
         folder_provider = get_folder_provider()
-        ws_dir = os.path.expanduser("~/ws")
         force = options.get('force', False)
         skip_dirty = options.get('skip_dirty', False)
         interactive = options.get('interactive', True)
@@ -32,15 +52,13 @@ class LocalRepoBackup(BackupProvider):
              return ProviderResult(self.name, "failure", f"Could not access 'local-only-repos': {e}", [])
 
         if not os.path.exists(ws_dir):
-            return ProviderResult(self.name, "skipped", f"Workspace directory {ws_dir} not found", [])
+            return ProviderResult(self.name, "skipped", f"Directory {ws_dir} not found", [])
 
         repos_to_backup = self._find_local_repos(ws_dir)
         if not repos_to_backup:
             return ProviderResult(self.name, "success", "No local-only repositories found", [])
 
         import click 
-        import tempfile
-        import shutil
 
         temp_dir = tempfile.mkdtemp(prefix="consult_backups_")
         try:
@@ -62,28 +80,19 @@ class LocalRepoBackup(BackupProvider):
                     if interactive and not force and not skip_dirty:
                         click.echo(f"\nRepository '{repo_name}' is dirty.\n{dirty_details}", err=True)
                         click.echo("WARNING: git bundles ONLY include committed objects.", err=True)
-                        # click.confirm prompts to stdout by default, unfortunately.
-                        # However, for interactive CLI, this is usually acceptable unless strict piping is required.
-                        # If strict stderr is required for prompts, we might need a workaround, but click doesn't easily support it.
-                        # Given the requirement "backup output go to stderr except for the final output", 
-                        # prompts are technically "output" but they are transient.
-                        # Let's assume standard click behavior is acceptable for interactive prompts, 
-                        # or try to force it if possible. 
-                        # But click.confirm doesn't take 'file' or 'err'.
                         if click.confirm(f"Do you want to backup ONLY committed changes for '{repo_name}'?"):
                             should_backup = True
                             dirty_msg = "Dirty (Backed up committed only)"
                         else:
-                            items.append(BackupItemResult(repo_name, BackupStatus.SKIPPED, "User skipped (dirty)"))
+                            items.append(BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)"))
                             continue
                     else:
-                        # Non-interactive logic
                         if force:
                             should_backup = True
                             dirty_msg = "Dirty (Forced)"
                             print(f"Warning: {repo_name} is dirty. Backing up committed code only.", file=sys.stderr)
                         elif skip_dirty:
-                             items.append(BackupItemResult(repo_name, BackupStatus.SKIPPED, "Skipped dirty (--skip-dirty)"))
+                             items.append(BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)"))
                              continue
                         else:
                             items.append(BackupItemResult(repo_name, BackupStatus.FAILED, f"Dirty: {dirty_details}"))
@@ -107,7 +116,7 @@ class LocalRepoBackup(BackupProvider):
                 
                 if current_hash == last_hash and remote_file:
                     print(f"Skipping {repo_name}: No changes detected.", file=sys.stderr)
-                    items.append(BackupItemResult(repo_name, BackupStatus.SKIPPED, "No changes"))
+                    items.append(BackupItemResult(repo_name, BackupStatus.NO_CHANGE, "No changes"))
                     continue
 
                 bundle_path = os.path.join(temp_dir, bundle_filename)

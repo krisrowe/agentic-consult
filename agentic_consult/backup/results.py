@@ -4,8 +4,10 @@ from enum import Enum
 
 class BackupStatus(Enum):
     SUCCESS = "Success"
-    SKIPPED = "Skipped"
     FAILED = "Failed"
+    NO_CHANGE = "No Change"
+    DIRTY = "Dirty"
+    NOT_FOUND = "Not Found"
 
 @dataclass
 class BackupItemResult:

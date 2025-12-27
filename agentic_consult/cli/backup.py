@@ -61,7 +61,11 @@ def run(force, skip_dirty, non_interactive, format):
             
             for provider_res in results:
                 for item in provider_res.items:
-                    status_icon = "✅" if item.status == BackupStatus.SUCCESS else "⏭️ " if item.status == BackupStatus.SKIPPed else "❌"
+                    status_icon = "✅" if item.status == BackupStatus.SUCCESS \
+                                  else "❌" if item.status == BackupStatus.FAILED \
+                                  else "⚠️ " if item.status == BackupStatus.DIRTY \
+                                  else "⏩" # NO_CHANGE, NOT_FOUND, USER_SKIPPED
+
                     status_text = f"{status_icon} {item.status.value}"
                     
                     # Truncate message if too long

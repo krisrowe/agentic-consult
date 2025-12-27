@@ -52,7 +52,7 @@ class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
         try:
             return self.service.files().get(
                 fileId=file_id,
-                fields='id, name, mimeType, appProperties'
+                fields='id, name, mimeType, createdTime, modifiedTime'
             ).execute()
         except HttpError:
             return None

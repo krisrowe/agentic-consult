@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 from agentic_consult.config import load_main_config, get_backups_google_drive_folder_id
 from agentic_consult.backup.folder_providers.factory import get_folder_provider
 from agentic_consult.backup.providers.base import BackupProvider
-from agentic_consult.backup.providers.gemini import GeminiConfigBackup
+from agentic_consult.backup.providers.user_home import UserHomeBackup
 from agentic_consult.backup.providers.local_repos import LocalRepoBackup
 from agentic_consult.backup.exceptions import BackupConfigurationError, FolderAccessError
 from agentic_consult.backup.results import ProviderResult
@@ -16,7 +16,7 @@ class BackupOrchestrator:
     def __init__(self):
         self.provider = get_folder_provider()
         self.providers: List[BackupProvider] = [
-            GeminiConfigBackup(),
+            UserHomeBackup(),
             LocalRepoBackup()
         ]
 

@@ -5,6 +5,7 @@ import yaml
 
 from agentic_consult.customers import get_active_customers_root
 from agentic_consult.config import load_main_config, save_main_config, get_config_path
+from .user_home import user_home_cli
 
 
 @click.group()
@@ -40,27 +41,40 @@ def config_show():
 @click.argument('key')
 @click.argument('value')
 def config_set(key, value):
-    """Set a configuration value. 
+    """Set a configuration value. Supports dot-notation for nested keys.
     
-    Keys:
-    - local-data: Root directory for user data (customers, etc.)
-    - cloud-folder-id: Google Drive folder ID for backups
+    Examples:
+      consult config set local_data /path/to/data
+      consult config set backups.local_repos.enabled false
     """
     data = load_main_config()
     
-    # Map CLI keys to config keys
+    # Map legacy CLI keys to config keys
     key_map = {
         'local-data': 'local_data',
         'cloud-folder-id': 'google_drive_all_customers_folder_id',
-        # Legacy support
         'customers-local-path': 'local_data'
     }
     
-    real_key = key_map.get(key)
-    if not real_key:
-        click.echo(f"Unknown config key: {key}. Valid keys: {', '.join(key_map.keys())}", err=True)
-        sys.exit(1)
-        
-    data[real_key] = value
+    real_key = key_map.get(key, key)
+    
+    # Handle boolean conversion
+    if value.lower() == 'true':
+        value = True
+    elif value.lower() == 'false':
+        value = False
+
+    # Handle nested keys
+    keys = real_key.split('.')
+    current = data
+    for k in keys[:-1]:
+        if k not in current or not isinstance(current[k], dict):
+            current[k] = {}
+        current = current[k]
+    
+    current[keys[-1]] = value
+    
     path = save_main_config(data)
-    click.echo(f"Updated {key} in {path}")
+    click.echo(f"Updated {real_key} in {path}")
+
+config.add_command(user_home_cli)
