@@ -39,7 +39,10 @@ class LocalRepoBackup(BackupProvider):
             return ProviderResult(self.name, "success", "No local-only repositories found", [])
 
         import click 
+        import tempfile
+        import shutil
 
+        temp_dir = tempfile.mkdtemp(prefix="consult_backups_")
         try:
             for repo_path in repos_to_backup:
                 repo_name = os.path.basename(repo_path)
@@ -107,11 +110,11 @@ class LocalRepoBackup(BackupProvider):
                     items.append(BackupItemResult(repo_name, BackupStatus.SKIPPED, "No changes"))
                     continue
 
-                bundle_path = os.path.join(repo_path, bundle_filename)
+                bundle_path = os.path.join(temp_dir, bundle_filename)
                 print(f"Bundling {repo_name}...", file=sys.stderr)
                 try:
                     subprocess.run(
-                        ["git", "bundle", "create", bundle_filename, "--all"],
+                        ["git", "bundle", "create", bundle_path, "--all"],
                         cwd=repo_path, check=True, capture_output=True
                     )
                     
@@ -138,6 +141,9 @@ class LocalRepoBackup(BackupProvider):
             
         except Exception as e:
             return ProviderResult(self.name, "failure", str(e), items)
+        finally:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
 
     def _find_local_repos(self, root_dir: str) -> List[str]:
         local_repos = []
