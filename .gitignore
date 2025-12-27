@@ -17,3 +17,7 @@ mock-deltas.json
 .venv/
 temp/
 build/
+
+# Gemini folder (except settings.json)
+.gemini/*
+!.gemini/settings.json

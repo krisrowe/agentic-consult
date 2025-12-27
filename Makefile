@@ -24,7 +24,7 @@ test:
 		python3 -m venv .venv; \
 		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
 	fi
-	@PYTHONPATH=. .venv/bin/activate && pytest
+	@. .venv/bin/activate && PYTHONPATH=. pytest
 
 precommit:
 	@if [ ! -d ".venv" ]; then \
@@ -35,7 +35,7 @@ precommit:
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "Running precommit checks..."
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@. .venv/bin/activate && pytest -q --tb=no > /tmp/pytest-output.txt 2>&1; \
+	@. .venv/bin/activate && PYTHONPATH=. pytest
 	TEST_EXIT=$$?; \
 	PASS_COUNT=$$(grep -oP '\d+(?= passed)' /tmp/pytest-output.txt || echo "0"); \
 	TOTAL_COUNT=$$(grep -oP '\d+(?= collected)' /tmp/pytest-output.txt || echo "0"); \
@@ -47,7 +47,7 @@ precommit:
 	else \
 		echo "❌ Tests: FAILED (run 'make test' for details)"; \
 	fi; \
-	export PYTHONPATH=${PYTHONPATH}:. && .venv/bin/python -m agentic_consult.cli precommit > /tmp/scanner-output.txt 2>&1; \
+	export PYTHONPATH=${PYTHONPATH}:. && .venv/bin/python -m agentic_consult precommit > /tmp/scanner-output.txt 2>&1; \
 	SCAN_EXIT=$$?; \
 	if [ $$SCAN_EXIT -eq 0 ]; then \
 		echo "✅ Scanner: No sensitive data found"; \
@@ -70,7 +70,7 @@ precommit-verbose:
 	@. .venv/bin/activate && pytest
 	@echo ""
 	@echo "Running pre-commit checks via CLI"
-	@export PYTHONPATH=${PYTHONPATH}:. && .venv/bin/python -m agentic_consult.cli precommit
+	@export PYTHONPATH=${PYTHONPATH}:. && .venv/bin/python -m agentic_consult precommit
 
 
 

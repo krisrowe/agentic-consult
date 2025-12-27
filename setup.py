@@ -11,6 +11,8 @@ setup(
         "pyyaml>=6.0",
         "google-genai",
         "jsonschema",
+        "google-api-python-client",
+        "google-auth",
     ],
     extras_require={
         "dev": [

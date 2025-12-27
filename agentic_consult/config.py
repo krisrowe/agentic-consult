@@ -10,9 +10,16 @@ SETTINGS_FILENAME = "settings.json"
 def get_config_path(filename=None):
     """
     Returns the authoritative path for the global settings file or a specific file.
-    Always uses the XDG App Config Directory.
+    Priority:
+    1. CONSULT_CONFIG_DIR environment variable
+    2. XDG App Config Directory (via click.get_app_dir)
     """
-    base_dir = Path(click.get_app_dir('agentic-consult'))
+    env_config_dir = os.environ.get('CONSULT_CONFIG_DIR')
+    if env_config_dir:
+        base_dir = Path(env_config_dir)
+    else:
+        base_dir = Path(click.get_app_dir('agentic-consult'))
+    
     if filename:
         return base_dir / filename
     return base_dir / SETTINGS_FILENAME
@@ -56,3 +63,16 @@ def load_yaml_file(path):
         return {}
     with open(path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f) or {}
+
+def get_backups_google_drive_folder_id() -> str:
+    """
+    Returns the Google Drive folder ID for backups.
+    Checks environment variable 'BACKUPS_GOOGLE_DRIVE_FOLDER_ID' first,
+    then the 'backups_google_drive_folder_id' in settings.json.
+    """
+    env_id = os.environ.get('BACKUPS_GOOGLE_DRIVE_FOLDER_ID')
+    if env_id:
+        return env_id
+    
+    config = load_main_config()
+    return config.get('backups_google_drive_folder_id')
