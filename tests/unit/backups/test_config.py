@@ -52,7 +52,7 @@ def test_backup_config_create_folder_success(temp_dirs):
 
     # Verify config was updated
     config = load_main_config()
-    assert config.get('backups_google_drive_folder_id') == final_id
+    assert config.get('backups', {}).get('google_drive_folder_id') == final_id
 
 def test_backup_config_create_folder_exists_error(temp_dirs):
     """Ensure an error is raised if --create is used but the folder already exists."""

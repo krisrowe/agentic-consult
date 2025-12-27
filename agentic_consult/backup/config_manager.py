@@ -55,7 +55,9 @@ class BackupConfigManager:
 
         # Save to config
         config_data = load_main_config()
-        config_data['backups_google_drive_folder_id'] = final_folder_id
+        if 'backups' not in config_data or not isinstance(config_data['backups'], dict):
+            config_data['backups'] = {}
+        config_data['backups']['google_drive_folder_id'] = final_folder_id
         save_main_config(config_data)
         
         return final_folder_id

@@ -75,4 +75,7 @@ def get_backups_google_drive_folder_id() -> str:
         return env_id
     
     config = load_main_config()
-    return config.get('backups_google_drive_folder_id')
+    backups_config = config.get('backups', {})
+    if isinstance(backups_config, dict):
+        return backups_config.get('google_drive_folder_id')
+    return None

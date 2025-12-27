@@ -56,7 +56,7 @@ def test_backup_run_with_inaccessible_folder_id_error(temp_dirs):
     non_existent_id = os.path.join(backup_dir, "non_existent_folder")
     
     # Save bad config
-    save_main_config({'backups_google_drive_folder_id': non_existent_id})
+    save_main_config({'backups': {'google_drive_folder_id': non_existent_id}})
     
     orchestrator = BackupOrchestrator()
     with pytest.raises(FolderAccessError) as excinfo:
@@ -72,7 +72,7 @@ def test_backup_result_summary_valid_json(temp_dirs):
     # Setup valid config
     valid_id = os.path.join(backup_dir, "backups")
     os.makedirs(valid_id)
-    save_main_config({'backups_google_drive_folder_id': valid_id})
+    save_main_config({'backups': {'google_drive_folder_id': valid_id}})
     
     # Create fake home/.gemini for the Gemini provider to find something
     gemini_home = os.path.join(os.path.expanduser("~"), ".gemini")
