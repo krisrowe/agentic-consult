@@ -69,9 +69,9 @@ def run(force, skip_dirty, non_interactive, format):
             TYPE_WIDTH = 8
             STATUS_WIDTH = 12
             
-            click.echo("\n" + "="*80)
+            click.echo("\n" + "="*92)
             click.echo(f"{'ITEM':<{ITEM_WIDTH}} | {'TYPE':<{TYPE_WIDTH}} | {'STATUS':<{STATUS_WIDTH}} | {'DETAILS'}")
-            click.echo("-" * 80)
+            click.echo("-" * 92)
             
             for group_name in sorted(grouped_items.keys()):
                 for item in grouped_items[group_name]:
