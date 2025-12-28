@@ -79,6 +79,19 @@ Standard internet connections (e.g., 250 Mbps Down / 10 Mbps Up) are sufficient 
 *   **Delta Query (80KB / 20k tokens):** < 0.1 seconds (Interactive operation).
 *   **Conclusion:** Transport latency is negligible. User-perceived latency is dominated by Server-Side Inference (TTFT + Generation). We focus optimizations on **Prompt Structure**, not Payload Size.
 
+### F. Cloud Colocation Analysis (Thought Experiment)
+
+Comparing execution on **Local Laptop** (250 Mbps) vs. **GCE Instance** (20 Gbps):
+
+*   **Current State:**
+    *   *Local:* 4s Upload + 10s Inference = 14s Total.
+    *   *Cloud:* 0.1s Upload + 10s Inference = 10.1s Total.
+    *   *Result:* ~25% improvement. Noticeable, but not transformative for text agents.
+*   **Future State (10x Faster LLMs):**
+    *   *Local:* 4s Upload + 1s Inference = 5s Total.
+    *   *Cloud:* 0.1s Upload + 1s Inference = 1.1s Total.
+    *   *Result:* ~80% improvement. **Cloud Colocation becomes critical** once inference latency drops below transport latency.
+
 ## 2. State Management Schema (`workflow_state.json`)
 
 ```json
