@@ -20,7 +20,21 @@ We utilize a **Cognitive Tool** pattern. Instead of the Primary Agent managing l
 *   **Decoupling:** The Primary Agent doesn't need to know *how* to filter TickTick tasks or parse Gmail threads. It just asks for a summary.
 *   **Stability:** We avoid complex "Agent Swarms" or rigid "Workflow Scripts" (`orchestrator.py`) that break easily. The intelligence lives in the *tool's response*, empowering the LLM to make the final decision.
 
-## 3. The Paradigm: Long-Context Native vs. Vector RAG
+## 3. Division of Labor: CLI vs. API
+
+It is critical to distinguish between the **Gemini CLI** (the user interface) and the **Gemini API** (the backend intelligence).
+
+| Role | **Gemini CLI (Primary Agent)** | **Gemini API (Cognitive Tools)** |
+| :--- | :--- | :--- |
+| **Function** | **The CEO / Orchestrator** | **The Analyst / Deep Memory** |
+| **Context** | **Dynamic & Small.** Focused on the active conversation, immediate intent, and synthesized summaries. | **Static & Massive.** Holds 500k+ tokens of project history, logs, and emails via Context Caching. |
+| **Interaction** | Multi-turn conversation with the user. | Single-shot queries ("Reason over this data and answer X"). |
+| **Constraint** | Expensive/Slow to reload massive context on every turn. | Cheap/Fast to query once cached. |
+
+**The Strategy:**
+We use the **API** (via Python scripts exposed as Tools) to do the heavy lifting of reading/reasoning over massive datasets. We use the **CLI** to receive the distilled insights and make the final decision. This avoids "Context Pollution" where the active agent becomes overwhelmed, slow, and expensive.
+
+## 4. The Paradigm: Long-Context Native vs. Vector RAG
 
 The most significant architectural choice is the use of **Google Gemini Context Caching** instead of traditional **Vector Search (RAG)**.
 
@@ -51,7 +65,7 @@ Since Gemini Context Caches are immutable, we use a hybrid strategy to balance f
     *   **Injection**: These are appended to the user's prompt *alongside* the cache reference.
     *   **Result**: The model sees the stable history (Cache) + the latest updates (Prompt) and merges them logically.
 
-## 4. Framework Selection: Custom Orchestration vs. LangGraph/Frameworks
+## 5. Framework Selection: Custom Orchestration vs. LangGraph/Frameworks
 
 We avoid heavy-weight frameworks like LangGraph, Semantic Kernel, or CrewAI.
 
@@ -61,7 +75,7 @@ We avoid heavy-weight frameworks like LangGraph, Semantic Kernel, or CrewAI.
     -   **Control**: Explicit state management in Python is easier to debug than complex directed-acyclic-graphs (DAGs) in third-party libraries.
     -   **First-Class Tooling**: MCP (Model Context Protocol) is the native plugin format for our primary interfaces. Using MCP ensures our "Cognitive Tools" are portable to any client (CLI, IDE, or Desktop Agent).
 
-## 5. Patterns to Study & Apply
+## 6. Patterns to Study & Apply
 
 To improve effectiveness without adding complexity, focus on these patterns:
 
