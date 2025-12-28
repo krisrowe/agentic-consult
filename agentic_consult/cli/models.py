@@ -25,7 +25,7 @@ def list_models(json_output):
     click.echo("\n=== Gemini Model Configuration ===\n")
     
     # 1. Available Models
-    click.echo("Available Models (Priority Order):")
+    click.echo("Available Models:")
     default_model = config.get('default')
     for model in config.get('available', []):
         marker = " (Default)" if model == default_model else ""
