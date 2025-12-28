@@ -90,3 +90,12 @@ To improve effectiveness without adding complexity, focus on these patterns:
 3.  **Context Isolation:**
     *   *Concept:* Keep the Primary Agent's context window clean. Never dump raw logs or 500 emails into the main chat. Always synthesize first.
     *   *Application:* Ensure every "List" or "Search" tool has a summarization step (or default limit) so the Primary Agent receives actionable insights, not noise.
+
+## 7. Session Continuity & Initiative
+
+To enable a "Day 1 / Minute 1" experience where the agent immediately takes initiative, we rely on three pillars:
+
+1.  **`GEMINI.md` (The Bootloader)**: Defines the *Persona* ("Chief of Staff") and the *Protocol* ("Upon startup, always call `get_situational_awareness` first"). It sets the mission but contains no dynamic state.
+2.  **`workflow_state.json` (The Bookmark)**: Persists the execution context across sessions (e.g., `last_sync_time`, `current_focus_project`, `pending_decisions`).
+3.  **`get_situational_awareness` (The Bridge)**: A Cognitive Tool that reads the Bookmark and queries the Super-Context to generate a real-time briefing.
+    *   *Effect:* The agent wakes up, reads its instructions, checks the state, and immediately asks: "Welcome back. We were working on Project X. 3 new emails have arrived since. Shall we resume?"

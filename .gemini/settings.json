@@ -4,5 +4,13 @@
     "includeDirectories": [
       "../gworkspace-access"
     ]
+  },
+  "general": {
+    "previewFeatures": true
+  },
+  "ui": {
+    "footer": {
+      "hideContextPercentage": false
+    }
   }
 }
