@@ -63,17 +63,17 @@ Scripts that synchronize remote data to local JSON caches. These should be expos
 
 ### D. Performance Strategy & Future-Proofing
 
-We prioritize **capability over raw speed**, relying on the rapid evolution of Gemini models to solve latency.
+We prioritize **capability over raw speed**, relying on the rapid evolution of Gemini models (2.5/3.0 series) to solve latency.
 
 *   **Latency Target:** 5-15 seconds (Model dependent).
 *   **Model Tiering:**
-    *   **Quick Checks** (`--fast`): Use `gemini-*-flash` (Target <5s) for simple summarization.
-    *   **Deep Planning** (`--deep`): Use `gemini-*-pro` (Target <20s) for complex cross-referencing.
-*   **Optimization:** We do *not* prematurely optimize code for <1s latency. We rely on Google's infrastructure improvements (Gemini 2.0/3.0) to accelerate the "Reasoning Engine" over time.
+    *   **Quick Checks** (`--fast`): Use **Gemini 3.x Flash** (Target <5s) for simple summarization.
+    *   **Deep Planning** (`--deep`): Use **Gemini 3.x Pro** (Target <20s) for complex cross-referencing.
+*   **Optimization:** We do *not* prematurely optimize code for <1s latency. We rely on Google's infrastructure improvements to accelerate the "Reasoning Engine" over time.
 
 ### E. Network Feasibility Analysis
 
-Standard internet connections (e.g., 250 Mbps Down / 10 Mbps Up) are sufficient and **not a bottleneck**.
+Standard coaxial internet connections (e.g., 250 Mbps Down / 10 Mbps Up) are sufficient and **not a bottleneck**.
 
 *   **Context Upload (5MB / 500k tokens):** ~4 seconds (Background operation).
 *   **Delta Query (80KB / 20k tokens):** < 0.1 seconds (Interactive operation).
@@ -92,13 +92,24 @@ Comparing execution on **Local Laptop** (250 Mbps) vs. **GCE Instance** (20 Gbps
     *   *Cloud:* 0.1s Upload + 1s Inference = 1.1s Total.
     *   *Result:* ~80% improvement. **Cloud Colocation becomes critical** once inference latency drops below transport latency.
 
-### G. Local Inference (Gemma) Assessment
+### G. Local Inference (Gemma 3) Assessment
 
-Running open models (e.g., Gemma 2) locally is **Rejected / Not Recommended**.
+With the release of **Gemma 3** (128k Context), local inference is **Viable for Lite Mode**.
 
-*   **Constraint:** Local context windows (8k-32k) are insufficient for the "Super-Context" strategy (500k+ tokens).
-*   **Impact:** Using local inference would force a regression to **Vector RAG** (Fragmented Retrieval), breaking the core architectural decision to prioritize "Holistic Reasoning."
-*   **Verdict:** The capability loss outweighs the privacy/cost benefits for this specific "Executive Assistant" persona.
+*   **Constraint:** 128k tokens is sufficient for a "Rolling Window" (weeks) but not the full "Super-Context" (years).
+*   **Verdict:** We maintain a **Cloud-First** architecture to leverage the 1M+ context window of Gemini Pro/Flash (2.5/3.0), but acknowledge Gemma 3 as a valid fallback for offline or strictly private sessions.
+
+### H. Cost Analysis & Mitigation
+
+To maintain the "Executive Assistant" capability without excessive cost (approx. $200/mo for pure Pro usage), we adopt a **Flash-First Strategy**:
+
+1.  **Default Engine:** **Gemini 3.x Flash**.
+    *   *Capability:* Excellent at summarization and extraction over large context.
+    *   *Cost:* Approx. **1/10th to 1/20th** the price of Pro.
+    *   *Estimated Bill:* **$10 - $30 / month** for daily professional usage.
+2.  **Escalation Engine:** **Gemini 3.x Pro**.
+    *   *Trigger:* Explicit user request (`--deep`) or complex multi-domain reasoning tasks.
+    *   *Role:* The "Senior Analyst" brought in only for high-stakes problem solving.
 
 ## 2. State Management Schema (`workflow_state.json`)
 
