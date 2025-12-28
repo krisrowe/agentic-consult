@@ -3,8 +3,11 @@ import json
 import yaml
 import re
 import click
+import logging
 from pathlib import Path
 from agentic_consult.schema import validate_yaml
+
+logger = logging.getLogger(__name__)
 
 SETTINGS_FILENAME = "settings.json"
 
@@ -31,7 +34,9 @@ def get_config_path(filename=None):
     return base_dir / SETTINGS_FILENAME
 
 def load_main_config():
-    """Loads settings from settings.json."""
+    """
+    Loads settings from settings.json.
+    """
     path = get_config_path()
     if not path.exists():
         return {}
@@ -164,24 +169,49 @@ def resolve_model_alias(model_name: str) -> str:
 def get_default_model() -> str:
     """
     Resolves the default Gemini model.
-    Strictly requires a default model to be set.
+    Priority:
+    1. User settings (settings.json) - if valid in project config.
+    2. Project settings (app.yaml).
     """
     app_config = load_app_config()
-    model = app_config.get('gemini', {}).get('models', {}).get('default')
+    app_default = app_config.get('gemini', {}).get('models', {}).get('default')
+    available = app_config.get('gemini', {}).get('models', {}).get('available', [])
     
-    if not model:
+    # Check User Settings
+    user_config = load_main_config()
+    user_default = user_config.get('models', {}).get('default')
+    
+    if user_default:
+        # JIT Validation: Must be in available list
+        # We need to resolve alias first, in case user set default to "fast"
+        resolved_user_default = resolve_model_alias(user_default)
+        
+        if resolved_user_default in available:
+            return resolved_user_default
+        else:
+            logger.warning(f"User default model '{user_default}' (resolved: {resolved_user_default}) is not in the available list. Falling back to system default.")
+    
+    if not app_default:
         raise ValueError("A default Gemini model must be defined in the system.")
         
-    return resolve_model_alias(model)
+    return resolve_model_alias(app_default)
 
 def get_model_info() -> dict:
     """
     Returns structured information about available models and aliases.
+    Calculates the 'effective_default' by resolving user/system settings.
     """
     app_config = load_app_config()
     models_cfg = app_config.get('gemini', {}).get('models', {})
+    
+    try:
+        effective_default = get_default_model()
+    except ValueError:
+        effective_default = None
+        
     return {
-        "default": models_cfg.get('default'),
+        "default": effective_default,
+        "system_default": models_cfg.get('default'),
         "available": models_cfg.get('available', []),
         "aliases": models_cfg.get('aliases', {})
     }

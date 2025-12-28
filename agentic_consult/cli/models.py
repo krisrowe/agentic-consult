@@ -1,6 +1,11 @@
 import click
 import json
-from agentic_consult.config import get_model_configuration
+from agentic_consult.config import (
+    get_model_configuration, 
+    resolve_model_alias, 
+    load_main_config, 
+    save_main_config
+)
 
 @click.group()
 def models():
@@ -35,4 +40,34 @@ def list_models(json_output):
         click.echo(f"  - {alias:<10} -> {target}")
     
     click.echo("")
+
+@models.command(name="set-default")
+@click.argument("model")
+def set_default(model):
+    """
+    Set the user-level default Gemini model.
+    
+    Accepts specific model IDs (e.g., gemini-2.5-flash) or aliases (fast, thinking).
+    Aliases are resolved to their current target before saving.
+    """
+    config = get_model_configuration()
+    available = config.get('available', [])
+    
+    # Resolve input (alias -> ID)
+    resolved = resolve_model_alias(model)
+    
+    if resolved not in available:
+        click.echo(f"Error: Model '{model}' (resolved: '{resolved}') is not in the available list.", err=True)
+        click.echo(f"Available models: {', '.join(available)}", err=True)
+        return
+
+    # Load current settings, update, and save
+    user_settings = load_main_config()
+    if 'models' not in user_settings:
+        user_settings['models'] = {}
+        
+    user_settings['models']['default'] = resolved
+    
+    save_main_config(user_settings)
+    click.echo(f"Success: User default model set to '{resolved}'.")
 
