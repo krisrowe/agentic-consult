@@ -1,5 +1,17 @@
 # Implementation Design: Cognitive Perception System
 
+## 0. Current Implementation Status (Aspirational)
+*As of Dec 2025*
+
+| Component | Status | Notes |
+| :--- | :--- | :--- |
+| **Data Retrievers** | 🚧 Partial | `consult refresh` exists but logic is coupled. Needs extraction to standalone scripts. |
+| **Context Pipeline** | ❌ Missing | No logic yet for bundling data into Gemini Context Cache. |
+| **Reasoning Engine** | ❌ Missing | `consult analyze` tool needs to be built. |
+| **State Management** | ❌ Missing | `workflow_state.json` schema defined but not implemented. |
+
+---
+
 This document provides the concrete implementation blueprint for the **Cognitive Perception Architecture** defined in `ARCHITECTURE.md`. It details the scripts, data flows, and state management required to build the "Super-Context" engine.
 
 ## 1. System Components
@@ -75,9 +87,44 @@ This design strictly implements the **Hub-and-Spoke** pattern from `ARCHITECTURE
 *   **Spokes**: `sync_tasks.py` and `sync_emails.py`.
 *   **Pattern**: It uses the **Hybrid Delta Caching** strategy to balance freshness (deltas) with depth (cached history).
 
-## 4. Implementation Priorities
+## 4. Alignment with Industry Standards
 
-1.  **Refine `gwsa`**: Ensure `gwsa` exposes a "Thread Fetch" capability efficiently.
-2.  **Build Sync Scripts**: Create the standalone fetchers.
-3.  **Build Context Updater**: Implement the caching logic using `google-genai` SDK.
-4.  **Build Cognitive Tool**: Wire it all together in the MCP server.
+Our design maps to several established AI and software patterns:
+
+1.  **Context Ingestion Pipeline**: Derived from standard **ETL (Extract-Transform-Load)** and **RAG Ingestion** patterns. We treat unstructured emails/tasks as raw data to be cleaned and structured for LLM consumption.
+2.  **Reasoning Engine**: Aligns with the **"Agentic Tool-Use"** and **"Cognitive Architecture"** patterns (e.g., as seen in LlamaIndex or OpenAI Assistant API). We encapsulate the *thinking* about a domain within the tool itself.
+3.  **Working Memory (Delta)**: Based on the **Memory-Augmented Neural Network** theory (and implementations like MemGPT). We distinguish between "Long-term" (Cache) and "Short-term/Working" (Prompt Delta) storage.
+4.  **Hub-and-Spoke**: A traditional **Enterprise Service Bus (ESB)** or **Orchestrator** pattern applied to autonomous agents.
+
+## 5. Transition Plan: Concrete Implementation Steps
+
+To reach the target state, the following refactoring and development steps are required:
+
+### Step 1: Logic Decoupling (Retrievers)
+-   Extract email fetching logic from `agentic_consult/refresh.py`.
+-   Move to a new package: `agentic_consult/retrievers/`.
+-   Implement `scripts/sync_emails.py` as a standalone command-line entry point.
+
+### Step 2: State Management Infrastructure
+-   Implement `agentic_consult/processing_state.py` to manage `workflow_state.json`.
+-   This module will provide atomic read/update operations for the `context_cache` metadata.
+
+### Step 3: The Ingestion Pipeline
+-   Develop `agentic_consult/pipeline/` package.
+-   Implement `update_context_cache.py`:
+    -   Logic to read `emails.json` and `tasks.json`.
+    -   Formatting logic to convert JSON records into optimized prompt text.
+    -   API integration with `google-genai` for cache creation.
+
+### Step 4: The Reasoning Engine (MCP Tool)
+-   Implement `agentic_consult/engine/` package.
+-   Create the `analyze` tool logic:
+    -   Logic to compute deltas based on timestamps in `workflow_state.json`.
+    -   Prompt engineering for the "Chief of Staff" persona.
+-   Register the tool in `agentic_consult/mcp/server.py`.
+
+### Step 5: CLI Re-composition
+-   Refactor `agentic_consult/cli/refresh.py` into a **Coordinator**.
+    -   Remove embedded logic.
+    -   Implement orchestration: Call `retrievers` -> Call `pipeline` -> Update State.
+-   Add `consult analyze` command as the entry point for the Reasoning Engine.
