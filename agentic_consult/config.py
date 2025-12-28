@@ -100,20 +100,22 @@ def get_backups_google_drive_folder_id() -> str:
         return backups_config.get('google_drive_folder_id')
     return None
 
-def load_app_config(base_dir=None) -> dict:
+def load_app_config() -> dict:
     """
-    Loads configuration from project settings in the specified directory.
-    Defaults to current working directory if base_dir is None.
+    INTERNAL ONLY: Loads core system configuration from the package root.
+    This file is part of the application source and MUST NOT be provided
+    or overridden by clients or users in the CWD.
     """
-    base = Path(base_dir) if base_dir else Path.cwd()
-    app_yaml_path = base / "app.yaml"
+    # Force loading from package directory only
+    path = Path(__file__).parent / "app.yaml"
     
-    if app_yaml_path.exists():
+    if path.exists():
         try:
-            with open(app_yaml_path, 'r', encoding='utf-8') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 return yaml.safe_load(f) or {}
         except Exception:
-            return {}
+            pass
+                
     return {}
 
 def parse_model_version(model_id: str) -> tuple:

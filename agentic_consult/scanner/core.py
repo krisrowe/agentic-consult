@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from agentic_consult.customers import get_active_customers_root, _parse_customer_yaml
 from agentic_consult.scanner import scan_target, get_staged_files, get_disk_files, check_git_identity
+from agentic_consult.config import load_app_config
 
 def run_scan(path=".", include_ignored=False) -> Dict[str, Any]:
     """
@@ -49,16 +50,10 @@ def run_scan(path=".", include_ignored=False) -> Dict[str, Any]:
                     except Exception:
                         pass
 
-    # Load app.yaml allowed emails
+    # Load allowed emails from internal config
     allowed_emails = []
-    app_yaml_path = Path("app.yaml")
-    if app_yaml_path.exists():
-        try:
-            with open(app_yaml_path, 'r') as f:
-                app_config = yaml.safe_load(f) or {}
-                allowed_emails = app_config.get('precommit', {}).get('allowed_emails', [])
-        except Exception:
-            pass
+    app_config = load_app_config()
+    allowed_emails = app_config.get('precommit', {}).get('allowed_emails', [])
             
     local_user = os.environ.get("USER") or os.environ.get("USERNAME")
     if local_user:

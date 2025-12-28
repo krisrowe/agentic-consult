@@ -3,8 +3,9 @@ import glob
 import yaml
 from pathlib import Path
 from agentic_consult.gemini import GeminiAPIClient
+from agentic_consult.config import load_app_config
 
-def load_analyze_config(base_dir=None):
+def load_analyze_config():
     """
     Loads analysis limits from project configuration.
     Defaults to 50 files and 1MB of content if not configured.
@@ -14,18 +15,10 @@ def load_analyze_config(base_dir=None):
         "max_total_content_bytes": 1024 * 1024  # 1MB default
     }
     
-    base = Path(base_dir) if base_dir else Path.cwd()
-    app_yaml_path = base / "app.yaml"
-    
-    if app_yaml_path.exists():
-        try:
-            with open(app_yaml_path, 'r') as f:
-                data = yaml.safe_load(f) or {}
-                analyze_config = data.get("analyze", {})
-                if analyze_config:
-                    config.update(analyze_config)
-        except Exception:
-            pass # Silently fail on config load in library code
+    app_config = load_app_config()
+    analyze_config = app_config.get("analyze", {})
+    if analyze_config:
+        config.update(analyze_config)
             
     return config
 
@@ -35,7 +28,7 @@ def run_analysis(prompt: str, resources: list[str], base_dir: str = None, model_
     Returns a dict with keys: 'response', 'stats' (dict), 'error' (str/None).
     """
     base = Path(base_dir) if base_dir else Path.cwd()
-    config = load_analyze_config(base_dir)
+    config = load_analyze_config()
     max_files = config["max_file_count"]
     max_bytes = config["max_total_content_bytes"]
 

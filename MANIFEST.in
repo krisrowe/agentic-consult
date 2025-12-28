@@ -1,1 +1,2 @@
 include agentic_consult/prompt.tpl
+include agentic_consult/app.yaml
