@@ -29,7 +29,7 @@ def load_analyze_config(base_dir=None):
             
     return config
 
-def run_analysis(prompt: str, resources: list[str], base_dir: str = None) -> dict:
+def run_analysis(prompt: str, resources: list[str], base_dir: str = None, model_name: str = None) -> dict:
     """
     Core analysis logic.
     Returns a dict with keys: 'response', 'stats' (dict), 'error' (str/None).
@@ -122,7 +122,7 @@ def run_analysis(prompt: str, resources: list[str], base_dir: str = None) -> dic
             # Or just skip. Let's skip and warn in stats.
             pass
 
-    client = GeminiAPIClient()
+    client = GeminiAPIClient(model_name=model_name)
     full_prompt = f"Context:\n\n{''.join(context)}\n\nQuestion: {prompt}"
     
     try:

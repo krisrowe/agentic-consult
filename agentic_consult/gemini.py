@@ -5,7 +5,7 @@ import logging
 import re
 from google import genai
 from google.genai import types
-from agentic_consult.config import get_default_model
+from agentic_consult.config import get_default_model, resolve_model_alias
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,9 @@ class GeminiAPIClient:
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not found in environment or provided arguments.")
-        self.model_name = model_name or get_default_model()
+        
+        raw_model = model_name or get_default_model()
+        self.model_name = resolve_model_alias(raw_model)
         self.client = genai.Client(api_key=self.api_key)
 
     def _tweak_prompt(self, prompt: str) -> str:

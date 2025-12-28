@@ -110,6 +110,19 @@ def load_app_config(base_dir=None) -> dict:
             return {}
     return {}
 
+def resolve_model_alias(model_name: str) -> str:
+    """
+    Resolves a model alias (e.g., 'fast', 'latest-pro') to a specific model ID.
+    defined in app.yaml. If no alias matches, returns the input string.
+    """
+    if not model_name:
+        return model_name
+        
+    app_config = load_app_config()
+    aliases = app_config.get('gemini', {}).get('models', {}).get('aliases', {})
+    
+    return aliases.get(model_name, model_name)
+
 def get_default_model() -> str:
     """
     Resolves the default Gemini model from app.yaml.
@@ -121,4 +134,4 @@ def get_default_model() -> str:
     if not model:
         raise ValueError("Missing 'gemini.models.default' in app.yaml. This configuration is required.")
         
-    return model
+    return resolve_model_alias(model)

@@ -9,6 +9,14 @@ gemini:
       - gemini-2.5-flash
       - gemini-2.5-pro
       # - gemini-3-pro
+      - gemini-3-pro-preview
+    
+    aliases:
+      fast: gemini-2.5-flash
+      slow: gemini-2.5-pro
+      thinking: gemini-2.5-pro
+      latest-flash: gemini-2.5-flash
+      latest-pro: gemini-2.5-pro
 
 email:
   read_archived_email: false

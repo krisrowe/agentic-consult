@@ -26,8 +26,14 @@ def _print_stats(stats: dict, response_text: str, stats_enabled: bool):
     help="Path, glob, or comma-separated list of paths/globs (e.g., 'docs/*.md,notes/'). Defaults to '.'"
 )
 @click.option("--stats", "-s", "stats_enabled", is_flag=True, help="Show analysis statistics.")
-def analyze(prompt, resources, stats_enabled):
-    """Analyze project resources and documentation with Gemini."""
+@click.option("--model", "-m", help="Override the Gemini model (e.g., 'gemini-2.5-pro', 'fast', 'slow'). Defaults to app.yaml setting.")
+def analyze(prompt, resources, stats_enabled, model):
+    """
+    Analyze project resources and documentation with Gemini.
+    
+    You can specify a model alias (defined in app.yaml) or a full model ID.
+    Common aliases: fast, slow, thinking, latest-pro.
+    """
     
     # Split resources string into list
     resource_list = [item.strip() for item in resources.split(",") if item.strip()]
@@ -35,7 +41,7 @@ def analyze(prompt, resources, stats_enabled):
         click.echo("Error: Resource paths cannot be empty.", err=True)
         sys.exit(1)
 
-    result = run_analysis(prompt, resource_list)
+    result = run_analysis(prompt, resource_list, model_name=model)
 
     if result.get("error"):
         click.echo(f"Error: {result['error']}", err=True)
