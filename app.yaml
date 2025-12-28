@@ -4,10 +4,10 @@ gemini:
     # CRITICAL: NEVER LIST ANY MODEL VERSIONS BELOW 2.5
     default: gemini-2.5-flash
     available:
-      - gemini-2.5-flash
-      - gemini-2.5-pro
-      - gemini-3.0-flash-preview
       - gemini-3.0-pro-preview
+      - gemini-3.0-flash-preview
+      - gemini-2.5-pro
+      - gemini-2.5-flash
 
 email:
   read_archived_email: false

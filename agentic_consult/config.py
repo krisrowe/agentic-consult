@@ -186,6 +186,27 @@ def get_model_info() -> dict:
         "aliases": models_cfg.get('aliases', {})
     }
 
+def get_model_configuration() -> dict:
+    """
+    Returns the fully resolved model configuration.
+    Includes default, available list, and resolved aliases.
+    """
+    info = get_model_info()
+    
+    # Calculate resolutions for standard aliases
+    # We check the ones defined in aliases map (if any were there) plus our standard dynamic ones
+    standard_aliases = ['fast', 'thinking']
+    resolutions = {}
+    
+    for alias in standard_aliases:
+        resolutions[alias] = resolve_model_alias(alias)
+        
+    return {
+        "default": info['default'],
+        "available": info['available'],
+        "resolutions": resolutions
+    }
+
 def get_model_help_text() -> str:
     """
     Generates a user-facing summary of available models and dynamic aliases.

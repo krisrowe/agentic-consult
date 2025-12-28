@@ -5,6 +5,7 @@ from .customers import customers
 from .backup import backup
 from .precommit import precommit
 from .issues import issues
+from .models import models
 from .tasks import tasks
 from .refresh import refresh
 from .analyze import analyze
@@ -20,6 +21,7 @@ main.add_command(customers)
 main.add_command(backup)
 main.add_command(precommit)
 main.add_command(issues)
+main.add_command(models)
 main.add_command(tasks)
 main.add_command(refresh)
 main.add_command(analyze)
