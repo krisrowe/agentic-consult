@@ -35,10 +35,21 @@ The most significant architectural choice is the use of **Google Gemini Context 
 We chose Long-Context Native because personal productivity (summarizing a project's evolution, finding subtle threads across months) requires **Global Reasoning**. Vector Search often misses the logical relationship between tasks/emails that are semantically similar but chronologically or logically distinct.
 
 ### Strategy: Hybrid Delta Caching
-Since Gemini Context Caches are immutable, we use a hybrid strategy:
-1.  **Cold Cache**: A large, stable cache of historical data (e.g., all tasks/emails up to T-minus-24h).
-2.  **Hot Delta**: New or modified items are injected directly into the prompt alongside the Cache ID.
-3.  **Re-Commit**: The cache is rebuilt on a schedule (e.g., nightly) to incorporate the deltas.
+Since Gemini Context Caches are immutable, we use a hybrid strategy to balance freshness with cost/latency.
+
+1.  **The "Super-Context" (Cold Cache)**:
+    *   **Content**: A unified massive context containing Task History (TickTick), Email History (GWSA), and Project Notes.
+    *   **Management**: Rebuilt periodically (e.g., nightly).
+    *   **Rolling Window Optimization**:
+        *   *Tasks*: Active/Pending (All) + Completed (Last 90 days) + Summarized Archive (Older).
+        *   *Emails*: Recent Threads (Last 14 days) + VIP History (Last 30 days).
+    *   **Benefit**: Enables cross-domain reasoning (e.g., linking an old task to a new email thread) without re-uploading 50k tokens per query.
+
+2.  **The "Hot Delta" (Prompt Injection)**:
+    *   **Concept**: Data changed *since* the cache was built.
+    *   **Mechanism**: The Cognitive Tool fetches small lists of new/modified items (created > `T_cache_creation`) from local DBs/APIs.
+    *   **Injection**: These are appended to the user's prompt *alongside* the cache reference.
+    *   **Result**: The model sees the stable history (Cache) + the latest updates (Prompt) and merges them logically.
 
 ## 4. Framework Selection: Custom Orchestration vs. LangGraph/Frameworks
 
