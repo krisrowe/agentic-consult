@@ -1,15 +1,13 @@
 gemini:
   debug: false
   models:
+    # CRITICAL: NEVER LIST ANY MODEL VERSIONS BELOW 2.5
     default: gemini-2.5-flash
-    # 3.x models commented out as not yet supported by google-genai SDK as of 12/25/2025
-    # per https://docs.cloud.google.com/vertex-ai/generative-ai/docs/sdks/overview
     available:
-      # - gemini-3-flash
       - gemini-2.5-flash
       - gemini-2.5-pro
-      # - gemini-3-pro
-      - gemini-3-pro-preview
+      - gemini-3.0-flash-preview
+      - gemini-3.0-pro-preview
 
 email:
   read_archived_email: false
