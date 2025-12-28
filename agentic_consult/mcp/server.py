@@ -22,7 +22,9 @@ mcp = FastMCP("agentic-consult")
 @mcp.tool()
 async def analyze_resources(
     prompt: str,
-    resources: str = "."
+    resources: str = ".",
+    model: str = None,
+    stats: bool = False
 ) -> dict[str, Any]:
     """
     Analyzes local markdown documentation and resources using Gemini.
@@ -36,6 +38,8 @@ async def analyze_resources(
         resources: A comma-separated list of paths or glob patterns to include 
                    in the context. Defaults to the current directory ('.').
                    Example: "docs/*.md,notes/"
+        model: Specific model ID or alias (fast, thinking) to use.
+        stats: Whether to include analysis metrics in the response.
 
     Returns:
         A dictionary containing the 'response' text from Gemini, or an 'error' message.
@@ -47,12 +51,16 @@ async def analyze_resources(
              return {"error": "Resource paths cannot be empty."}
 
         # Run analysis
-        result = run_analysis(prompt, resource_list)
+        result = run_analysis(prompt, resource_list, model_name=model)
         
         if result.get("error"):
             return {"error": result["error"]}
             
-        return {"response": result.get("response", "")}
+        output = {"response": result.get("response", "")}
+        if stats:
+            output["stats"] = result.get("stats", {})
+            
+        return output
 
     except Exception as e:
         logger.exception(f"Unexpected error during analyze_resources")
@@ -68,6 +76,8 @@ Args:
     prompt: The question or instruction for Gemini.
     resources: A comma-separated list of paths or glob patterns to include 
                in the context. Defaults to the current directory ('.').
+    model: Specific model ID or alias (fast, thinking) to use.
+    stats: Whether to include analysis metrics in the response.
 """
 
 @mcp.tool()

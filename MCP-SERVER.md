@@ -15,7 +15,7 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) enables AI assist
 
 | Tool | Description |
 |------|-------------|
-| `analyze_resources` | Analyzes local markdown documentation and resources using Gemini. |
+| `analyze_resources` | Analyzes local markdown documentation and resources using Gemini. Supports optional `model` and `stats` arguments. |
 | `backup_local_repo` | Backs up a single local git repository to Google Drive. |
 | `run_precommit_scan` | Runs a pre-commit scan for sensitive data in a local directory. |
 
@@ -67,8 +67,8 @@ gemini "backup this repo"
 # Run a security scan
 gemini "scan this directory for secrets"
 
-# Analyze documentation
-gemini "Summarize the architecture from docs/"
+# Analyze documentation with specific model
+gemini "Summarize the architecture from docs/ using model=thinking and stats=True"
 ```
 
 ## Transport Options
