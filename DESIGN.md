@@ -17,12 +17,12 @@ This document provides the concrete implementation blueprint for the **Cognitive
 ## 1. System Components
 
 ### A. Data Retrievers (The "Limbs")
-Scripts that synchronize remote data to local JSON caches.
+Scripts that synchronize remote data to local JSON caches. These should be exposed as **both** CLI commands (for manual/cron use) and **MCP Tools** (so the Agent can trigger a refresh autonomously).
 
 1.  **Task Sync Tool** (`scripts/sync_tasks.py`):
     *   **Responsibility**: Wraps `ticktick-access` to download all tasks from the designated work project/list.
     *   **Output**: `~/.local/share/agentic-consult/cache/tasks.json`
-    *   **Mode**: Can be invoked manually or via `consult refresh`.
+    *   **Mode**: CLI (`consult sync tasks`) and MCP Tool (`sync_tasks`).
 
 2.  **Email Sync Tool** (`scripts/sync_emails.py`):
     *   **Responsibility**: Fetches recent emails and ensures thread completeness.
@@ -32,6 +32,7 @@ Scripts that synchronize remote data to local JSON caches.
         3.  **Thread Completion**: Fetch *all* messages for those threads (even if older than `N` days) to ensure conversation continuity.
         4.  **Deduplication**: Skip messages already present in the local cache.
     *   **Output**: `~/.local/share/agentic-consult/cache/emails.json`
+    *   **Mode**: CLI (`consult sync emails`) and MCP Tool (`sync_emails`).
 
 ### B. Context Ingestion Pipeline (The "Memory Maker")
 **Script**: `scripts/update_context_cache.py`
@@ -104,6 +105,7 @@ To reach the target state, the following refactoring and development steps are r
 -   Extract email fetching logic from `agentic_consult/refresh.py`.
 -   Move to a new package: `agentic_consult/retrievers/`.
 -   Implement `scripts/sync_emails.py` as a standalone command-line entry point.
+-   **Register** `sync_tasks` and `sync_emails` as tools in `agentic_consult/mcp/server.py`.
 
 ### Step 2: State Management Infrastructure
 -   Implement `agentic_consult/processing_state.py` to manage `workflow_state.json`.
