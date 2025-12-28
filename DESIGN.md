@@ -99,6 +99,14 @@ With the release of **Gemma 3** (128k Context), local inference is **Viable for 
 *   **Constraint:** 128k tokens is sufficient for a "Rolling Window" (weeks) but not the full "Super-Context" (years).
 *   **Verdict:** We maintain a **Cloud-First** architecture to leverage the 1M+ context window of Gemini Pro/Flash (2.5/3.0), but acknowledge Gemma 3 as a valid fallback for offline or strictly private sessions.
 
+#### G.2 Private Cloud Inference (GCE) Assessment
+
+Renting custom GPU VMs (e.g., A100/L4 instances) to run Gemma 3 on Google Cloud is **Rejected.**
+
+*   **Cost:** GPU-enabled instances are significantly more expensive than the managed Gemini API for the same token throughput.
+*   **Complexity:** Requires managing container runtimes, model serving (TGI/vLLM), and auto-scaling logic.
+*   **Verdict:** **"Worst of both worlds."** High cost and high maintenance for no performance gain over the managed API. The only benefit is data sovereignty, which is a low priority for this project.
+
 ### H. Cost Analysis & Mitigation
 
 To maintain the "Executive Assistant" capability without excessive cost (approx. $200/mo for pure Pro usage), we adopt a **Flash-First Strategy**:
