@@ -6,9 +6,11 @@ def _print_stats(stats: dict, response_text: str, stats_enabled: bool):
     """Formats and prints analysis statistics to stderr."""
     file_count = stats.get("file_count", 0)
     total_bytes = stats.get("total_bytes", 0)
+    model = stats.get("model", "unknown")
     
     if stats_enabled:
         click.echo(f"Found {file_count} file(s). Total context size: {total_bytes} bytes ({total_bytes / 1024:.2f} KB).", err=True)
+        click.echo(f"Using model: {model}", err=True)
     
     click.echo(f"Analyzing {file_count} files...", err=True)
 

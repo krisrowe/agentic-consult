@@ -131,7 +131,8 @@ def run_analysis(prompt: str, resources: list[str], base_dir: str = None) -> dic
             "response": response["text"],
             "stats": {
                 "file_count": total_files,
-                "total_bytes": total_bytes
+                "total_bytes": total_bytes,
+                "model": client.model_name
             },
             "error": None
         }

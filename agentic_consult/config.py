@@ -93,3 +93,32 @@ def get_backups_google_drive_folder_id() -> str:
     if isinstance(backups_config, dict):
         return backups_config.get('google_drive_folder_id')
     return None
+
+def load_app_config(base_dir=None) -> dict:
+    """
+    Loads configuration from app.yaml in the specified directory.
+    Defaults to current working directory if base_dir is None.
+    """
+    base = Path(base_dir) if base_dir else Path.cwd()
+    app_yaml_path = base / "app.yaml"
+    
+    if app_yaml_path.exists():
+        try:
+            with open(app_yaml_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f) or {}
+        except Exception:
+            return {}
+    return {}
+
+def get_default_model() -> str:
+    """
+    Resolves the default Gemini model from app.yaml.
+    Strictly requires 'gemini.models.default' to be set.
+    """
+    app_config = load_app_config()
+    model = app_config.get('gemini', {}).get('models', {}).get('default')
+    
+    if not model:
+        raise ValueError("Missing 'gemini.models.default' in app.yaml. This configuration is required.")
+        
+    return model
