@@ -61,6 +61,16 @@ Scripts that synchronize remote data to local JSON caches. These should be expos
     4.  **Execute**: Send to Gemini API.
     5.  **Return**: The synthesized answer.
 
+### D. Performance Strategy & Future-Proofing
+
+We prioritize **capability over raw speed**, relying on the rapid evolution of Gemini models to solve latency.
+
+*   **Latency Target:** 5-15 seconds (Model dependent).
+*   **Model Tiering:**
+    *   **Quick Checks** (`--fast`): Use `gemini-*-flash` (Target <5s) for simple summarization.
+    *   **Deep Planning** (`--deep`): Use `gemini-*-pro` (Target <20s) for complex cross-referencing.
+*   **Optimization:** We do *not* prematurely optimize code for <1s latency. We rely on Google's infrastructure improvements (Gemini 2.0/3.0) to accelerate the "Reasoning Engine" over time.
+
 ## 2. State Management Schema (`workflow_state.json`)
 
 ```json
