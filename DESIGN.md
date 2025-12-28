@@ -130,3 +130,30 @@ To reach the target state, the following refactoring and development steps are r
     -   Remove embedded logic.
     -   Implement orchestration: Call `retrievers` -> Call `pipeline` -> Update State.
 -   Add `consult analyze` command as the entry point for the Reasoning Engine.
+
+## 6. Optimization: Cost-Aware Planning
+
+To prevent redundant operations and excessive latency, we implement **Cost-Aware Planning** in the orchestration layer.
+
+### A. Semantic Metadata (Docstrings)
+We explicitly annotate heavy tools (like `sync_emails`) with performance warnings. This teaches the LLM that these tools have a high "cost" in terms of time and API quota.
+
+**Example**:
+> "PERFORMANCE NOTE: This operation takes 15-45 seconds. Do not call more than once per session."
+
+### B. Logic Guardrails (Freshness Checks)
+The Python implementation of the tools enforces a rate limit based on the `last_sync` timestamps in `workflow_state.json`.
+
+**Behavior**:
+-   If a sync tool is called and the data is < 5 minutes old, the tool returns immediately with a message: *"Skipped sync: Cache is fresh (updated N mins ago)."*
+-   This feedback loop prevents the LLM from "spamming" heavy operations while still allowing the tool to be called autonomously when necessary.
+
+## 7. Customer Issues Integration (Episodic Memory)
+
+The existing `issues/` directory serves as the **Episodic Memory** (or Topic Memory) for the agent.
+
+### Integration Strategy
+*   **Ingestion:** The **Context Ingestion Pipeline** (`update_context_cache.py`) recursively reads all Markdown files in `issues/`.
+*   **Role:** These files provide the qualitative context ("Why we decided X", "Customer constraints Y") that is missing from structured Task/Email data.
+*   **Persistence:** These files are **not** replaced or deleted by the pipeline. They are treated as the "Source of Truth" for narrative history.
+*   **Prompting:** The content of active issues is prioritized in the "Context Brief" synthesis.
