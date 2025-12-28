@@ -6,7 +6,7 @@ from agentic_consult.gemini import GeminiAPIClient
 
 def load_analyze_config(base_dir=None):
     """
-    Loads analysis limits from app.yaml.
+    Loads analysis limits from project configuration.
     Defaults to 50 files and 1MB of content if not configured.
     """
     config = {

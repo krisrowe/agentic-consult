@@ -96,7 +96,7 @@ def get_backups_google_drive_folder_id() -> str:
 
 def load_app_config(base_dir=None) -> dict:
     """
-    Loads configuration from app.yaml in the specified directory.
+    Loads configuration from project settings in the specified directory.
     Defaults to current working directory if base_dir is None.
     """
     base = Path(base_dir) if base_dir else Path.cwd()
@@ -113,7 +113,7 @@ def load_app_config(base_dir=None) -> dict:
 def resolve_model_alias(model_name: str) -> str:
     """
     Resolves a model alias (e.g., 'fast', 'latest-pro') to a specific model ID.
-    defined in app.yaml. If no alias matches, returns the input string.
+    If no alias matches, returns the input string.
     """
     if not model_name:
         return model_name
@@ -125,13 +125,13 @@ def resolve_model_alias(model_name: str) -> str:
 
 def get_default_model() -> str:
     """
-    Resolves the default Gemini model from app.yaml.
-    Strictly requires 'gemini.models.default' to be set.
+    Resolves the default Gemini model from project configuration.
+    Strictly requires a default model to be set.
     """
     app_config = load_app_config()
     model = app_config.get('gemini', {}).get('models', {}).get('default')
     
     if not model:
-        raise ValueError("Missing 'gemini.models.default' in app.yaml. This configuration is required.")
+        raise ValueError("Missing 'gemini.models.default' in project configuration. This configuration is required.")
         
     return resolve_model_alias(model)
