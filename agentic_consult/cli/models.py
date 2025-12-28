@@ -78,3 +78,22 @@ def set_default(model):
     save_main_config(user_settings)
     click.echo(f"Success: User default model set to '{resolved}'.")
 
+@models.command(name="reset-default")
+def reset_default():
+    """
+    Remove the user-level default model override.
+    Reverts the system to its standard default configuration.
+    """
+    user_settings = load_main_config()
+    
+    if 'models' in user_settings:
+        user_settings.pop('models')
+        save_main_config(user_settings)
+        
+        # Get the new default for confirmation
+        config = get_model_configuration()
+        new_default = config.get('default')
+        click.echo(f"Success: User default removed. System is now using '{new_default}'.")
+    else:
+        click.echo("No user default configured. Standard default is already active.")
+
