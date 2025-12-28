@@ -2,17 +2,23 @@
 
 This document captures the foundational theory, architectural patterns, and strategic trade-offs chosen for the `agentic-consult` toolkit. It serves as an Architecture Decision Record (ADR) to explain *why* specific paradigms were chosen over industry-standard alternatives.
 
-## 1. Core Vision: The Semi-Autonomous Workflow Orchestrator
+## 1. Core Vision: The Cognitive Perception Architecture
 
-The goal is to evolve beyond a simple "chatbot with tools" into a stateful, semi-autonomous engine that proactively triages inputs (Emails, Tasks) by synthesizing them against massive historical context.
+The goal is to evolve from a "chatbot with tools" not into a rigid script-runner, but into a **highly situational, context-aware partner**. We aim to give the Primary Agent (Gemini CLI) "Super-Senses"—the ability to instantly perceive, synthesize, and reason about massive amounts of historical data (emails, tasks, code) without being overwhelmed by it.
 
-## 2. Core Design Pattern: Hierarchical (Hub-and-Spoke)
+## 2. Core Design Pattern: Cognitive Tools (The Perception Layer)
 
-We utilize a **Supervisor-Worker (Hierarchical)** pattern rather than a "Swarm" or "OS Agent" approach.
+We utilize a **Cognitive Tool** pattern. Instead of the Primary Agent managing low-level data fetching, we expose "Smart Views" via tools.
 
--   **The Hub (Supervisor)**: The `agentic-consult` CLI orchestrates the high-level workflow (Fetch -> Synthesize -> Interact).
--   **The Spokes (Workers)**: Specialized modules/MCP tools (`ticktick-access`, `gwsa`) that act as "Cognitive Tools" with deep domain knowledge and specialized memory.
--   **Why?**: Reliability and Control. Hierarchical agents are less prone to logical loops and "hallucination drift" than autonomous swarms, making them more suitable for high-stakes professional productivity.
+-   **The Hub (Orchestrator)**: The Gemini CLI (You + LLM). It holds the initiative and high-level reasoning.
+-   **The Spokes (Perception Engines)**: Specialized modules/MCP tools (`ticktick-access`, `gwsa`) that act as "Sensors".
+    *   *Input:* High-level intent ("What is the status of Project X?").
+    *   *Process:* The tool accesses its cached "Long-Term Memory" (Gemini Context Cache) to analyze thousands of records.
+    *   *Output:* A synthesized **Situation Report** (not raw data). "Project X is waiting on Alice. Last email was 2 days ago. Related task #102 is overdue."
+
+### Why this reduces complexity:
+*   **Decoupling:** The Primary Agent doesn't need to know *how* to filter TickTick tasks or parse Gmail threads. It just asks for a summary.
+*   **Stability:** We avoid complex "Agent Swarms" or rigid "Workflow Scripts" (`orchestrator.py`) that break easily. The intelligence lives in the *tool's response*, empowering the LLM to make the final decision.
 
 ## 3. The Paradigm: Long-Context Native vs. Vector RAG
 
@@ -44,8 +50,18 @@ We avoid heavy-weight frameworks like LangGraph, Semantic Kernel, or CrewAI.
     -   **Control**: Explicit state management in Python is easier to debug than complex directed-acyclic-graphs (DAGs) in third-party libraries.
     -   **First-Class Tooling**: MCP (Model Context Protocol) is the native plugin format for our primary interfaces. Using MCP ensures our "Cognitive Tools" are portable to any client (CLI, IDE, or Desktop Agent).
 
-## 5. Implementation Roadmap
+## 5. Patterns to Study & Apply
 
-1.  **Synthesizer Phase**: A pre-computation step where the Hub queries all Spokes in parallel to generate a "Context Brief" for new inputs.
-2.  **Context Isolation**: The Primary Agent's context window remains clean, receiving only the synthesized brief rather than raw data dumps, ensuring high reasoning quality and low token costs.
-3.  **Reactive Refresh**: Use local caches (XDG cache) and file-based state (`workflow_state.json`) to track process positioning and synchronization timestamps.
+To improve effectiveness without adding complexity, focus on these patterns:
+
+1.  **The "Cognitive Tool" (or Reasoning Tool):**
+    *   *Concept:* A tool that doesn't just "do" (like `write_file`), but "thinks" (like `analyze_project_history`). It uses a cheaper/faster LLM call internally to process data before returning a result.
+    *   *Application:* Build a `get_situational_awareness()` tool that polls your Task and Email engines and returns a prioritized "Morning Briefing" automatically.
+
+2.  **The "Semantic Router":**
+    *   *Concept:* Instead of hardcoding "If X then Y", let the LLM decide which "Expert Tool" to call based on the user's intent.
+    *   *Application:* Your CLI already does this natively. Trust the model to pick the right tool (`backup`, `scan`, `analyze`) rather than forcing it into a linear script.
+
+3.  **Context Isolation:**
+    *   *Concept:* Keep the Primary Agent's context window clean. Never dump raw logs or 500 emails into the main chat. Always synthesize first.
+    *   *Application:* Ensure every "List" or "Search" tool has a summarization step (or default limit) so the Primary Agent receives actionable insights, not noise.
