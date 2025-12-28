@@ -118,19 +118,21 @@ def load_app_config(base_dir=None) -> dict:
 
 def parse_model_version(model_id: str) -> tuple:
     """
-    Parses model ID to sortable tuple: (is_stable, version_float).
-    Prioritizes Stability FIRST, then Version.
-    Example: 'gemini-2.5-pro' -> (True, 2.5)
-             'gemini-3.0-pro-preview' -> (False, 3.0)
-    Result: (True, 2.5) > (False, 3.0)
+    Parses model ID to sortable tuple: (is_stable, version_float, is_standard).
+    Prioritizes Stability > Version > Standard Tier (vs Lite).
+    Example: 'gemini-2.5-flash'      -> (True, 2.5, True)
+             'gemini-2.5-flash-lite' -> (True, 2.5, False)
+    Result: (True, 2.5, True) > (True, 2.5, False)
     """
     # Extract version numbers (e.g., 1.5, 2.0)
     match = re.search(r'(\d+(?:\.\d+)?)', model_id)
     version = float(match.group(1)) if match else 0.0
     
-    is_stable = not any(x in model_id.lower() for x in ['preview', 'exp', 'experimental'])
+    model_lower = model_id.lower()
+    is_stable = not any(x in model_lower for x in ['preview', 'exp', 'experimental'])
+    is_standard = 'lite' not in model_lower
     
-    return (is_stable, version)
+    return (is_stable, version, is_standard)
 
 def resolve_model_alias(model_name: str) -> str:
     """

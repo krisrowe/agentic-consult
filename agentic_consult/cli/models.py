@@ -29,7 +29,7 @@ def list_models(json_output):
     click.echo("Available Models:")
     default_model = config.get('default')
     for model in config.get('available', []):
-        is_stable, _ = parse_model_version(model)
+        is_stable, _, _ = parse_model_version(model)
         status = "Stable" if is_stable else "Preview"
         
         markers = [f"({status})"]
