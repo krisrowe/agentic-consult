@@ -71,6 +71,14 @@ We prioritize **capability over raw speed**, relying on the rapid evolution of G
     *   **Deep Planning** (`--deep`): Use `gemini-*-pro` (Target <20s) for complex cross-referencing.
 *   **Optimization:** We do *not* prematurely optimize code for <1s latency. We rely on Google's infrastructure improvements (Gemini 2.0/3.0) to accelerate the "Reasoning Engine" over time.
 
+### E. Network Feasibility Analysis
+
+Standard internet connections (e.g., 250 Mbps Down / 10 Mbps Up) are sufficient and **not a bottleneck**.
+
+*   **Context Upload (5MB / 500k tokens):** ~4 seconds (Background operation).
+*   **Delta Query (80KB / 20k tokens):** < 0.1 seconds (Interactive operation).
+*   **Conclusion:** Transport latency is negligible. User-perceived latency is dominated by Server-Side Inference (TTFT + Generation). We focus optimizations on **Prompt Structure**, not Payload Size.
+
 ## 2. State Management Schema (`workflow_state.json`)
 
 ```json
