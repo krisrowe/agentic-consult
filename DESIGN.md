@@ -92,6 +92,14 @@ Comparing execution on **Local Laptop** (250 Mbps) vs. **GCE Instance** (20 Gbps
     *   *Cloud:* 0.1s Upload + 1s Inference = 1.1s Total.
     *   *Result:* ~80% improvement. **Cloud Colocation becomes critical** once inference latency drops below transport latency.
 
+### G. Local Inference (Gemma) Assessment
+
+Running open models (e.g., Gemma 2) locally is **Rejected / Not Recommended**.
+
+*   **Constraint:** Local context windows (8k-32k) are insufficient for the "Super-Context" strategy (500k+ tokens).
+*   **Impact:** Using local inference would force a regression to **Vector RAG** (Fragmented Retrieval), breaking the core architectural decision to prioritize "Holistic Reasoning."
+*   **Verdict:** The capability loss outweighs the privacy/cost benefits for this specific "Executive Assistant" persona.
+
 ## 2. State Management Schema (`workflow_state.json`)
 
 ```json
