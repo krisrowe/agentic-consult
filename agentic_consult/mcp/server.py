@@ -9,7 +9,7 @@ from mcp.server.fastmcp import FastMCP
 
 from agentic_consult.backup.providers.local_repos import LocalRepoBackup
 from agentic_consult.backup.folder_providers.factory import get_folder_provider
-from agentic_consult.config import get_backups_google_drive_folder_id
+from agentic_consult.config import get_backups_google_drive_folder_id, get_model_help_text
 from agentic_consult.backup.exceptions import BackupError
 from agentic_consult.backup.results import BackupItemResult, BackupStatus
 from agentic_consult.scanner.core import run_scan
@@ -40,14 +40,13 @@ async def analyze_resources(
     Returns:
         A dictionary containing the 'response' text from Gemini, or an 'error' message.
     """
+    # Note: The docstring above is replaced dynamically below
     try:
         resource_list = [item.strip() for item in resources.split(",") if item.strip()]
         if not resource_list and resources.strip():
              return {"error": "Resource paths cannot be empty."}
 
-        # Run analysis (synchronous logic, but fast enough for stdio)
-        # Note: In a production HTTP server, we might want to run this in a thread pool,
-        # but for stdio CLI usage, blocking is acceptable.
+        # Run analysis
         result = run_analysis(prompt, resource_list)
         
         if result.get("error"):
@@ -58,6 +57,18 @@ async def analyze_resources(
     except Exception as e:
         logger.exception(f"Unexpected error during analyze_resources")
         return {"error": f"An unexpected error occurred: {str(e)}"}
+
+# Dynamically update the docstring with current config info
+analyze_resources.__doc__ = f"""
+Analyzes local markdown documentation and resources using Gemini.
+
+Supported configuration: {get_model_help_text()}
+
+Args:
+    prompt: The question or instruction for Gemini.
+    resources: A comma-separated list of paths or glob patterns to include 
+               in the context. Defaults to the current directory ('.').
+"""
 
 @mcp.tool()
 async def backup_local_repo(
@@ -128,11 +139,6 @@ async def run_precommit_scan(
         boolean flag and a 'findings' dictionary with any detected issues.
     """
     try:
-        # The run_scan function works relative to the CWD of the server process.
-        # We need to ensure the path is handled correctly.
-        # For simplicity, we can assume the server is run from the repo root,
-        # or we might need to resolve the path more robustly.
-        # Given the context, assuming CWD is repo root is reasonable.
         scan_results = run_scan(path=path, include_ignored=include_ignored)
         return scan_results
     except Exception as e:

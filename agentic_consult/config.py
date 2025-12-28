@@ -125,13 +125,43 @@ def resolve_model_alias(model_name: str) -> str:
 
 def get_default_model() -> str:
     """
-    Resolves the default Gemini model from project configuration.
+    Resolves the default Gemini model.
     Strictly requires a default model to be set.
     """
     app_config = load_app_config()
     model = app_config.get('gemini', {}).get('models', {}).get('default')
     
     if not model:
-        raise ValueError("Missing 'gemini.models.default' in project configuration. This configuration is required.")
+        raise ValueError("A default Gemini model must be defined in the system.")
         
     return resolve_model_alias(model)
+
+def get_model_info() -> dict:
+    """
+    Returns structured information about available models and aliases.
+    """
+    app_config = load_app_config()
+    models_cfg = app_config.get('gemini', {}).get('models', {})
+    return {
+        "default": models_cfg.get('default'),
+        "available": models_cfg.get('available', []),
+        "aliases": models_cfg.get('aliases', {})
+    }
+
+def get_model_help_text() -> str:
+    """
+    Generates a user-facing summary of available models and aliases.
+    """
+    info = get_model_info()
+    aliases = info['aliases']
+    
+    parts = []
+    if aliases:
+        alias_str = ", ".join(sorted(aliases.keys()))
+        parts.append(f"Supported aliases: {alias_str}")
+    
+    default = info['default']
+    if default:
+        parts.append(f"Default: {default}")
+        
+    return ". ".join(parts) + "." if parts else "No specific models configured."

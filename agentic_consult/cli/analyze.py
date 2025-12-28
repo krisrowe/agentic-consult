@@ -1,6 +1,7 @@
 import click
 import sys
 from agentic_consult.analyze import run_analysis
+from agentic_consult.config import get_model_help_text
 
 def _print_stats(stats: dict, response_text: str, stats_enabled: bool):
     """Formats and prints analysis statistics to stderr."""
@@ -26,13 +27,12 @@ def _print_stats(stats: dict, response_text: str, stats_enabled: bool):
     help="Path, glob, or comma-separated list of paths/globs (e.g., 'docs/*.md,notes/'). Defaults to '.'"
 )
 @click.option("--stats", "-s", "stats_enabled", is_flag=True, help="Show analysis statistics.")
-@click.option("--model", "-m", help="Override the Gemini model (e.g., 'gemini-2.5-pro', 'fast', 'slow'). Defaults to configured system setting.")
+@click.option("--model", "-m", help=f"Override the Gemini model. {get_model_help_text()}")
 def analyze(prompt, resources, stats_enabled, model):
     """
     Analyze project resources and documentation with Gemini.
     
     You can specify a model alias or a full model ID.
-    Common aliases: fast, slow, thinking, latest-pro.
     """
     
     # Split resources string into list
