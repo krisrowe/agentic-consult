@@ -4,7 +4,7 @@ This document provides the concrete implementation blueprint for the **Cognitive
 
 ## 1. System Components
 
-### A. Data Fetchers (The "Limbs")
+### A. Data Retrievers (The "Limbs")
 Scripts that synchronize remote data to local JSON caches.
 
 1.  **Task Sync Tool** (`scripts/sync_tasks.py`):
@@ -21,7 +21,7 @@ Scripts that synchronize remote data to local JSON caches.
         4.  **Deduplication**: Skip messages already present in the local cache.
     *   **Output**: `~/.local/share/agentic-consult/cache/emails.json`
 
-### B. Context Builder (The "Memory Maker")
+### B. Context Ingestion Pipeline (The "Memory Maker")
 **Script**: `scripts/update_context_cache.py`
 
 *   **Responsibility**: Bundles local data into a massive context and uploads it to Gemini.
@@ -32,7 +32,7 @@ Scripts that synchronize remote data to local JSON caches.
     3.  Calls Gemini API to create/update a **Context Cache**.
     4.  Saves the `cache_name` (resource ID) and `last_updated_timestamp` to `workflow_state.json`.
 
-### C. Cognitive Tool (The "Brain")
+### C. Reasoning Engine (The "Brain")
 **MCP Tool**: `get_situational_awareness` (or `consult analyze`)
 
 *   **Responsibility**: The high-level reasoning engine exposed to the Primary Agent.
@@ -44,7 +44,7 @@ Scripts that synchronize remote data to local JSON caches.
     3.  **Construct Prompt**:
         *   *System*: "You are a prioritization assistant."
         *   *Context*: [Reference `cache_name`]
-        *   *User*: "Here are the NEW items since cache creation: [Insert Deltas]. Question: [User Query]"
+        *   *User*: "Here are the NEW items since cache creation (Working Memory): [Insert Delta]. Question: [User Query]"
     4.  **Execute**: Send to Gemini API.
     5.  **Return**: The synthesized answer.
 
@@ -71,7 +71,7 @@ Scripts that synchronize remote data to local JSON caches.
 ## 3. Alignment with Architecture
 
 This design strictly implements the **Hub-and-Spoke** pattern from `ARCHITECTURE.md`:
-*   **Hub**: `consult analyze` (The Cognitive Tool).
+*   **Hub**: `consult analyze` (The Reasoning Engine).
 *   **Spokes**: `sync_tasks.py` and `sync_emails.py`.
 *   **Pattern**: It uses the **Hybrid Delta Caching** strategy to balance freshness (deltas) with depth (cached history).
 
