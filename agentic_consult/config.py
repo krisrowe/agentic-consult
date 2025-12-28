@@ -183,9 +183,7 @@ def get_default_model() -> str:
     
     if user_default:
         # JIT Validation: Must be in available list
-        # We need to resolve alias first, in case user set default to "fast"
         resolved_user_default = resolve_model_alias(user_default)
-        
         if resolved_user_default in available:
             return resolved_user_default
         else:
@@ -196,35 +194,26 @@ def get_default_model() -> str:
         
     return resolve_model_alias(app_default)
 
-def get_model_info() -> dict:
+def get_model_configuration() -> dict:
     """
-    Returns structured information about available models and aliases.
-    Calculates the 'effective_default' by resolving user/system settings.
+    Returns the fully resolved model configuration.
+    Single source of truth for CLI display and help text.
     """
     app_config = load_app_config()
     models_cfg = app_config.get('gemini', {}).get('models', {})
+    available = models_cfg.get('available', [])
+    system_default = models_cfg.get('default')
+    
+    # Check user override
+    user_config = load_main_config()
+    user_default = user_config.get('models', {}).get('default')
     
     try:
         effective_default = get_default_model()
     except ValueError:
         effective_default = None
-        
-    return {
-        "default": effective_default,
-        "system_default": models_cfg.get('default'),
-        "available": models_cfg.get('available', []),
-        "aliases": models_cfg.get('aliases', {})
-    }
-
-def get_model_configuration() -> dict:
-    """
-    Returns the fully resolved model configuration.
-    Includes default, available list, and resolved aliases.
-    """
-    info = get_model_info()
     
     # Calculate resolutions for standard aliases
-    # We check the ones defined in aliases map (if any were there) plus our standard dynamic ones
     standard_aliases = ['fast', 'thinking']
     resolutions = {}
     
@@ -232,39 +221,45 @@ def get_model_configuration() -> dict:
         resolutions[alias] = resolve_model_alias(alias)
         
     return {
-        "default": info['default'],
-        "available": info['available'],
+        "default": effective_default,
+        "system_default": system_default,
+        "user_default": user_default,
+        "available": available,
         "resolutions": resolutions
     }
 
 def get_model_help_text() -> str:
     """
     Generates a user-facing summary of available models and dynamic aliases.
-    Structure: Available models -> Dynamic Aliases -> Default.
+    Structure: Available models -> Dynamic Aliases -> Default -> Tip.
     """
-    info = get_model_info()
+    config = get_model_configuration()
     parts = []
     
     # 1. Available Models
-    available = info.get('available', [])
+    available = config.get('available', [])
     if available:
         parts.append(f"Available models: {', '.join(available)}")
     
     # 2. Dynamic Aliases
-    # Calculate what 'fast' and 'thinking' resolve to currently
-    aliases_shown = []
-    for alias in ['fast', 'thinking']:
-        resolved = resolve_model_alias(alias)
-        # Only show if it resolves to something different than itself (meaning it found a match)
-        if resolved != alias:
-            aliases_shown.append(f"{alias} -> {resolved}")
-            
-    if aliases_shown:
-        parts.append(f"Aliases: {', '.join(aliases_shown)}")
+    resolutions = config.get('resolutions', {})
+    if resolutions:
+        alias_list = []
+        for alias, target in sorted(resolutions.items()):
+            # Since our logic prioritizes stable versions, label them as such for clarity
+            alias_list.append(f"{alias} -> {target} (Latest Stable)")
+        parts.append(f"Aliases: {', '.join(alias_list)}")
     
     # 3. Default
-    default = info.get('default')
+    default = config.get('default')
+    user_override = config.get('user_default')
     if default:
-        parts.append(f"Default: {default}")
+        msg = f"Default: {default}"
+        if user_override:
+            msg += f" (User Override: '{user_override}')"
+        parts.append(msg)
         
-    return ". ".join(parts) + "." if parts else "No specific models configured."
+    # 4. Tip
+    parts.append("Tip: Use 'consult models set-default' to change the default.")
+        
+    return " ".join(parts)
