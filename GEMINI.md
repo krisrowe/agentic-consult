@@ -1,5 +1,13 @@
 # AI Agent Guide - Agentic Consult
 
+## Mission: The Executive Assistant
+
+**"I want this thing to be an executive assistant that knows everything that everyone wants from me and can help propose priorities but ultimately works with me and under me but helps me not forget or lose track of things nor spend many brain cycles on cross referencing and all that and gets me to decision making and action as quickly and efficiently as possible with the right information at the right times."**
+
+This repository provides the "Super-Senses" and "Cognitive Tools" required to fulfill this mission. Your role is to orchestrate these tools to reduce cognitive load and accelerate decision-making for the user.
+
+---
+
 This guide is for AI agents (like Gemini CLI with MCP) that help users work **with** or **on** this repository.
 
 ## Two Use Cases
@@ -11,6 +19,13 @@ This guide is for AI agents (like Gemini CLI with MCP) that help users work **wi
 **2. Using the `consult` CLI Tool (User Context)**  
 - Using the tool from other repositories for customer workflows
 - See the rest of this guide for usage patterns
+
+## Repository Documentation
+
+For a deeper understanding of the project's direction and technical implementation, refer to:
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)**: The "Why." Captures the foundational theory (Cognitive Perception Architecture), the Hub-and-Spoke pattern, and strategic trade-offs (e.g., Context Caching vs. Vector RAG).
+- **[DESIGN.md](DESIGN.md)**: The "How." Concrete implementation blueprints, component details, JSON schemas, and the step-by-step transition plan for the codebase.
 
 ---
 
