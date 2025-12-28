@@ -1,6 +1,7 @@
 import os
 import json
 import yaml
+import re
 import click
 from pathlib import Path
 from agentic_consult.schema import validate_yaml
@@ -110,18 +111,55 @@ def load_app_config(base_dir=None) -> dict:
             return {}
     return {}
 
+def _parse_model_version(model_id: str) -> tuple:
+    """
+    Parses model ID to sortable tuple: (is_stable, version_float).
+    Prioritizes Stability FIRST, then Version.
+    Example: 'gemini-2.5-pro' -> (True, 2.5)
+             'gemini-3.0-pro-preview' -> (False, 3.0)
+    Result: (True, 2.5) > (False, 3.0)
+    """
+    # Extract version numbers (e.g., 1.5, 2.0)
+    match = re.search(r'(\d+(?:\.\d+)?)', model_id)
+    version = float(match.group(1)) if match else 0.0
+    
+    is_stable = not any(x in model_id.lower() for x in ['preview', 'exp', 'experimental'])
+    
+    return (is_stable, version)
+
 def resolve_model_alias(model_name: str) -> str:
     """
-    Resolves a model alias (e.g., 'fast', 'latest-pro') to a specific model ID.
-    If no alias matches, returns the input string.
+    Resolves abstract aliases ('fast', 'thinking') to the best available model ID based on config.
+    Logic:
+    - 'fast' -> finds best 'flash' model.
+    - 'thinking'/'pro' -> finds best 'pro' model.
+    - Ranking: Higher version > Stable > Preview.
     """
     if not model_name:
         return model_name
-        
-    app_config = load_app_config()
-    aliases = app_config.get('gemini', {}).get('models', {}).get('aliases', {})
     
-    return aliases.get(model_name, model_name)
+    target = None
+    if model_name.lower() in ['fast', 'flash']:
+        target = 'flash'
+    elif model_name.lower() in ['thinking', 'pro', 'slow']:
+        target = 'pro'
+    
+    if not target:
+        # Not a known abstract alias, treat as explicit ID
+        return model_name
+
+    app_config = load_app_config()
+    available = app_config.get('gemini', {}).get('models', {}).get('available', [])
+    
+    candidates = [m for m in available if target in m.lower()]
+    
+    if not candidates:
+        return model_name # Fallback to input if no candidates found
+        
+    # Sort by (Version ASC, Stable ASC), then pick last (highest)
+    # Stable=True (1) > Stable=False (0)
+    best_match = sorted(candidates, key=_parse_model_version)[-1]
+    return best_match
 
 def get_default_model() -> str:
     """
@@ -150,17 +188,31 @@ def get_model_info() -> dict:
 
 def get_model_help_text() -> str:
     """
-    Generates a user-facing summary of available models and aliases.
+    Generates a user-facing summary of available models and dynamic aliases.
+    Structure: Available models -> Dynamic Aliases -> Default.
     """
     info = get_model_info()
-    aliases = info['aliases']
-    
     parts = []
-    if aliases:
-        alias_str = ", ".join(sorted(aliases.keys()))
-        parts.append(f"Supported aliases: {alias_str}")
     
-    default = info['default']
+    # 1. Available Models
+    available = info.get('available', [])
+    if available:
+        parts.append(f"Available models: {', '.join(available)}")
+    
+    # 2. Dynamic Aliases
+    # Calculate what 'fast' and 'thinking' resolve to currently
+    aliases_shown = []
+    for alias in ['fast', 'thinking']:
+        resolved = resolve_model_alias(alias)
+        # Only show if it resolves to something different than itself (meaning it found a match)
+        if resolved != alias:
+            aliases_shown.append(f"{alias} -> {resolved}")
+            
+    if aliases_shown:
+        parts.append(f"Aliases: {', '.join(aliases_shown)}")
+    
+    # 3. Default
+    default = info.get('default')
     if default:
         parts.append(f"Default: {default}")
         
