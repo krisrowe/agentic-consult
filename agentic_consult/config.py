@@ -116,7 +116,7 @@ def load_app_config(base_dir=None) -> dict:
             return {}
     return {}
 
-def _parse_model_version(model_id: str) -> tuple:
+def parse_model_version(model_id: str) -> tuple:
     """
     Parses model ID to sortable tuple: (is_stable, version_float).
     Prioritizes Stability FIRST, then Version.
@@ -163,7 +163,7 @@ def resolve_model_alias(model_name: str) -> str:
         
     # Sort by (Version ASC, Stable ASC), then pick last (highest)
     # Stable=True (1) > Stable=False (0)
-    best_match = sorted(candidates, key=_parse_model_version)[-1]
+    best_match = sorted(candidates, key=parse_model_version)[-1]
     return best_match
 
 def get_default_model() -> str:

@@ -4,7 +4,8 @@ from agentic_consult.config import (
     get_model_configuration, 
     resolve_model_alias, 
     load_main_config, 
-    save_main_config
+    save_main_config,
+    parse_model_version
 )
 
 @click.group()
@@ -28,8 +29,14 @@ def list_models(json_output):
     click.echo("Available Models:")
     default_model = config.get('default')
     for model in config.get('available', []):
-        marker = " (Default)" if model == default_model else ""
-        click.echo(f"  - {model}{marker}")
+        is_stable, _ = parse_model_version(model)
+        status = "Stable" if is_stable else "Preview"
+        
+        markers = [f"({status})"]
+        if model == default_model:
+            markers.append("(Default)")
+            
+        click.echo(f"  - {model:<25} {' '.join(markers)}")
     
     click.echo("")
     
@@ -37,7 +44,7 @@ def list_models(json_output):
     click.echo("Alias Resolutions:")
     resolutions = config.get('resolutions', {})
     for alias, target in resolutions.items():
-        click.echo(f"  - {alias:<10} -> {target}")
+        click.echo(f"  - {alias:<10} -> {target} (Latest Stable)")
     
     click.echo("")
 
