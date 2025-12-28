@@ -17,6 +17,11 @@ email:
   max_prompt_content_chars: 100000  # Stop adding emails after this limit is reached/exceeded
   max_email_chars: 100000           # Truncate individual emails exceeding this limit
 
+# Analyze Tool Configuration
+analyze:
+  max_file_count: 50
+  max_total_content_bytes: 1048576  # 1MB
+
 # Global Settings
 use_mock_gemini: false
 

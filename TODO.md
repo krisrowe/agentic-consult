@@ -43,6 +43,10 @@
     - [x] Remove `skip_task_writes` and `sync_tasks` from code and schemas.
     - [x] Refactor `app.yaml` and `config.yaml.example` to group settings under `tasks:` (`provider`, `cloud_sync`, `default_project`).
     - [x] Update `refresh.py` to use `dry_run` for all filesystem gates and `tasks.cloud_sync` for provider sync.
+- [ ] **MCP Integration**:
+    - [ ] Configure `agentic-consult` as a local MCP server in Gemini CLI settings.
+    - [ ] Verify `mcp.server.fastmcp` implementation in `agentic_consult/mcp/server.py`.
+    - [ ] Test tool discovery and execution via Gemini CLI.
 
 ---
 

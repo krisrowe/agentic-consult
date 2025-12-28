@@ -13,10 +13,51 @@ from agentic_consult.config import get_backups_google_drive_folder_id
 from agentic_consult.backup.exceptions import BackupError
 from agentic_consult.backup.results import BackupItemResult, BackupStatus
 from agentic_consult.scanner.core import run_scan
+from agentic_consult.analyze import run_analysis
 
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("agentic-consult")
+
+@mcp.tool()
+async def analyze_resources(
+    prompt: str,
+    resources: str = "."
+) -> dict[str, Any]:
+    """
+    Analyzes local markdown documentation and resources using Gemini.
+    
+    This tool aggregates content from 'GEMINI.md' and all '*.md' files in the
+    specified paths, constructs a prompt with this context, and queries Gemini.
+    Useful for answering questions about the codebase, architecture, or project status.
+
+    Args:
+        prompt: The question or instruction for Gemini.
+        resources: A comma-separated list of paths or glob patterns to include 
+                   in the context. Defaults to the current directory ('.').
+                   Example: "docs/*.md,notes/"
+
+    Returns:
+        A dictionary containing the 'response' text from Gemini, or an 'error' message.
+    """
+    try:
+        resource_list = [item.strip() for item in resources.split(",") if item.strip()]
+        if not resource_list and resources.strip():
+             return {"error": "Resource paths cannot be empty."}
+
+        # Run analysis (synchronous logic, but fast enough for stdio)
+        # Note: In a production HTTP server, we might want to run this in a thread pool,
+        # but for stdio CLI usage, blocking is acceptable.
+        result = run_analysis(prompt, resource_list)
+        
+        if result.get("error"):
+            return {"error": result["error"]}
+            
+        return {"response": result.get("response", "")}
+
+    except Exception as e:
+        logger.exception(f"Unexpected error during analyze_resources")
+        return {"error": f"An unexpected error occurred: {str(e)}"}
 
 @mcp.tool()
 async def backup_local_repo(

@@ -13,6 +13,7 @@ setup(
         "jsonschema",
         "google-api-python-client",
         "google-auth",
+        "mcp>=1.0.0",
     ],
     extras_require={
         "dev": [
@@ -23,6 +24,7 @@ setup(
     entry_points={
         "console_scripts": [
             "consult=agentic_consult.cli.main:main",
+            "consult-mcp=agentic_consult.mcp.server:run_server",
         ],
     },
     python_requires=">=3.8",

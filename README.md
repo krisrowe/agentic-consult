@@ -20,6 +20,15 @@ This tool helps automate customer support workflows by:
 
 **AI Agent Integration**: This tool is designed to work with AI assistants like Gemini CLI. See [GEMINI.md](GEMINI.md) for the agent-facing guide.
 
+## Features
+
+*   **Customer Management**: Initialize, configure, and manage customer profiles.
+*   **Context Refresh**: Fetches emails, matches them to tasks/issues, and prepares a daily briefing.
+*   **Security Scanner**: Pre-commit hook to prevent leaking sensitive data (secrets, customer names).
+*   **Backups**: Automated backups of local repositories to Google Drive.
+*   **Task Integration**: Syncs with TickTick for task management.
+*   **MCP Server**: Exposes tools (Backup, Scan, Analyze) to Gemini CLI. See [MCP-SERVER.md](MCP-SERVER.md).
+
 ## Installation
 
 The recommended way to install `agentic-consult` is via `pipx` to ensure isolation and global availability.
