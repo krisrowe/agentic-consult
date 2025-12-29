@@ -27,7 +27,7 @@ This tool helps automate customer support workflows by:
 *   **Security Scanner**: Pre-commit hook to prevent leaking sensitive data (secrets, customer names).
 *   **Backups**: Automated backups of local repositories to Google Drive.
 *   **Task Integration**: Syncs with TickTick for task management.
-*   **Gemini CLI**: Direct interface to Gemini API with context-aware file processing.
+*   **Gemini Command**: Direct interface to Gemini API with context-aware file processing.
 *   **MCP Server**: Exposes tools (Backup, Scan, Analyze Files) to Gemini CLI. See [MCP-SERVER.md](MCP-SERVER.md).
 
 ## MCP Server & Tools
