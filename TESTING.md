@@ -4,11 +4,13 @@ This project adheres to a **["Sociable Unit Testing"](https://martinfowler.com/b
 
 ## Core Philosophy: Why Sociable?
 
-We generally **avoid** "Solitary" unit tests (mocking internal classes/functions) because they couple tests too tightly to implementation details, making refactoring brittle.
+We subscribe to the mantra: **"Functionality is an asset, code is a liability."** This extends to the test suite itself.
 
-Instead, our "Core Tests":
-1.  **Test the Interface, Not the Internals**: We test from the public entry point (e.g., an SDK function or CLI command) down to the system boundary.
-2.  **Use Real Collaborators**: If an SDK function calls a helper class, we let it use the *real* helper class. We only mock the final "edge" of the system (Network I/O, Third-Party APIs).
+A test suite is code that demands maintenance and cognitive load. If we create a sprawling suite of "Solitary" tests (one for every internal function/class), we increase our liability without necessarily increasing our confidence in the system's behavior. Such suites become unwieldy, opaque, and eventually unmaintained because it becomes impossible to look at them and quickly assess "what functionality is covered?" versus "what implementation details are we testing?"
+
+Instead, our "Core Tests" focus on **functional ROI**:
+1.  **Test the Interface, Not the Internals**: We test from the public entry point (e.g., an SDK function or CLI command) down to the system boundary. This keeps the test suite readable as a specification of *capabilities*.
+2.  **Use Real Collaborators**: If an SDK function calls a helper class, we let it use the *real* helper class. We only mock the final "edge" of the system (Network I/O, Third-Party APIs). This ensures refactoring internal helpers doesn't break tests unless the *outcome* changes.
 3.  **Embrace the File System**: We do **not** shy away from real file system operations. We use isolated temporary directories (`tempfile` fixtures) for setup and teardown. This ensures our file handling logic is proven correct.
     *   *Exception*: If data is massive or practically impossible to generate/clean up in a test (e.g., huge binary assets), we may mock the file access layer, but this is rare.
 
