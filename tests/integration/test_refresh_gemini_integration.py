@@ -96,22 +96,35 @@ keywords: ["gemini"]
         
         # Global Config
         # tasks.cloud_sync: false to avoid provider calls
-        (customers_dir / 'config.yaml').write_text(f"""
-use_mock_data: true
-use_mock_gemini: false
-tasks:
-  cloud_sync: false
-  default_project: Work
-customers_local_path: {customers_dir}
-gemini:
-  debug: false
-""")
+        config_dir = tmp_path / 'config'
+        config_dir.mkdir()
+        (config_dir / 'settings.json').write_text(json.dumps({
+            "use_mock_data": True,
+            "use_mock_gemini": False,
+            "tasks": {
+                "cloud_sync": False,
+                "default_project": "Work"
+            },
+            "customers_local_path": str(customers_dir),
+            "gemini": {
+                "debug": False
+            }
+        }))
         
         # 2. Run Consult Refresh
         repo_root = Path(__file__).resolve().parent.parent.parent
         
         env = os.environ.copy()
-        env['CUSTOMERS_DIR'] = str(customers_dir)
+        env['CONSULT_CONFIG_DIR'] = str(config_dir)
+        # env['CUSTOMERS_DIR'] is likely not needed if customers_local_path is set in config,
+        # but the CLI might check it as an override? 
+        # Actually, looking at config.py, get_local_data_root checks local_data setting.
+        # But customers.py usually resolves based on that.
+        # To be safe, let's look at how customers_local_path is used.
+        # It's likely better to stick to the standard config structure.
+        # In the original test, it wrote config.yaml which was ignored.
+        # Let's see if we need to set specific env vars.
+        
         env['LOG_LEVEL'] = 'DEBUG'
         env['PYTHONPATH'] = str(repo_root)
         python_cmd = sys.executable
