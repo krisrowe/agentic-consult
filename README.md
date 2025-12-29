@@ -30,6 +30,20 @@ This tool helps automate customer support workflows by:
 *   **Gemini CLI**: Direct interface to Gemini API with context-aware file processing.
 *   **MCP Server**: Exposes tools (Backup, Scan, Analyze Files) to Gemini CLI. See [MCP-SERVER.md](MCP-SERVER.md).
 
+## MCP Server & Tools
+
+This repository exposes its capabilities via the Model Context Protocol (MCP), allowing AI assistants (like Gemini CLI or Claude Desktop) to use them as tools.
+
+### Why use `analyze_files`?
+
+The `analyze_files` tool allows an agent to request analysis of local files by delegating the reading and processing to a sub-call. While it might seem counterintuitive for a local agent to call a tool just to read files, this approach offers critical advantages:
+
+1.  **Context Hygiene**: You avoid polluting your main agent session's context with the raw content of massive file trees. If you read everything into the main session, that data is re-sent with *every* subsequent request, degrading performance, increasing cost, and racing toward context limits.
+2.  **Isolation**: You can ask a targeted question ("Check these logs for errors") in an isolated context. The main agent receives only the answer, not the noise.
+3.  **Precision**: It provides a standard, predictable syntax (using `.gitignore` style patterns) to control exactly which files are considered, ensuring the model focuses only on relevant data.
+
+For installation, configuration, and a full list of tools, see **[MCP-SERVER.md](MCP-SERVER.md)**.
+
 ## Installation
 
 The recommended way to install `agentic-consult` is via `pipx` to ensure isolation and global availability.
