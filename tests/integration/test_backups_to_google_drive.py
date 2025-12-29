@@ -175,7 +175,7 @@ def test_backup_lifecycle_end_to_end(integration_env):
 
     # --- Step 5: Backup Execution (Run 1) ---
     print("\n[Test] Running first backup...")
-    result = runner.invoke(backup_cli, ['run', '--non-interactive', '--skip-dirty', '--format', 'json'])
+    result = runner.invoke(backup_cli, ['all', '--non-interactive', '--skip-dirty', '--format', 'json'])
     assert result.exit_code == 0
     
     output_json = json.loads(result.stdout)
@@ -256,7 +256,7 @@ def test_backup_lifecycle_end_to_end(integration_env):
     with open(os.path.join(repo3, "dirty_file_2.txt"), "w") as f:
         f.write("Even more dirty content")
 
-    result = runner.invoke(backup_cli, ['run', '--non-interactive', '--skip-dirty', '--format', 'json'])
+    result = runner.invoke(backup_cli, ['all', '--non-interactive', '--skip-dirty', '--format', 'json'])
     assert result.exit_code == 0
     output_json_2 = json.loads(result.stdout)
     local_repos_res_2 = next(r for r in output_json_2 if r['provider_name'] == "Local-Only Git Repositories")
@@ -264,10 +264,10 @@ def test_backup_lifecycle_end_to_end(integration_env):
     
     # Verify statuses
     assert repo_items_2['clean_repo_1']['status'] == BackupStatus.SUCCESS.value # Updated
-    assert "Synced" in repo_items_2['clean_repo_1']['message']
+    assert "COMPLETED" in repo_items_2['clean_repo_1']['message']
     
     assert repo_items_2['clean_repo_2']['status'] == BackupStatus.NO_CHANGE.value # Still unchanged
-    assert "No changes" in repo_items_2['clean_repo_2']['message']
+    assert "No new commits" in repo_items_2['clean_repo_2']['message']
     
     assert repo_items_2['dirty_repo']['status'] == BackupStatus.DIRTY.value # Skipped dirty
 

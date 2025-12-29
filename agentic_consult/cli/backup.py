@@ -26,13 +26,13 @@ def config(folder_name, folder_id, create):
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
-@backup.command()
+@backup.command(name="all")
 @click.option('--force', is_flag=True, help="Force backup of dirty repositories (non-interactive).")
 @click.option('--skip-dirty', is_flag=True, help="Skip dirty repositories (non-interactive).")
 @click.option('--non-interactive', is_flag=True, help="Disable interactive prompts.")
 @click.option('--format', type=click.Choice(['text', 'json']), default='text', help="Output format.")
-def run(force, skip_dirty, non_interactive, format):
-    """Runs the backup process."""
+def run_all(force, skip_dirty, non_interactive, format):
+    """Runs the backup process for all configured providers."""
     is_interactive = sys.stdin.isatty() and not non_interactive
     
     orchestrator = BackupOrchestrator()
@@ -52,15 +52,19 @@ def run(force, skip_dirty, non_interactive, format):
             grouped_items[item.type].append(item)
 
         if format == 'json':
-            # Create a serializable version of the grouped items
-            json_output = {
-                group: [asdict(item) for item in items]
-                for group, items in grouped_items.items()
-            }
-            # Convert enums to strings for JSON
-            for group, items in json_output.items():
-                for item in items:
+            # Create a serializable version of the ProviderResults
+            json_output = []
+            for res in results:
+                res_dict = {
+                    'provider_name': res.provider_name,
+                    'status': res.status,
+                    'message': res.message,
+                    'items': [asdict(item) for item in res.items]
+                }
+                # Convert enums to strings
+                for item in res_dict['items']:
                     item['status'] = item['status'].value
+                json_output.append(res_dict)
             click.echo(json.dumps(json_output, indent=2))
             
         else:

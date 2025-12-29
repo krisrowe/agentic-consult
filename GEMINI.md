@@ -100,7 +100,7 @@ consult precommit --include-ignored
 
 **Backup customer data to Drive:**
 ```bash
-consult backup [--output-dir /path] [--no-upload]
+consult backup all
 ```
 
 ## Integration with MCP/gwsa
@@ -185,13 +185,11 @@ keywords:
 4. Execute: `--no-dry-run`
 5. Check created TickTick tasks and issue files
 
-### Backup workflow
-1. Periodic backups: `consult backup`
-2. Uploads customer data to their configured Drive folder
-3. Use `--no-upload` for local-only backups
-
-## Configuration Management
-
+ ### Backup workflow
+ 1. Periodic backups: `consult backup all`
+ 2. Uploads customer data to their configured Drive folder
+ 
+ ## Configuration Management
 **View config:**
 ```bash
 consult config show

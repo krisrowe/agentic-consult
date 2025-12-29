@@ -104,7 +104,7 @@ consult customers show <slug>
 consult customers notes add <slug> --content "Meeting notes..."
 
 # Backup customer data
-consult backup
+consult backup all
 ```
 
 ### Security Scanning

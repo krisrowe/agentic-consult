@@ -11,7 +11,7 @@ from agentic_consult.backup.exceptions import (
     FolderAccessError
 )
 from agentic_consult.config import save_main_config
-from agentic_consult.cli.backup import run as run_command
+from agentic_consult.cli.backup import run_all as run_command
 
 @pytest.fixture
 def temp_dirs(monkeypatch):
@@ -99,8 +99,9 @@ def test_backup_result_summary_valid_json(temp_dirs):
     # 1. Verify JSON output in stdout
     try:
         data = json.loads(result.stdout)
-        assert isinstance(data, dict)
-        assert "Home" in data # Check for one of the provider types
+        assert isinstance(data, list)
+        # Check for one of the provider types in the items of the first provider
+        assert any(any(item['type'] == 'Home' for item in prov['items']) for prov in data)
     except json.JSONDecodeError:
         pytest.fail(f"Stdout is not valid JSON: {result.stdout}")
 
