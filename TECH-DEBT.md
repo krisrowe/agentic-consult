@@ -40,3 +40,12 @@ This document tracks known architectural issues and areas for improvement in the
 
 - [ ] **Orphaned Backup File Handling**: In `UserHomeBackup`, detect files that exist on Drive but not locally. Implement a strategy for handling these orphans, such as prompting the user for deletion (in interactive mode) or skipping them. Consider a `--prune` flag for non-interactive cleanup. An alternative could be archiving all home files into a single `.zip` per run, similar to how repos are handled, which would simplify cleanup.
 
+## 6. Optimize Local-Only Backup Status Checks (Reduce Network I/O)
+- **Context**: Currently, checking the status of a local-only repository (`consult repo-status`) requires making a Google Drive API call to fetch the `state_hash` from the remote bundle's `appProperties`. This adds latency and requires a network connection.
+- **Proposal**:
+    - Store the hash of the last successfully backed-up state locally (e.g., in `.git/config` via `git config consult.backup.last_hash` or a separate metadata file in `.gemini/`).
+    - Allow status checks to compare the current repo state against this local record for an instant, offline "Clean" status.
+    - Add a flag (e.g., `--verify-remote` or `--online`) to force the tool to double-check the actual file on Google Drive.
+    - Alternatively, default to the safe network check but allow an `--offline` flag.
+- **Goal**: Improve CLI responsiveness and support offline usage for status checks.
+
