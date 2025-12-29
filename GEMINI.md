@@ -300,6 +300,7 @@ make clean
 
 **Test coverage:**
 - See **[TESTING.md](TESTING.md)** for the project's testing philosophy (**["Sociable Unit Tests"](https://martinfowler.com/bliki/UnitTest.html)**).
+- **Philosophy**: Avoid "Solitary" tests. Test full workflows from the SDK/CLI entry point. Use real file system operations (temp dirs) over mocking, unless strictly network-bound.
 - **Core Tests (`tests/unit/`)**: Run by default. Verify full features without network I/O.
 - **External Tests (`tests/integration/`)**: Verify real API interactions (Drive, Gmail).
 
