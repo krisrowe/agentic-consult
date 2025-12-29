@@ -18,10 +18,70 @@ from agentic_consult.context import build_context
 from agentic_consult.gemini import GeminiAPIClient
 from agentic_consult.backup.status import assess_repo_status
 from agentic_consult.backup.orchestrator import BackupOrchestrator
+from agentic_consult.backup.metadata_manager import BackupMetadataManager
 
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("agentic-consult")
+
+@mcp.tool()
+async def get_backup_metadata(path: str = ".") -> dict[str, Any]:
+    """
+    Retrieves backup metadata (description and keywords) for a repository.
+    """
+    try:
+        manager = BackupMetadataManager(path)
+        desc, keywords = manager.get_metadata()
+        return {
+            "repository": manager.repo_path,
+            "description": desc,
+            "keywords": keywords
+        }
+    except ValueError as e:
+        return {"error": str(e)}
+
+@mcp.tool()
+async def set_backup_metadata(
+    path: str = ".",
+    description: Optional[str] = None,
+    keywords: Optional[str] = None
+) -> dict[str, Any]:
+    """
+    Sets backup metadata for a repository in its local git config.
+    """
+    try:
+        manager = BackupMetadataManager(path)
+        manager.set_metadata(description, keywords)
+        return {"message": "Metadata updated successfully."}
+    except ValueError as e:
+        return {"error": str(e)}
+
+@mcp.tool()
+async def clear_backup_metadata(path: str = ".") -> dict[str, Any]:
+    """
+    Clears backup metadata for a repository.
+    """
+    try:
+        manager = BackupMetadataManager(path)
+        manager.clear_metadata()
+        return {"message": "Metadata cleared successfully."}
+    except ValueError as e:
+        return {"error": str(e)}
+
+@mcp.tool()
+async def generate_backup_metadata(path: str = ".") -> dict[str, Any]:
+    """
+    Generates backup metadata proposal using Gemini.
+    """
+    try:
+        manager = BackupMetadataManager(path)
+        desc, keywords = manager.generate_proposal()
+        return {
+            "proposed_description": desc,
+            "proposed_keywords": keywords
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 @mcp.tool()
 async def analyze_files(
