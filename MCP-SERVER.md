@@ -17,8 +17,20 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) enables AI assist
 | Tool | Description |
 |------|-------------|
 | `analyze_files` | Analyzes local files using Gemini. Recursively gathers context from files/folders with exclusion support. |
+| `assess_workstation_backup_state` | Assesses backup state of the entire workstation (all configured providers). |
 | `backup_local_repo` | Backs up a single local git repository to Google Drive. |
+| `check_repo_status` | Checks the backup status of a git repository (Local-Only or Remote). |
 | `run_precommit_scan` | Runs a pre-commit scan for sensitive data in a local directory. |
+
+### Configuration Dependency
+
+**Important**: These MCP tools rely on the global configuration managed by the `consult` CLI. Before using backup-related tools (`backup_local_repo`, `check_repo_status`, `assess_workstation_backup_state`), you must ensure the underlying paths and settings are configured.
+
+Specifically, the backup tools require:
+1.  **Google Drive Folder**: `consult config set backups.google_drive_folder_id <ID>`
+2.  **Local Repos Path**: `consult config set backups.local_repos.path <PATH>`
+
+If these are not set, the MCP tools will return an error instructing you to configure them via the CLI.
 
 ## Quick Start
 
@@ -29,11 +41,14 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) enables AI assist
     pipx install .
     ```
 
-2.  **Backup Configuration** (Required for `backup_local_repo`):
+2.  **Backup Configuration**:
     ```bash
+    # Set the root path where your local repositories are stored
+    consult config set backups.local_repos.path /path/to/your/workspace
+    
+    # Configure the Google Drive destination
     consult backup config
     ```
-    Follow the prompts to configure the Google Drive folder ID.
 
 3.  **MCP Client**: Google Gemini CLI or Gemini Code Assist (VS Code).
 

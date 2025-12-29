@@ -162,6 +162,30 @@ consult precommit --include-ignored
 
 **Note**: The `consult precommit` command runs ONLY the security scanner (no tests). Use `make precommit` when contributing to this repository to run both tests and scanner.
 
+### Backups
+The `consult backup all` command safeguards your work by backing up repositories to Google Drive.
+
+```bash
+# Run backup for all configured locations
+consult backup all
+
+# Dry-run to preview actions
+consult backup all --dry-run
+```
+
+**Discovery Logic:**
+- **Recursive Search**: The tool searches recursively starting from the configured `backups.local_repos.path`.
+- **Nested Repositories**: It detects repositories nested inside other folders or even inside other repositories (e.g., submodules or vendored code).
+- **Depth**: It traverses as deep as the file system allows, skipping only `.git` directories themselves.
+
+**Configuration Requirement:**
+To use the backup feature, you **MUST** configure the root directory for repository discovery. There is **no default** path (e.g., we do not default to `$HOME` as scanning the entire home directory would be extremely slow and resource-intensive).
+
+```bash
+# Configure the root search path for local repos
+consult config set backups.local_repos.path /home/user/workspace
+```
+
 ### Configuration
 ```bash
 # Show config
