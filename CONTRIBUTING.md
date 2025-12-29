@@ -42,7 +42,7 @@ make test
 # Run integration tests (slower, hits real APIs)
 make test-integration
 
-# Run all tests
+# Run all tests (unit + integration)
 make test-all
 
 # Or manually with pytest

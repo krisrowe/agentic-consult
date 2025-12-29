@@ -16,7 +16,7 @@ Instead, our "Core Tests" focus on **functional ROI**:
 
 ## Tier 1: Core Tests ("Sociable Unit Tests")
 *   **Location**: `tests/unit/`
-*   **Execution**: Fast, deterministic, run by default (`pytest`).
+*   **Execution**: Fast, deterministic, run by default.
 *   **What to Mock**:
     *   Network calls (Google Drive, Gmail, TickTick API).
     *   System clocks/Time (if precision is required).
@@ -32,21 +32,34 @@ Instead, our "Core Tests" focus on **functional ROI**:
 *   **Execution**: Slow, flaky, require credentials. Excluded by default.
 *   **Usage**: Write these sparingly to verify that our API client code actually works against the real provider.
 
+### Integration Prerequisites
+Running integration tests (`tests/integration/`) requires:
+1.  **Authentication**: You must be authenticated with Google Drive via Application Default Credentials (ADC).
+    *   Run `gcloud auth application-default login` OR set `GOOGLE_APPLICATION_CREDENTIALS`.
+    *   The tests need permission to read/write/create files and folders on Drive.
+2.  **Artifacts**: These tests **WILL** create temporary folders and files on your Google Drive (e.g., `Consult_Test_Backup_...`).
+    *   Tests attempt to clean up, but failures may leave artifacts behind. You may need to manually prune them occasionally.
+
 ## How to Run Tests
 
-**Run Core Tests (Default):**
-```bash
-pytest
-```
+We use `make` to simplify execution. These commands automatically set up the Python virtual environment (`.venv`) and install dependencies if they are missing, so you can run them immediately after a `git clone`.
 
-**Run External Tests (Requires Auth):**
+| Command | Description | Coverage |
+| :--- | :--- | :--- |
+| **`make test`** | **Recommended.** Runs all Core (Unit) tests. Fast & safe. | `tests/unit/` |
+| **`make test-integration`** | Runs External tests. Requires ADC auth. | `tests/integration/` |
+| **`make test-all`** | Runs EVERYTHING. Requires ADC auth. | `tests/` |
+
+**Manual execution (via pytest):**
 ```bash
+# Core only
+pytest
+
+# External only (requires auth)
 pytest -m external
 # or
 pytest tests/integration/
-```
 
-## Adding New Tests
-1.  **Refactoring?** Ensure `tests/unit/` still passes.
-2.  **New Feature?** Add a "Sociable" test in `tests/unit/` that exercises the new command/SDK function. Setup a temp directory, create necessary dummy files, invoke the code, and assert the output or file system state. Mock only the network.
-3.  **Complex Isolated Logic?** Only if a specific algorithm is extremely complex and has many edge cases (e.g., a regex parser or math utility) do we write a Solitary test for it.
+# All
+pytest tests/
+```
