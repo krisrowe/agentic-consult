@@ -6,6 +6,7 @@ from agentic_consult.backup.folder_providers.factory import get_folder_provider
 from agentic_consult.backup.providers.base import BackupProvider
 from agentic_consult.backup.providers.user_home import UserHomeBackup
 from agentic_consult.backup.providers.local_repos import LocalRepoBackup
+from agentic_consult.backup.providers.remote_repos import RemoteRepoBackup
 from agentic_consult.backup.exceptions import BackupConfigurationError, FolderAccessError
 from agentic_consult.backup.results import ProviderResult
 
@@ -17,10 +18,11 @@ class BackupOrchestrator:
         self.provider = get_folder_provider()
         self.providers: List[BackupProvider] = [
             UserHomeBackup(),
-            LocalRepoBackup()
+            LocalRepoBackup(),
+            RemoteRepoBackup()
         ]
 
-    def run_backups(self, force: bool = False, skip_dirty: bool = False, interactive: bool = True) -> List[ProviderResult]:
+    def run_backups(self, force: bool = False, skip_dirty: bool = False, interactive: bool = True, dry_run: bool = False) -> List[ProviderResult]:
         """
         Runs all configured backup providers and returns their results.
         """
@@ -36,7 +38,8 @@ class BackupOrchestrator:
         options = {
             'force': force,
             'skip_dirty': skip_dirty,
-            'interactive': interactive
+            'interactive': interactive,
+            'dry_run': dry_run
         }
 
         print("Starting backup process...", file=sys.stderr)

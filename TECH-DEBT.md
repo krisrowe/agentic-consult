@@ -25,5 +25,10 @@ This document tracks known architectural issues and areas for improvement in the
     - Ensure that when `--message <id>` is provided, only that specific email is fetched and subsequently processed, effectively bypassing unnecessary fetching, loading from cache, and batching logic for other emails.
     - The goal is true isolation and efficiency from the earliest possible stage in the refresh workflow.
 
+## 4. Unify Google Authentication (Remove `gwsa` Dependency)
+- **Problem**: We currently depend on `gwsa` CLI for Gmail operations (requiring `gwsa auth login`) but use ADC/Google Client Library for Drive operations (requiring `gcloud auth` or custom creds). This dual-stack auth is confusing and fragile.
+- **Solution**: Refactor `agentic_consult/gmail.py` to use `googleapiclient` directly, sharing the ADC setup used by backups.
+- **Tracking**: [Issue #1](https://github.com/krisrowe/agentic-consult/issues/1)
+
 - [ ] **Orphaned Backup File Handling**: In `UserHomeBackup`, detect files that exist on Drive but not locally. Implement a strategy for handling these orphans, such as prompting the user for deletion (in interactive mode) or skipping them. Consider a `--prune` flag for non-interactive cleanup. An alternative could be archiving all home files into a single `.zip` per run, similar to how repos are handled, which would simplify cleanup.
 

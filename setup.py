@@ -28,5 +28,5 @@ setup(
             "consult-mcp=agentic_consult.mcp.server:run_server",
         ],
     },
-    python_requires=">=3.8",
+    python_requires=">=3.10",
 )

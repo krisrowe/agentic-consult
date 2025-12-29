@@ -4,6 +4,7 @@ import json
 import logging
 import tempfile
 from typing import Any, Optional
+from dataclasses import asdict
 
 from mcp.server.fastmcp import FastMCP
 
@@ -15,6 +16,8 @@ from agentic_consult.backup.results import BackupItemResult, BackupStatus
 from agentic_consult.scanner.core import run_scan
 from agentic_consult.context import build_context
 from agentic_consult.gemini import GeminiAPIClient
+from agentic_consult.backup.status import assess_repo_status
+from agentic_consult.backup.orchestrator import BackupOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +133,63 @@ async def backup_local_repo(
     except Exception as e:
         logger.exception(f"Unexpected error during backup_local_repo for {path}")
         return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.tool()
+async def check_repo_status(
+    path: str = "."
+) -> dict[str, Any]:
+    """
+    Checks the backup status of a git repository (Local-Only or Remote).
+    
+    Determines if a backup is needed and provides guidance.
+    
+    Args:
+        path: Path to the repository.
+        
+    Returns:
+        Structured status information including 'backup_needed' flag and 'guidance'.
+    """
+    try:
+        status = assess_repo_status(path)
+        return asdict(status)
+    except Exception as e:
+        logger.exception(f"Error in check_repo_status for {path}")
+        return {"error": str(e)}
+
+@mcp.tool()
+async def assess_workstation_backup_state() -> dict[str, Any]:
+    """
+    Assesses the backup state of the entire workstation (all configured providers).
+    
+    This runs a dry-run of the backup process to identify what needs to be backed up
+    without performing any uploads.
+    
+    Returns:
+        Structured report of all items and their status (e.g., PENDING, SUCCESS, FAILED).
+    """
+    try:
+        orchestrator = BackupOrchestrator()
+        # dry_run=True, interactive=False (implicit for MCP)
+        results = orchestrator.run_backups(force=False, skip_dirty=False, interactive=False, dry_run=True)
+        
+        json_output = []
+        for res in results:
+            res_dict = {
+                'provider_name': res.provider_name,
+                'status': res.status,
+                'message': res.message,
+                'items': [asdict(item) for item in res.items]
+            }
+            # Convert enums to strings
+            for item in res_dict['items']:
+                item['status'] = item['status'].value
+            json_output.append(res_dict)
+            
+        return {"providers": json_output}
+        
+    except Exception as e:
+        logger.exception("Error in assess_workstation_backup_state")
+        return {"error": str(e)}
 
 @mcp.tool()
 async def run_precommit_scan(

@@ -30,14 +30,15 @@ def config(folder_name, folder_id, create):
 @click.option('--force', is_flag=True, help="Force backup of dirty repositories (non-interactive).")
 @click.option('--skip-dirty', is_flag=True, help="Skip dirty repositories (non-interactive).")
 @click.option('--non-interactive', is_flag=True, help="Disable interactive prompts.")
+@click.option('--dry-run', is_flag=True, help="Simulate backup without uploading.")
 @click.option('--format', type=click.Choice(['text', 'json']), default='text', help="Output format.")
-def run_all(force, skip_dirty, non_interactive, format):
+def run_all(force, skip_dirty, non_interactive, dry_run, format):
     """Runs the backup process for all configured providers."""
     is_interactive = sys.stdin.isatty() and not non_interactive
     
     orchestrator = BackupOrchestrator()
     try:
-        results = orchestrator.run_backups(force=force, skip_dirty=skip_dirty, interactive=is_interactive)
+        results = orchestrator.run_backups(force=force, skip_dirty=skip_dirty, interactive=is_interactive, dry_run=dry_run)
         
         # Combine all items and group by type for printing
         all_items = []
@@ -70,18 +71,19 @@ def run_all(force, skip_dirty, non_interactive, format):
         else:
             # Print ASCII Table
             ITEM_WIDTH = 38
-            TYPE_WIDTH = 8
+            TYPE_WIDTH = 14  # Expanded for "Remote Repo"
             STATUS_WIDTH = 12
             
-            click.echo("\n" + "="*92)
+            click.echo("\n" + "="*98)
             click.echo(f"{ 'ITEM':<{ITEM_WIDTH}} | { 'TYPE':<{TYPE_WIDTH}} | { 'STATUS':<{STATUS_WIDTH}} | {'DETAILS'}")
-            click.echo("-" * 92)
+            click.echo("-" * 98)
             
             for group_name in sorted(grouped_items.keys()):
                 for item in grouped_items[group_name]:
                     status_icon = "✅" if item.status == BackupStatus.SUCCESS else \
                                   "❌" if item.status == BackupStatus.FAILED else \
                                   "⚠️ " if item.status == BackupStatus.DIRTY else \
+                                  "⏳" if item.status == BackupStatus.PENDING else \
                                   "ℹ️ " # NO_CHANGE or NOT_FOUND
                     
                     status_text = item.status.value
@@ -94,7 +96,7 @@ def run_all(force, skip_dirty, non_interactive, format):
                     if len(item_name) > ITEM_WIDTH:
                         item_name = item_name[:ITEM_WIDTH-3] + "..."
                         
-                    type_icon = "🏠" if item.type == "Home" else "📂" if item.type == "Repo" else ""
+                    type_icon = "🏠" if item.type == "Home" else "📂" if "Repo" in item.type else ""
                     # Pad the type name first, then add icon
                     padded_type = f"{item.type:<{TYPE_WIDTH - 2}}"
                     type_text = f"{type_icon} {padded_type}"
@@ -105,7 +107,7 @@ def run_all(force, skip_dirty, non_interactive, format):
                         
                     click.echo(f"{item_name:<{ITEM_WIDTH}} | {type_text} | {full_status} | {msg}")
             
-            click.echo("="*92 + "\n")
+            click.echo("="*98 + "\n")
 
     except (ValueError, BackupError) as e:
         click.echo(f"Error: {e}", err=True)

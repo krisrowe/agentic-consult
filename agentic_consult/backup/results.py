@@ -8,6 +8,7 @@ class BackupStatus(Enum):
     NO_CHANGE = "No Change"
     DIRTY = "Dirty"
     NOT_FOUND = "Not Found"
+    PENDING = "Pending"
 
 @dataclass
 class BackupItemResult:

@@ -58,8 +58,9 @@ pipx install . --force
 
 ## Prerequisites
 
-- Python 3.8+
-- [Google Workspace Access (gwsa)](https://github.com/example/gwsa) - For Gmail and Drive integration.
+- **Python 3.10+** (Modern type hinting support)
+- **Git 2.11+** (Required for `consult repo-status` and backups; uses `--porcelain=v2` status format)
+- [Google Workspace Access (gwsa)](https://github.com/krisrowe/gworkspace-access) - For Gmail and Drive integration.
 - [TickTick Access](https://github.com/krisrowe/ticktick-access) - For task management.
 
 ### TickTick Setup
@@ -79,6 +80,26 @@ pipx install . --force
    ```bash
    ticktick auth
    ```
+
+## Authentication & Setup
+
+This tool requires authentication for three distinct services:
+
+1.  **Gmail Integration**: Requires `gwsa` CLI installed and authenticated.
+    ```bash
+    pipx install google-workspace-access
+    gwsa auth login
+    ```
+
+2.  **Google Drive (Backups)**: Uses Application Default Credentials (ADC).
+    - **Standard**: Run `gcloud auth application-default login`.
+    - **Custom**: Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of a valid Service Account key or Authorized User credentials JSON file.
+    - **Client ID Restrictions**: Some accounts (e.g., personal `gmail.com` or restricted Workspace orgs) block the default `gcloud` client from accessing sensitive scopes like Drive. In this case, `gcloud auth application-default login` will fail or yield insufficient permissions. You must bring your own OAuth Client ID, generate credentials via a custom script (e.g., using `google_auth_oauthlib`), and point `GOOGLE_APPLICATION_CREDENTIALS` to the resulting JSON file.
+
+3.  **Gemini API**: Requires an API Key.
+    ```bash
+    export GEMINI_API_KEY="your-key-here"
+    ```
 
 ## Debugging
 
