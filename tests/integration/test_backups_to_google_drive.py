@@ -264,8 +264,7 @@ def test_backup_lifecycle_end_to_end(integration_env):
     
     # Verify statuses
     assert repo_items_2['clean_repo_1']['status'] == BackupStatus.SUCCESS.value # Updated
-    assert "COMPLETED" in repo_items_2['clean_repo_1']['message']
-    
+    assert "Updated" in repo_items_2['clean_repo_1']['message']
     assert repo_items_2['clean_repo_2']['status'] == BackupStatus.NO_CHANGE.value # Still unchanged
     assert "No new commits" in repo_items_2['clean_repo_2']['message']
     

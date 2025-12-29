@@ -40,7 +40,7 @@ test-all:
 		python3 -m venv .venv; \
 		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
 	fi
-	@. .venv/bin/activate && PYTHONPATH=. pytest tests/unit tests/integration
+	@. .venv/bin/activate && PYTHONPATH=. pytest tests/
 
 precommit:
 	@if [ ! -d ".venv" ]; then \
