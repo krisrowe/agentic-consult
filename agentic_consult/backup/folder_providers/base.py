@@ -37,6 +37,6 @@ class BackupsFolderProvider(ABC):
         pass
 
     @abstractmethod
-    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None) -> str:
+    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None, description: Optional[str] = None, content_hints: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Uploads or updates a file with optional metadata properties."""
         pass

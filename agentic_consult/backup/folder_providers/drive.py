@@ -79,20 +79,24 @@ class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
             current_parent_id = folder_id
         return current_parent_id
 
-    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None, description: Optional[str] = None, content_hints: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         file_name = name or os.path.basename(local_path)
         existing_file = self.find_file(file_name, parent_id)
         
         if existing_file:
-            return self._update_file(existing_file['id'], local_path, app_properties)
+            return self._update_file(existing_file['id'], local_path, app_properties, description, content_hints)
         else:
-            return self._upload_file(local_path, parent_id, name, app_properties)
+            return self._upload_file(local_path, parent_id, name, app_properties, description, content_hints)
 
-    def _upload_file(self, local_path: str, parent_id: str, name: Optional[str], app_properties: Optional[Dict[str, str]]) -> Dict[str, Any]:
+    def _upload_file(self, local_path: str, parent_id: str, name: Optional[str], app_properties: Optional[Dict[str, str]], description: Optional[str], content_hints: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if not self.service: raise FolderAccessError("Drive client not initialized")
         file_metadata = {'name': name or os.path.basename(local_path), 'parents': [parent_id]}
         if app_properties:
             file_metadata['appProperties'] = app_properties
+        if description:
+            file_metadata['description'] = description
+        if content_hints:
+            file_metadata['contentHints'] = content_hints
             
         media = MediaFileUpload(local_path, resumable=True)
         try:
@@ -102,11 +106,15 @@ class GoogleDriveBackupsFolderProvider(BackupsFolderProvider):
         except HttpError as error:
             raise FolderAccessError(f"Upload failed: {error}")
 
-    def _update_file(self, file_id: str, local_path: str, app_properties: Optional[Dict[str, str]]) -> Dict[str, Any]:
+    def _update_file(self, file_id: str, local_path: str, app_properties: Optional[Dict[str, str]], description: Optional[str], content_hints: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if not self.service: raise FolderAccessError("Drive client not initialized")
         file_metadata = {}
         if app_properties:
             file_metadata['appProperties'] = app_properties
+        if description:
+            file_metadata['description'] = description
+        if content_hints:
+            file_metadata['contentHints'] = content_hints
             
         media = MediaFileUpload(local_path, resumable=True)
         try:

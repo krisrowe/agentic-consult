@@ -6,11 +6,14 @@ from agentic_consult.backup.config_manager import BackupConfigManager
 from agentic_consult.backup.orchestrator import BackupOrchestrator
 from agentic_consult.backup.exceptions import BackupError
 from agentic_consult.backup.results import BackupStatus
+from agentic_consult.cli.metadata import metadata
 
 @click.group()
 def backup():
     """Backup management commands."""
     pass
+
+backup.add_command(metadata)
 
 @backup.command()
 @click.option('--folder-name', help="Name of the Google Drive folder to use.")
@@ -126,7 +129,8 @@ def run_all(force, skip_dirty, non_interactive, dry_run, format):
 @click.option('--force', is_flag=True, help="Force backup even if repository is dirty.")
 @click.option('--skip-dirty', is_flag=True, help="Skip if dirty instead of prompting/failing.")
 @click.option('--non-interactive', is_flag=True, help="Disable interactive prompts.")
-def local_repo(path, force, skip_dirty, non_interactive):
+@click.option('--dry-run', is_flag=True, help="Simulate backup without uploading.")
+def local_repo(path, force, skip_dirty, non_interactive, dry_run):
     """Backs up a single git repository, regardless of whether it has remotes."""
     import os
     from agentic_consult.backup.providers.local_repos import LocalRepoBackup
@@ -154,7 +158,8 @@ def local_repo(path, force, skip_dirty, non_interactive):
         options = {
             'force': force,
             'skip_dirty': skip_dirty,
-            'interactive': sys.stdin.isatty() and not non_interactive
+            'interactive': sys.stdin.isatty() and not non_interactive,
+            'dry_run': dry_run
         }
         
         temp_dir = tempfile.mkdtemp(prefix="consult_single_backup_")
@@ -166,8 +171,18 @@ def local_repo(path, force, skip_dirty, non_interactive):
                 temp_dir=temp_dir,
                 options=options
             )
+            # Fetch metadata info for the summary line
+            from agentic_consult.backup.metadata_manager import BackupMetadataManager
+            try:
+                manager = BackupMetadataManager(repo_path)
+                description, keywords = manager.get_metadata()
+            except ValueError:
+                description, keywords = None, None
+            
+            meta_status = "with metadata" if (description or keywords) else "no metadata"
+            
             # Verbose output for single run
-            click.echo(f"Backup of '{result.name}' repo: {result.status.value.upper()} ({result.message})")
+            click.echo(f"Backup of '{result.name}' repo: {result.status.value.upper()} ({result.message}) [{meta_status}]")
             if result.status == BackupStatus.FAILED:
                 sys.exit(1)
 

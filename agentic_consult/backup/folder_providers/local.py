@@ -83,7 +83,7 @@ class LocalBackupsFolderProvider(BackupsFolderProvider):
             os.makedirs(current_path, exist_ok=True)
         return current_path
 
-    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    def sync_file(self, local_path: str, parent_id: str, name: Optional[str] = None, app_properties: Optional[Dict[str, str]] = None, description: Optional[str] = None, content_hints: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         parent_dir = self._resolve_path(parent_id)
         file_name = name or os.path.basename(local_path)
         target_path = os.path.join(parent_dir, file_name)

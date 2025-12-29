@@ -73,6 +73,7 @@ class LocalRepoBackup(GitBaseProvider):
     def backup_single_repo(self, repo_path: str, folder_provider, provider_folder_id: str, temp_dir: str, options: Dict[str, Any]) -> BackupItemResult:
         """Handles the backup logic for a single repository."""
         import click 
+        from agentic_consult.backup.metadata_manager import BackupMetadataManager
 
         repo_name = os.path.basename(repo_path)
         force = options.get('force', False)
@@ -112,13 +113,34 @@ class LocalRepoBackup(GitBaseProvider):
         
         last_hash = remote_file['appProperties'].get('state_hash') if remote_file and 'appProperties' in remote_file else None
         
+        # Metadata retrieval
+        # Note: This data is saved to Drive metadata but not inside the bundle. 
+        # A thought to remember: this data lives on Drive, so a future restore 
+        # could reconstruct the local config from it.
+        try:
+            manager = BackupMetadataManager(repo_path)
+            description, keywords = manager.get_metadata()
+        except ValueError:
+            description, keywords = None, None
+
+        content_hints = None
+        if keywords:
+            content_hints = {'indexableText': keywords}
+        
+        metadata_msg = ""
+        if description or keywords:
+            total_len = len(description or "") + len(keywords or "")
+            metadata_msg = f" (metadata: {total_len} chars)"
+        else:
+            metadata_msg = " (no metadata)"
+
         verb = "update" if remote_file else "add"
 
         if current_hash == last_hash and remote_file:
-            return BackupItemResult(repo_name, BackupStatus.NO_CHANGE, "No new commits", type="Local Repo")
+            return BackupItemResult(repo_name, BackupStatus.NO_CHANGE, f"No new commits{metadata_msg}", type="Local Repo")
 
         if dry_run:
-            return BackupItemResult(repo_name, BackupStatus.PENDING, f"Would {verb} backup", type="Local Repo")
+            return BackupItemResult(repo_name, BackupStatus.PENDING, f"Would {verb} backup{metadata_msg}", type="Local Repo")
 
         # Actual Backup Action
         bundle_path = os.path.join(temp_dir, bundle_filename)
@@ -130,11 +152,13 @@ class LocalRepoBackup(GitBaseProvider):
                 bundle_path, 
                 provider_folder_id, 
                 name=bundle_filename, 
-                app_properties={'state_hash': current_hash}
+                app_properties={'state_hash': current_hash},
+                description=description,
+                content_hints=content_hints
             )
             
             past_verb = "updated" if verb == "update" else "added"
-            msg = f"{past_verb.capitalize()} {bundle_filename}"
+            msg = f"{past_verb.capitalize()} {bundle_filename}{metadata_msg}"
             
             return BackupItemResult(repo_name, BackupStatus.SUCCESS, msg, type="Local Repo")
         except subprocess.CalledProcessError as e:

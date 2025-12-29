@@ -82,6 +82,27 @@ class GitUtils:
         except Exception: return ""
 
     @staticmethod
+    def get_config(repo_path: str, key: str) -> Optional[str]:
+        try:
+            result = subprocess.run(["git", "config", "--local", "--get", key], cwd=repo_path, capture_output=True, text=True)
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception: pass
+        return None
+
+    @staticmethod
+    def set_config(repo_path: str, key: str, value: str):
+        try:
+            subprocess.run(["git", "config", "--local", key, value], cwd=repo_path, check=True)
+        except Exception: pass
+
+    @staticmethod
+    def unset_config(repo_path: str, key: str):
+        try:
+            subprocess.run(["git", "config", "--local", "--unset-all", key], cwd=repo_path)
+        except Exception: pass
+
+    @staticmethod
     def get_remote_status(repo_path: str) -> Dict[str, Any]:
         """Returns dict with status ('ahead', 'behind', 'diverged', 'clean', 'unknown') and counts."""
         result_data = {'status': 'unknown', 'unpushed': 0, 'unpulled': 0}
