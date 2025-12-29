@@ -136,7 +136,7 @@ consult precommit --include-ignored
    git push origin feature/your-feature
    ```
 
-## Gemini CLI Usage
+## Official Gemini CLI Usage
 
 When using the `gemini` CLI for automated processing (e.g., in `customers refresh`), follow these best practices for clean, predictable, and fast output:
 
