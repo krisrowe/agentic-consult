@@ -83,23 +83,24 @@ class LocalRepoBackup(GitBaseProvider):
         # Dirty Check
         if self._is_dirty(repo_path):
             stats = self._get_git_status_stats(repo_path)
-            dirty_details = f"Staged: {stats['staged']}, Unstaged: {stats['unstaged']}, Untracked: {stats['untracked']}"
+            # Only show non-zero counts
+            p = []
+            if stats['staged'] > 0: p.append(f"Staged: {stats['staged']}")
+            if stats['unstaged'] > 0: p.append(f"Unstaged: {stats['unstaged']}")
+            if stats['untracked'] > 0: p.append(f"Untracked: {stats['untracked']}")
+            dirty_msg = ", ".join(p) if p else "Dirty"
             
             # Interactive prompt logic
-            # If dry run, we assume we skip dirty unless force? 
-            # Or do we report "Would fail due to dirty"?
-            # If force is True, we "Would backup committed".
-            
             if interactive and not force and not skip_dirty and not dry_run:
-                click.echo(f"\nRepository '{repo_name}' is dirty.\n  - {dirty_details}", err=True)
+                click.echo(f"\nRepository '{repo_name}' is dirty.\n  - {dirty_msg}", err=True)
                 if not click.confirm(f"Do you want to backup ONLY committed changes for '{repo_name}'?"):
-                    return BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)", type="Local Repo")
+                    return BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)", type="Local Repo", details={'stats': stats})
             else:
                 if skip_dirty:
-                    return BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)", type="Local Repo")
+                    return BackupItemResult(repo_name, BackupStatus.DIRTY, "Skipped (dirty)", type="Local Repo", details={'stats': stats})
                 if not force:
                     # In dry run, report that it IS dirty and thus would fail/skip
-                    return BackupItemResult(repo_name, BackupStatus.DIRTY, f"Dirty: {dirty_details}", type="Local Repo")
+                    return BackupItemResult(repo_name, BackupStatus.DIRTY, dirty_msg, type="Local Repo", details={'stats': stats})
                 else: 
                     # force=True, proceed (warn if not quiet)
                     if not dry_run:
@@ -132,9 +133,8 @@ class LocalRepoBackup(GitBaseProvider):
                 app_properties={'state_hash': current_hash}
             )
             
-            file_id = sync_result.get('id', 'unknown')
             past_verb = "updated" if verb == "update" else "added"
-            msg = f"COMPLETED ({past_verb} {bundle_filename})"
+            msg = f"{past_verb.capitalize()} {bundle_filename}"
             
             return BackupItemResult(repo_name, BackupStatus.SUCCESS, msg, type="Local Repo")
         except subprocess.CalledProcessError as e:

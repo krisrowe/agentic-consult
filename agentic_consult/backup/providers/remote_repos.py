@@ -50,8 +50,8 @@ class RemoteRepoBackup(GitBaseProvider):
         # 1. Check Cleanliness
         if self._is_dirty(repo_path):
             stats = self._get_git_status_stats(repo_path)
-            dirty_details = f"Staged: {stats['staged']}, Unstaged: {stats['unstaged']}, Untracked: {stats['untracked']}"
-            return BackupItemResult(repo_name, BackupStatus.DIRTY, f"Dirty: {dirty_details}", type="Remote Repo")
+            # Message is just the summary, details has the data
+            return BackupItemResult(repo_name, BackupStatus.DIRTY, "Uncommitted changes", type="Remote Repo", details={'stats': stats})
 
         # 2. Check Pushed status
         from agentic_consult.backup.git_utils import GitUtils
@@ -60,6 +60,6 @@ class RemoteRepoBackup(GitBaseProvider):
         if status == "ahead":
             return BackupItemResult(repo_name, BackupStatus.FAILED, "Unpushed commits", type="Remote Repo")
         elif status == "unknown":
-             return BackupItemResult(repo_name, BackupStatus.FAILED, "Status unknown (no upstream?)", type="Remote Repo")
+             return BackupItemResult(repo_name, BackupStatus.FAILED, "No upstream configured", type="Remote Repo")
         
         return BackupItemResult(repo_name, BackupStatus.SUCCESS, "Clean & Pushed", type="Remote Repo")

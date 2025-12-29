@@ -87,9 +87,7 @@ def run_all(force, skip_dirty, non_interactive, dry_run, format):
                                   "ℹ️ " # NO_CHANGE or NOT_FOUND
                     
                     status_text = item.status.value
-                    
-                    # Pad status text *before* adding icon for alignment
-                    padded_status = f"{status_text:<{STATUS_WIDTH - 2}}" # -2 for icon and space
+                    padded_status = f"{status_text:<{STATUS_WIDTH - 2}}"
                     full_status = f"{status_icon} {padded_status}"
                     
                     item_name = item.name
@@ -97,11 +95,21 @@ def run_all(force, skip_dirty, non_interactive, dry_run, format):
                         item_name = item_name[:ITEM_WIDTH-3] + "..."
                         
                     type_icon = "🏠" if item.type == "Home" else "📂" if "Repo" in item.type else ""
-                    # Pad the type name first, then add icon
                     padded_type = f"{item.type:<{TYPE_WIDTH - 2}}"
                     type_text = f"{type_icon} {padded_type}"
                     
-                    msg = item.message.replace('\n', ' ')
+                    # Build smart details message
+                    msg = item.message
+                    if item.details and 'stats' in item.details:
+                        stats = item.details['stats']
+                        parts = []
+                        if stats.get('staged', 0) > 0: parts.append(f"Staged: {stats['staged']}")
+                        if stats.get('unstaged', 0) > 0: parts.append(f"Unstaged: {stats['unstaged']}")
+                        if stats.get('untracked', 0) > 0: parts.append(f"Untracked: {stats['untracked']}")
+                        if parts:
+                            msg = ", ".join(parts)
+                    
+                    msg = msg.replace('\n', ' ')
                     if len(msg) > 30:
                         msg = msg[:27] + "..."
                         
