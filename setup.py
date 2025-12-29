@@ -14,6 +14,7 @@ setup(
         "google-api-python-client",
         "google-auth",
         "mcp>=1.0.0",
+        "pathspec",
     ],
     extras_require={
         "dev": [

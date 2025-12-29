@@ -8,7 +8,6 @@ from .issues import issues
 from .models import models
 from .tasks import tasks
 from .refresh import refresh
-from .analyze import analyze
 from .gemini import gemini
 from .user_home import user_home_cli
 
@@ -25,7 +24,6 @@ main.add_command(issues)
 main.add_command(models)
 main.add_command(tasks)
 main.add_command(refresh)
-main.add_command(analyze)
 main.add_command(gemini)
 main.add_command(user_home_cli)
 
