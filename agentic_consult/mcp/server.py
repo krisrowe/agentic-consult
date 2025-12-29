@@ -13,10 +13,74 @@ from agentic_consult.config import get_backups_google_drive_folder_id, get_model
 from agentic_consult.backup.exceptions import BackupError
 from agentic_consult.backup.results import BackupItemResult, BackupStatus
 from agentic_consult.scanner.core import run_scan
+from agentic_consult.context import build_context
+from agentic_consult.gemini import GeminiAPIClient
 
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("agentic-consult")
+
+@mcp.tool()
+async def analyze_files(
+    prompt: str,
+    context_paths: list[str] = ["."],
+    exclude: list[str] = [],
+    model: str = None,
+    stats: bool = False
+) -> dict[str, Any]:
+    """
+    Analyzes local files using Gemini.
+    
+    This tool allows you to ask questions about your codebase by including specific
+    files or directories in the context. It respects exclusions and file limits.
+
+    Args:
+        prompt: The question or instruction for Gemini.
+        context_paths: A list of paths (files or directories) to include.
+                       Defaults to the current directory ('.').
+        exclude: A list of glob patterns to exclude (e.g., "*.pyc", "tests/").
+                 Matches recursively (standard .gitignore behavior).
+        model: Specific model ID or alias (fast, thinking) to use.
+        stats: Whether to include analysis metrics in the response.
+
+    Returns:
+        A dictionary containing the 'response' text from Gemini, or an 'error' message.
+    """
+    try:
+        # Build Context
+        # We use a silent callback or logging for warnings in MCP context
+        context_chunks = build_context(
+            context_paths, 
+            exclude, 
+            max_size_kb=100, # Default limit for MCP
+            on_limit="warn",
+            warning_callback=lambda msg: logger.warning(msg)
+        )
+
+        # Build Prompt
+        full_prompt = prompt
+        if context_chunks:
+            full_prompt = f"Context:\n\n{''.join(context_chunks)}\n\nQuestion: {prompt}"
+
+        # Call Gemini
+        client = GeminiAPIClient(model_name=model)
+        result = client.generate_content(full_prompt)
+        
+        output = {"response": result["text"]}
+        
+        if stats:
+            output["stats"] = {
+                "latency": result["latency"],
+                "input_chars": len(full_prompt),
+                "output_chars": len(result["text"]),
+                "context_files": len(context_chunks)
+            }
+            
+        return output
+
+    except Exception as e:
+        logger.exception(f"Unexpected error during analyze_resources")
+        return {"error": f"An unexpected error occurred: {str(e)}"}
 
 @mcp.tool()
 async def backup_local_repo(
