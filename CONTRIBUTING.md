@@ -36,12 +36,18 @@ This command:
 ### Running Tests
 
 ```bash
-# Run all tests (recommended)
+# Run unit tests only (fast)
 make test
+
+# Run integration tests (slower, hits real APIs)
+make test-integration
+
+# Run all tests
+make test-all
 
 # Or manually with pytest
 source .venv/bin/activate
-pytest
+pytest tests/unit
 
 # Verbose output
 pytest -v
@@ -52,19 +58,24 @@ pytest tests/unit/test_precommit.py
 
 ### Test Suite Coverage
 
-**10 comprehensive tests:**
+**10+ comprehensive unit tests:**
 - Schema validation (customer.yaml, config.yaml)
 - Drive ID detection and validation
 - Security scanner with exact line/value matching
 - Gitignore behavior verification
 - Multiple match counting on non-adjacent lines
 
+**Integration Tests:**
+- End-to-end backup workflows
+- Gemini CLI prompt processing
+- Refresh command with real/mock models
+
 ### Adding New Tests
 
-1. Add test file to `tests/unit/`
+1. Add test file to `tests/unit/` or `tests/integration/`
 2. Use pytest fixtures and assertions
 3. Test with synthetic data only (never real customer names/data)
-4. Run `make test` to verify
+4. Run `make test` or `make test-integration` to verify
 5. Run `make precommit` before committing
 
 ## Code Style

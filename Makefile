@@ -24,7 +24,23 @@ test:
 		python3 -m venv .venv; \
 		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
 	fi
-	@. .venv/bin/activate && PYTHONPATH=. pytest
+	@. .venv/bin/activate && PYTHONPATH=. pytest tests/unit
+
+test-integration:
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Creating it..."; \
+		python3 -m venv .venv; \
+		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
+	fi
+	@. .venv/bin/activate && PYTHONPATH=. pytest tests/integration
+
+test-all:
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Creating it..."; \
+		python3 -m venv .venv; \
+		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
+	fi
+	@. .venv/bin/activate && PYTHONPATH=. pytest tests/unit tests/integration
 
 precommit:
 	@if [ ! -d ".venv" ]; then \
@@ -35,25 +51,26 @@ precommit:
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "Running precommit checks..."
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@. .venv/bin/activate && PYTHONPATH=. pytest
+	@. .venv/bin/activate && PYTHONPATH=. pytest > /tmp/consult-pytest-output.txt 2>&1; \
 	TEST_EXIT=$$?; \
-	PASS_COUNT=$$(grep -oP '\d+(?= passed)' /tmp/pytest-output.txt || echo "0"); \
-	TOTAL_COUNT=$$(grep -oP '\d+(?= collected)' /tmp/pytest-output.txt || echo "0"); \
+	cat /tmp/consult-pytest-output.txt; \
+	PASS_COUNT=$$(grep -oP '\d+(?= passed)' /tmp/consult-pytest-output.txt || echo "0"); \
+	TOTAL_COUNT=$$(grep -oP '\d+(?= collected)' /tmp/consult-pytest-output.txt || echo "0"); \
 	if [ "$$TOTAL_COUNT" = "0" ]; then \
-		TOTAL_COUNT=$$(grep -oP '\d+(?= items)' /tmp/pytest-output.txt || echo "$$PASS_COUNT"); \
+		TOTAL_COUNT=$$(grep -oP '\d+(?= items)' /tmp/consult-pytest-output.txt || echo "$$PASS_COUNT"); \
 	fi; \
 	if [ $$TEST_EXIT -eq 0 ]; then \
 		echo "✅ Tests: $$PASS_COUNT/$$TOTAL_COUNT passed"; \
 	else \
 		echo "❌ Tests: FAILED (run 'make test' for details)"; \
 	fi; \
-	export PYTHONPATH=${PYTHONPATH}:. && .venv/bin/python -m agentic_consult precommit > /tmp/scanner-output.txt 2>&1; \
+	export PYTHONPATH=${PYTHONPATH}:. && .venv/bin/python -m agentic_consult precommit > /tmp/consult-scanner-output.txt 2>&1; \
 	SCAN_EXIT=$$?; \
 	if [ $$SCAN_EXIT -eq 0 ]; then \
 		echo "✅ Scanner: No sensitive data found"; \
 	else \
 		echo "❌ Scanner: Sensitive data detected"; \
-		cat /tmp/scanner-output.txt; \
+		cat /tmp/consult-scanner-output.txt; \
 	fi; \
 	echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
 	if [ $$TEST_EXIT -ne 0 ] || [ $$SCAN_EXIT -ne 0 ]; then \

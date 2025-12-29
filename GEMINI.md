@@ -103,6 +103,16 @@ consult precommit --include-ignored
 consult backup all
 ```
 
+### Context-Aware Gemini Query
+
+**Query Gemini with file context:**
+```bash
+consult gemini "Prompt..." [PATH]... [--exclude PATTERN]
+```
+- Supports files and directories as context paths.
+- Uses `.gitignore`-style exclusion patterns.
+- Automatically skips binary files.
+
 ## Integration with MCP/gwsa
 
 The tool expects these MCP capabilities:
