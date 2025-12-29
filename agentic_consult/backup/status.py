@@ -8,13 +8,9 @@ from agentic_consult.config import get_backups_google_drive_folder_id
 @dataclass
 class RepoStatus:
     path: str
-    name: str
-    is_git: bool
-    type: str  # "Local-Only" or "Remote"
-    backup_needed: bool
-    status: str # "Clean", "Dirty", "Unpushed", "Pending Backup", "Backed Up", "Error"
-    guidance: str
-    details: Dict[str, Any]
+    local: Dict[str, Any]
+    remote: Dict[str, Any]
+    summary: Dict[str, Any]
 
 def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
     """
@@ -25,15 +21,19 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
     name = os.path.basename(abs_path)
     
     if not GitUtils.is_git_repo(abs_path):
+        summary = {
+            "name": name,
+            "type": "Unknown",
+            "status": "Not a git repo",
+            "guidance": "Initialize git or check path.",
+            "is_git": False,
+            "backup_needed": False
+        }
         return RepoStatus(
             path=abs_path,
-            name=name,
-            is_git=False,
-            type="Unknown",
-            backup_needed=False,
-            status="Not a git repo",
-            guidance="Initialize git or check path.",
-            details={}
+            local={"status": "UNKNOWN", "stats": {}},
+            remote={"status": "UNKNOWN", "stats": {}},
+            summary=summary
         )
 
     has_remotes = GitUtils.has_remotes(abs_path)
@@ -42,156 +42,131 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
     stats = GitUtils.get_status_stats(abs_path)
     is_dirty = stats['staged'] > 0 or stats['unstaged'] > 0
     
-    details = {
-        'has_remotes': has_remotes,
-        'dirty_stats': stats
+    local = {
+        'status': "DIRTY" if is_dirty else "CLEAN",
+        'stats': stats
     }
 
+    remote = {"status": "UNDEFINED", "stats": {}}
+    backup_needed = False
+    status_msg = "Clean"
+    guidance = "No action needed."
+
     if repo_type == "Remote":
-        remote_status = GitUtils.get_remote_status(abs_path)
-        details['remote_status'] = remote_status
+        remote_info = GitUtils.get_remote_status(abs_path)
+        remote_status = remote_info['status']
+        last_fetch = GitUtils.get_last_fetch_time(abs_path)
+        
+        # Map to uppercase Enum-like strings for the relationship
+        remote_enum_map = {
+            'clean': 'SYNCED',
+            'ahead': 'AHEAD',
+            'behind': 'BEHIND',
+            'diverged': 'DIVERGED',
+            'unknown': 'UNKNOWN'
+        }
+        
+        remote = {
+            'status': remote_enum_map.get(remote_status, 'UNKNOWN'),
+            'last_fetch': last_fetch,
+            'stats': {
+                'unpushed': remote_info.get('unpushed', 0),
+                'unpulled': remote_info.get('unpulled', 0)
+            }
+        }
         
         if is_dirty:
-            return RepoStatus(
-                path=abs_path,
-                name=name,
-                is_git=True,
-                type=repo_type,
-                backup_needed=True, # Needs push
-                status="Dirty",
-                guidance="Commit changes and push to remote.",
-                details=details
-            )
-        
-        if remote_status == "ahead":
-            return RepoStatus(
-                path=abs_path,
-                name=name,
-                is_git=True,
-                type=repo_type,
-                backup_needed=True,
-                status="Unpushed",
-                guidance="Push commits to remote.",
-                details=details
-            )
-            
-        return RepoStatus(
-            path=abs_path,
-            name=name,
-            is_git=True,
-            type=repo_type,
-            backup_needed=False,
-            status="Clean & Pushed",
-            guidance="Repository is safe on remote.",
-            details=details
-        )
+            backup_needed = True
+            status_msg = "Dirty"
+            guidance = "Commit changes and push to remote."
+        elif remote_status == "ahead":
+            backup_needed = True
+            status_msg = "Unpushed"
+            guidance = "Push commits to remote."
+        elif remote_status == "diverged":
+            backup_needed = True
+            status_msg = "Diverged"
+            guidance = "Repository has both unpushed and unpulled commits. Manual merge required."
+        elif remote_status == "behind":
+            status_msg = "Behind"
+            guidance = "Pull latest changes from remote."
+        elif remote_status == "clean":
+            status_msg = "Clean & Pushed"
+            guidance = "Repository is safe on remote."
         
     else: # Local-Only
-        # Check against Drive
         try:
             folder_id = get_backups_google_drive_folder_id()
             if not folder_id:
-                return RepoStatus(
-                    path=abs_path,
-                    name=name,
-                    is_git=True,
-                    type=repo_type,
-                    backup_needed=True,
-                    status="Config Error",
-                    guidance="Configure backup folder ID to enable status checks.",
-                    details=details
-                )
-            
-            folder_provider = get_folder_provider()
-            # We assume "local-only-repos" structure
-            # To avoid creating folders just for a status check, we should try to find it first.
-            # But ensure_folder_path is what providers use. 
-            # If checking status, we might not want to create the folder if it doesn't exist?
-            # Existing code: provider_folder_id = folder_provider.ensure_folder_path(["local-only-repos"]...)
-            # We'll stick to that for consistency, or handle the error if not found.
-            
-            # Optimization: Try to find 'local-only-repos' first without ensure?
-            # folder_provider interface only has find_folder (single level).
-            # Let's trust ensure_folder_path is relatively cheap or we accept it.
-            # Actually, `LocalRepoBackup` creates it.
-            
-            local_repos_folder_id = folder_provider.find_folder("local-only-repos", parent_id=folder_id)
-            
-            if not local_repos_folder_id:
-                 return RepoStatus(
-                    path=abs_path,
-                    name=name,
-                    is_git=True,
-                    type=repo_type,
-                    backup_needed=True,
-                    status="No Backup Folder",
-                    guidance="Run 'consult backup all' to initialize backups.",
-                    details=details
-                )
-            
-            bundle_filename = f"{name}.bundle"
-            remote_file = folder_provider.find_file(bundle_filename, local_repos_folder_id)
-            
-            current_hash = GitUtils.get_repo_state_hash(abs_path)
-            details['current_hash'] = current_hash
-            
-            if remote_file:
-                last_hash = remote_file.get('appProperties', {}).get('state_hash')
-                details['remote_hash'] = last_hash
-                
-                if current_hash == last_hash:
-                    return RepoStatus(
-                        path=abs_path,
-                        name=name,
-                        is_git=True,
-                        type=repo_type,
-                        backup_needed=False,
-                        status="Backed Up",
-                        guidance="No action needed.",
-                        details=details
-                    )
-                else:
-                    if is_dirty:
-                         return RepoStatus(
-                            path=abs_path,
-                            name=name,
-                            is_git=True,
-                            type=repo_type,
-                            backup_needed=True,
-                            status="Dirty & Outdated",
-                            guidance="Commit changes and run 'consult backup local-repo' or 'consult backup all'.",
-                            details=details
-                        )
-                    return RepoStatus(
-                        path=abs_path,
-                        name=name,
-                        is_git=True,
-                        type=repo_type,
-                        backup_needed=True,
-                        status="Outdated Backup",
-                        guidance="Run 'consult backup local-repo' or 'consult backup all' to update.",
-                        details=details
-                    )
+                status_msg = "Config Error"
+                guidance = "Configure backup folder ID to enable status checks."
+                backup_needed = True
             else:
-                 return RepoStatus(
-                    path=abs_path,
-                    name=name,
-                    is_git=True,
-                    type=repo_type,
-                    backup_needed=True,
-                    status="Not Backed Up",
-                    guidance="Run 'consult backup local-repo' or 'consult backup all' to create initial backup.",
-                    details=details
-                )
+                folder_provider = get_folder_provider()
+                local_repos_folder_id = folder_provider.find_folder("local-only-repos", parent_id=folder_id)
+                
+                if not local_repos_folder_id:
+                    status_msg = "No Backup Folder"
+                    guidance = "Run 'consult backup all' to initialize backups."
+                    backup_needed = True
+                else:
+                    bundle_filename = f"{name}.bundle"
+                    remote_file = folder_provider.find_file(bundle_filename, local_repos_folder_id)
+                    current_hash = GitUtils.get_repo_state_hash(abs_path)
+                    
+                    if remote_file:
+                        last_hash = remote_file.get('appProperties', {}).get('state_hash')
+                        is_synced = current_hash == last_hash
+                        
+                        remote = {
+                            'status': 'SYNCED' if is_synced else 'OUTDATED',
+                            'stats': {
+                                'local_hash': current_hash,
+                                'remote_hash': last_hash
+                            }
+                        }
+                        
+                        if is_synced:
+                            status_msg = "Backed Up"
+                            guidance = "No action needed."
+                        else:
+                            backup_needed = True
+                            if is_dirty:
+                                status_msg = "Dirty & Outdated"
+                                guidance = "Commit changes and run 'consult backup local-repo' or 'consult backup all'."
+                            else:
+                                status_msg = "Outdated Backup"
+                                guidance = "Run 'consult backup local-repo' or 'consult backup all' to update."
+                    else:
+                        remote = {
+                            'status': 'UNDEFINED',
+                            'stats': {
+                                'local_hash': current_hash,
+                                'remote_hash': None
+                            }
+                        }
+                        backup_needed = True
+                        status_msg = "Not Backed Up"
+                        guidance = "Run 'consult backup local-repo' or 'consult backup all' to create initial backup."
                 
         except Exception as e:
-             return RepoStatus(
-                path=abs_path,
-                name=name,
-                is_git=True,
-                type=repo_type,
-                backup_needed=True, # Assume true on error
-                status="Check Error",
-                guidance=f"Error checking status: {str(e)}",
-                details={'error': str(e)}
-            )
+            backup_needed = True
+            status_msg = "Check Error"
+            guidance = f"Error checking status: {str(e)}"
+            remote = {"status": "ERROR", "stats": {"error": str(e)}}
+
+    summary = {
+        "name": name,
+        "type": repo_type,
+        "status": status_msg,
+        "guidance": guidance,
+        "is_git": True,
+        "backup_needed": backup_needed
+    }
+
+    return RepoStatus(
+        path=abs_path,
+        local=local,
+        remote=remote,
+        summary=summary
+    )

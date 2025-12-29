@@ -16,19 +16,34 @@ def repo_status(path, format):
     if format == "json":
         click.echo(json.dumps(asdict(status), indent=2))
     else:
-        click.echo(f"\nRepository: {status.name} ({status.path})")
-        click.echo(f"Type:       {status.type}")
+        s = status.summary
+        click.echo(f"\nRepository: {s['name']} ({status.path})")
+        click.echo(f"Type:       {s['type']}")
         
-        status_color = "green" if not status.backup_needed and status.is_git else "yellow" if status.backup_needed else "red"
-        click.secho(f"Status:     {status.status}", fg=status_color)
+        status_color = "green" if not s['backup_needed'] and s['is_git'] else "yellow" if s['backup_needed'] else "red"
+        click.secho(f"Status:     {s['status']}", fg=status_color)
         
-        click.echo(f"Guidance:   {status.guidance}")
+        click.echo(f"Guidance:   {s['guidance']}")
         
-        if status.details.get('dirty_stats'):
-            stats = status.details['dirty_stats']
-            if any(stats.values()):
-                click.echo(f"Dirty:      Staged: {stats['staged']}, Unstaged: {stats['unstaged']}, Untracked: {stats['untracked']}")
-                
-        if status.type == "Remote" and status.details.get('remote_status'):
-             click.echo(f"Remote:     {status.details['remote_status']}")
+        # Local Details
+        local = status.local
+        if local['status'] == "DIRTY":
+            stats = local['stats']
+            click.echo(f"Local:      Dirty (Staged: {stats.get('staged', 0)}, Unstaged: {stats.get('unstaged', 0)}, Untracked: {stats.get('untracked', 0)})")
+        else:
+            click.echo(f"Local:      {local['status']}")
+
+        # Remote Details
+        remote = status.remote
+        if s['type'] == "Remote":
+            if remote['status'] in ["AHEAD", "BEHIND", "DIVERGED"]:
+                stats = remote['stats']
+                click.echo(f"Remote:     {remote['status']} (Unpushed: {stats.get('unpushed', 0)}, Unpulled: {stats.get('unpulled', 0)})")
+            else:
+                 click.echo(f"Remote:     {remote['status']}")
+        elif s['type'] == "Local-Only":
+             if remote['status'] == "SYNCED":
+                 click.echo(f"Backup:     SYNCED (Hash: {remote['stats'].get('local_hash')[:7]}...)")
+             else:
+                 click.echo(f"Backup:     {remote['status']}")
 

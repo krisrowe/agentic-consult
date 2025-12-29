@@ -1,12 +1,25 @@
 import os
 import subprocess
 import hashlib
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from datetime import datetime
 
 class GitUtils:
     @staticmethod
     def is_git_repo(path: str) -> bool:
         return os.path.isdir(os.path.join(path, ".git"))
+
+    @staticmethod
+    def get_last_fetch_time(repo_path: str) -> Optional[str]:
+        """Returns ISO 8601 timestamp of last fetch, or None."""
+        try:
+            fetch_head = os.path.join(repo_path, ".git", "FETCH_HEAD")
+            if os.path.exists(fetch_head):
+                mtime = os.path.getmtime(fetch_head)
+                return datetime.fromtimestamp(mtime).isoformat()
+        except Exception:
+            pass
+        return None
 
     @staticmethod
     def has_remotes(repo_path: str) -> bool:
@@ -69,16 +82,17 @@ class GitUtils:
         except Exception: return ""
 
     @staticmethod
-    def get_remote_status(repo_path: str) -> str:
-        """Returns 'ahead', 'behind', 'clean', or 'unknown'."""
+    def get_remote_status(repo_path: str) -> Dict[str, Any]:
+        """Returns dict with status ('ahead', 'behind', 'diverged', 'clean', 'unknown') and counts."""
+        result_data = {'status': 'unknown', 'unpushed': 0, 'unpulled': 0}
         try:
             result = subprocess.run(
                 ["git", "status", "--branch", "--porcelain=v2"], 
                 cwd=repo_path, capture_output=True, text=True, check=True
             )
             
-            ahead = 0
-            behind = 0
+            unpushed = 0
+            unpulled = 0
             has_upstream = False
             
             for line in result.stdout.splitlines():
@@ -86,36 +100,30 @@ class GitUtils:
                     # Format: # branch.ab +A -B
                     parts = line.split(' ')
                     if len(parts) >= 4:
-                        # +A
+                        # +A (unpushed)
                         ahead_str = parts[2]
                         if ahead_str.startswith('+'):
-                            ahead = int(ahead_str[1:])
-                        # -B
+                            unpushed = int(ahead_str[1:])
+                        # -B (unpulled)
                         behind_str = parts[3]
                         if behind_str.startswith('-'):
-                            behind = int(behind_str[1:])
+                            unpulled = int(behind_str[1:])
                     has_upstream = True
-                elif line.startswith("# branch.upstream"):
-                    # Just confirms configuration, but branch.ab is the calc
-                    pass
 
-            # If we didn't find branch.ab, we might not have an upstream
-            # But porcelain=v2 output varies if no upstream.
-            # If no upstream, branch.ab line is missing.
-            
             if not has_upstream:
-                # Can check if we are on a branch at all?
-                # Usually we want to know if "ahead". 
-                # If no upstream, technically everything is unpushed if we intend to push.
-                # But typically 'clean' means we aren't ahead of a *configured* upstream.
-                # Let's return unknown if no upstream logic found?
-                # Or check if we have remotes? We know we have remotes if we are calling this.
-                return "unknown" 
+                return result_data 
 
-            if ahead > 0:
-                return "ahead"
-            if behind > 0:
-                return "behind"
-                
-            return "clean"
-        except Exception: return "unknown"
+            result_data['unpushed'] = unpushed
+            result_data['unpulled'] = unpulled
+
+            if unpushed > 0 and unpulled > 0:
+                result_data['status'] = 'diverged'
+            elif unpushed > 0:
+                result_data['status'] = 'ahead'
+            elif unpulled > 0:
+                result_data['status'] = 'behind'
+            else:
+                result_data['status'] = 'clean'
+            
+            return result_data
+        except Exception: return result_data

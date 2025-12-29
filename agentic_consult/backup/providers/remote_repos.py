@@ -55,10 +55,15 @@ class RemoteRepoBackup(GitBaseProvider):
 
         # 2. Check Pushed status
         from agentic_consult.backup.git_utils import GitUtils
-        status = GitUtils.get_remote_status(repo_path)
+        remote_info = GitUtils.get_remote_status(repo_path)
+        status = remote_info['status']
         
         if status == "ahead":
             return BackupItemResult(repo_name, BackupStatus.FAILED, "Unpushed commits", type="Remote Repo")
+        elif status == "diverged":
+            return BackupItemResult(repo_name, BackupStatus.FAILED, "Diverged (Unpushed & Unpulled)", type="Remote Repo")
+        elif status == "behind":
+            return BackupItemResult(repo_name, BackupStatus.SUCCESS, "Behind remote", type="Remote Repo")
         elif status == "unknown":
              return BackupItemResult(repo_name, BackupStatus.FAILED, "No upstream configured", type="Remote Repo")
         
