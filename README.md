@@ -110,6 +110,8 @@ make test
 
 ## Key Commands
 
+Explore all available commands and options by running `consult --help`.
+
 ### Customer Management
 ```bash
 # List/show customer

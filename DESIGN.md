@@ -1,14 +1,14 @@
 # Implementation Design: Cognitive Perception System
 
-## 0. Current Implementation Status (Aspirational)
+## 0. Current Implementation Status
 *As of Dec 2025*
 
 | Component | Status | Notes |
 | :--- | :--- | :--- |
 | **Data Retrievers** | 🚧 Partial | `consult refresh` exists but logic is coupled. Needs extraction to standalone scripts. |
-| **Context Pipeline** | ❌ Missing | No logic yet for bundling data into Gemini Context Cache. |
-| **Reasoning Engine** | ❌ Missing | `consult analyze` tool needs to be built. |
-| **State Management** | ❌ Missing | `workflow_state.json` schema defined but not implemented. |
+| **Context Pipeline** | 🚧 Partial | `consult gemini` and `analyze_files` tool provide ad-hoc context bundling. |
+| **Reasoning Engine** | ✅ Implemented | `consult gemini` (CLI) and `analyze_files` (MCP) are the entry points. |
+| **State Management** | 🚧 Partial | `emails_processed.txt` and delta archiving implemented. |
 
 ---
 
@@ -35,29 +35,26 @@ Scripts that synchronize remote data to local JSON caches. These should be expos
     *   **Mode**: CLI (`consult sync emails`) and MCP Tool (`sync_emails`).
 
 ### B. Context Ingestion Pipeline (The "Memory Maker")
-**Script**: `scripts/update_context_cache.py`
+**Script**: `agentic_consult/context.py`
 
-*   **Responsibility**: Bundles local data into a massive context and uploads it to Gemini.
-*   **Input**: `tasks.json` (full history) + `emails.json` (rolling window of threads).
+*   **Responsibility**: Bundles local data into a formatted context for Gemini.
+*   **Input**: Files, directories, and exclusion patterns.
 *   **Action**:
-    1.  Reads local JSON caches.
-    2.  Formats them into a text/structured representation optimized for LLM reading.
-    3.  Calls Gemini API to create/update a **Context Cache**.
-    4.  Saves the `cache_name` (resource ID) and `last_updated_timestamp` to `workflow_state.json`.
+    1.  Recursively walks directories.
+    2.  Filters based on `.gitignore` style patterns.
+    3.  Skips binary files and enforces size limits.
+    4.  Formats into a structured representation with path headers.
 
 ### C. Reasoning Engine (The "Brain")
-**MCP Tool**: `get_situational_awareness` (or `consult analyze`)
+**MCP Tool**: `analyze_files` (or `consult gemini`)
 
 *   **Responsibility**: The high-level reasoning engine exposed to the Primary Agent.
 *   **Logic (The Hybrid Strategy)**:
-    1.  **Read State**: Load `cache_name` and `last_updated_timestamp` from `workflow_state.json`.
-    2.  **Fetch Deltas**:
-        *   Identify tasks modified > `last_updated_timestamp`.
-        *   Identify emails received > `last_updated_timestamp`.
+    1.  **Collect Context**: Load files specified in the prompt or tool call.
+    2.  **Apply Exclusions**: Filter out noise (logs, binary, artifacts).
     3.  **Construct Prompt**:
-        *   *System*: "You are a prioritization assistant."
-        *   *Context*: [Reference `cache_name`]
-        *   *User*: "Here are the NEW items since cache creation (Working Memory): [Insert Delta]. Question: [User Query]"
+        *   *Context*: [Concatenated file content with headers]
+        *   *User*: [User Question]
     4.  **Execute**: Send to Gemini API.
     5.  **Return**: The synthesized answer.
 

@@ -85,7 +85,7 @@ To improve effectiveness without adding complexity, focus on these patterns:
 
 2.  **The "Semantic Router":**
     *   *Concept:* Instead of hardcoding "If X then Y", let the LLM decide which "Expert Tool" to call based on the user's intent.
-    *   *Application:* Your CLI already does this natively. Trust the model to pick the right tool (`backup`, `scan`, `analyze`) rather than forcing it into a linear script.
+    *   *Application:* Your CLI already does this natively. Trust the model to pick the right tool (`backup_local_repo`, `run_precommit_scan`, `analyze_files`) rather than forcing it into a linear script.
 
 3.  **Context Isolation:**
     *   *Concept:* Keep the Primary Agent's context window clean. Never dump raw logs or 500 emails into the main chat. Always synthesize first.
