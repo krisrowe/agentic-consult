@@ -58,17 +58,18 @@ pytest tests/unit/test_precommit.py
 
 ### Test Suite Coverage
 
-**10+ comprehensive unit tests:**
-- Schema validation (customer.yaml, config.yaml)
-- Drive ID detection and validation
-- Security scanner with exact line/value matching
-- Gitignore behavior verification
-- Multiple match counting on non-adjacent lines
+See **[TESTING.md](TESTING.md)** for detailed testing strategy ("Sociable Unit Tests" vs. "External").
 
-**Integration Tests:**
-- End-to-end backup workflows
-- Gemini CLI prompt processing
-- Refresh command with real/mock models
+**Core Tests (Unit):**
+- Schema validation
+- Security scanner validation
+- Backup workflows (mocked I/O)
+- Gitignore behavior
+
+**External Tests:**
+- End-to-end backup workflows (hitting Drive)
+- Gemini API interactions
+- Gmail/Refresh command workflows
 
 ### Adding New Tests
 

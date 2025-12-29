@@ -299,10 +299,9 @@ make clean
 ```
 
 **Test coverage:**
-- 10 comprehensive tests (pytest)
-- Schema validation
-- Security scanner validation with exact line/value matching
-- Gitignore behavior testing
+- See **[TESTING.md](TESTING.md)** for the project's testing philosophy ("Sociable Unit Tests").
+- **Core Tests (`tests/unit/`)**: Run by default. Verify full features without network I/O.
+- **External Tests (`tests/integration/`)**: Verify real API interactions (Drive, Gmail).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contributor guidelines.
 
