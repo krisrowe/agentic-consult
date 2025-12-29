@@ -58,7 +58,7 @@ pytest tests/unit/test_precommit.py
 
 ### Test Suite Coverage
 
-See **[TESTING.md](TESTING.md)** for detailed testing strategy ("Sociable Unit Tests" vs. "External").
+See **[TESTING.md](TESTING.md)** for detailed testing strategy (**["Sociable Unit Tests"](https://martinfowler.com/bliki/UnitTest.html)** vs. "External").
 
 **Core Tests (Unit):**
 - Schema validation

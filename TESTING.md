@@ -1,6 +1,6 @@
 # Testing Strategy
 
-This project adheres to a "Sociable Unit Testing" philosophy (also known as Component Testing). We prioritize tests that verify full features/transactions end-to-end without network I/O over isolated, granular unit tests that mock internal implementation details.
+This project adheres to a **["Sociable Unit Testing"](https://martinfowler.com/bliki/UnitTest.html)** philosophy (also known as Component Testing). We prioritize tests that verify full features/transactions end-to-end without network I/O over isolated, granular unit tests that mock internal implementation details.
 
 ## Tier 1: Core Tests ("Sociable Unit Tests")
 *   **Location**: `tests/unit/`

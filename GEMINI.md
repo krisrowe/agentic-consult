@@ -299,7 +299,7 @@ make clean
 ```
 
 **Test coverage:**
-- See **[TESTING.md](TESTING.md)** for the project's testing philosophy ("Sociable Unit Tests").
+- See **[TESTING.md](TESTING.md)** for the project's testing philosophy (**["Sociable Unit Tests"](https://martinfowler.com/bliki/UnitTest.html)**).
 - **Core Tests (`tests/unit/`)**: Run by default. Verify full features without network I/O.
 - **External Tests (`tests/integration/`)**: Verify real API interactions (Drive, Gmail).
 
