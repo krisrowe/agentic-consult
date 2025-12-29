@@ -28,7 +28,15 @@ This document tracks known architectural issues and areas for improvement in the
 ## 4. Unify Google Authentication (Remove `gwsa` Dependency)
 - **Problem**: We currently depend on `gwsa` CLI for Gmail operations (requiring `gwsa auth login`) but use ADC/Google Client Library for Drive operations (requiring `gcloud auth` or custom creds). This dual-stack auth is confusing and fragile.
 - **Solution**: Refactor `agentic_consult/gmail.py` to use `googleapiclient` directly, sharing the ADC setup used by backups.
+- **Constraint (Custom OAuth)**: The ADC implementation **MUST** support custom OAuth2 client applications (Bring Your Own Client ID). Many accounts (e.g., personal Gmail, restricted Workspace orgs) block the default `gcloud` SDK client ID. The tool should document/support using a custom `client_secrets.json` to generate the `application_default_credentials.json` required by ADC.
 - **Tracking**: [Issue #1](https://github.com/krisrowe/agentic-consult/issues/1)
+
+## 5. Consolidate Security Scanning Logic
+- **Problem**: Security scanning logic (detecting customer names, secrets, etc.) is currently duplicated or split between this repository (`agentic-consult`) and `ws-sync` (aka `devws`). This requires running multiple pre-commit checks (`consult precommit` and `devws precommit`).
+- **Solution**: Unify the scanning logic.
+    - **Option A**: Move the core scanner from `agentic-consult` into `ws-sync` and have `consult` delegate to it.
+    - **Option B**: Extract the scanner into a shared library.
+    - **Goal**: A single "precommit" command that covers all security checks, eliminating redundancy and ensuring consistent enforcement rules across tools.
 
 - [ ] **Orphaned Backup File Handling**: In `UserHomeBackup`, detect files that exist on Drive but not locally. Implement a strategy for handling these orphans, such as prompting the user for deletion (in interactive mode) or skipping them. Consider a `--prune` flag for non-interactive cleanup. An alternative could be archiving all home files into a single `.zip` per run, similar to how repos are handled, which would simplify cleanup.
 
