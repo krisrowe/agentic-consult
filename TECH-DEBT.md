@@ -38,7 +38,9 @@ This document tracks known architectural issues and areas for improvement in the
 - **Problem**: `consult precommit` and `devws precommit` are separate commands with overlapping concerns.
 - **Solution**: Have `consult precommit` proxy to `devws precommit` to avoid duplication.
 
-## 6. Configuration Directory Separation
+## 6. Configuration Directory Separation (Partially Addressed)
+
+**Update (2026-01):** `config_dir` setting now supported in `settings.json`. Users can point config files to a versioned repo. Remaining work is CLI support (`consult config set`).
 
 The current config/data separation is messy and the lines are blurring:
 
@@ -63,7 +65,12 @@ The current config/data separation is messy and the lines are blurring:
 - Don't want settings.json mixed in with versioned configs
 - Legacy customer data management works but new email rules don't follow same pattern
 
-## 7. Optimize Local-Only Backup Status Checks (Reduce Network I/O)
+## 7. Add Network Sandboxing to Tests
+- **Problem**: Unit tests could accidentally make network calls if mock setup fails or is incomplete.
+- **Solution**: Add `pytest-socket` and configure `addopts = --disable-socket` in `pytest.ini` to block all socket access during tests.
+- **Benefit**: Tests fail fast with clear error if they attempt network I/O, ensuring true isolation.
+
+## 8. Optimize Local-Only Backup Status Checks (Reduce Network I/O)
 - **Context**: Currently, checking the status of a local-only repository (`consult repo-status`) requires making a Google Drive API call to fetch the `state_hash` from the remote bundle's `appProperties`. This adds latency and requires a network connection.
 - **Proposal**:
     - Store the hash of the last successfully backed-up state locally (e.g., in `.git/config` via `git config consult.backup.last_hash` or a separate metadata file in `.gemini/`).
