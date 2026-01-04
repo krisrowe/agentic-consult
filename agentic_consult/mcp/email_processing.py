@@ -86,18 +86,39 @@ Use `list_profiles` (gwsa) to discover available profiles. Process ALL profiles 
 ### Step 2: For Each Profile
 1. Switch to profile using `switch_profile`
 2. Search inbox: `in:inbox newer_than:3d`
-3. Apply auto-archive rules (see below)
-4. Present remaining items to user for action
+3. Categorize ALL emails (see Step 3 and 4)
 
-### Step 3: Auto-Archive Rules
+### Step 3: Categorize Emails for Auto-Archive
+
+Review each email against the auto-archive rules below. Build a complete list of emails proposed for archiving.
+
+**Auto-Archive Rules:**
 {rules_section}
 
-### Step 4: User Interaction
-- Present actionable items grouped by priority (bills, requests, FYI)
-- Get user approval before batch operations
-- Archive processed items after user confirms
+### Step 4: Present Archive Plan to User
 
-### Step 5: Celebrate
+**CRITICAL: Before calling `auto_archive_email`, you MUST first present a complete table of ALL emails proposed for archiving:**
+
+| # | From | Subject | Date | Rule/Reason |
+|---|------|---------|------|-------------|
+| 1 | sender@example.com | Subject line | Jan 3 | usps-digest |
+| 2 | ... | ... | ... | ... |
+
+Then call `auto_archive_email` for each. The tool approval mechanism lets the user accept or reject.
+
+**NEVER call auto_archive_email without first showing the user what will be archived and why.**
+
+Use `auto_archive_email` tool (NOT remove_email_label directly) - this logs the action for rule usage tracking.
+
+### Step 5: Process Remaining Emails
+
+Present actionable items grouped by priority:
+- **Action Required**: Requests needing response
+- **FYI**: Informational items
+
+Get user guidance on each before archiving.
+
+### Step 6: Celebrate
 When ANY profile reaches inbox zero, display:
 
 ```
