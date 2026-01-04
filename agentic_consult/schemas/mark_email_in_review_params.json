@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "mark_email_in_review_params.json",
+  "title": "MarkEmailInReviewParams",
+  "description": "Parameters for mark_email_in_review tool",
+  "type": "object",
+  "properties": {
+    "message_id": {
+      "type": "string",
+      "description": "Gmail message ID"
+    },
+    "reverse": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, removes the review label instead of adding it"
+    },
+    "profile": {
+      "type": ["string", "null"],
+      "description": "Optional Gmail profile to use"
+    }
+  },
+  "required": ["message_id"],
+  "additionalProperties": false
+}

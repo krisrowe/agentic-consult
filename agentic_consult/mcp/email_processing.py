@@ -136,8 +136,113 @@ def get_email_config_path() -> Path:
     return get_config_path(EMAIL_CONFIG_FILE)
 
 
+def _get_bundles_dir() -> Path:
+    """Returns package bundles directory."""
+    return Path(__file__).parent.parent / "rules" / "bundles"
+
+
+def _resolve_import_source(source: str) -> Path:
+    """
+    Resolve import source to a file path.
+
+    Source resolution hierarchy:
+    1. Bundle name → package (e.g., "personal" → rules/bundles/personal.yaml)
+    2. Relative path → config dir (e.g., "./work.yaml")
+    3. Absolute/home path → as-is (e.g., "~/shared/team.yaml")
+    """
+    # Check if it's a simple bundle name (no path separators, no extension)
+    if '/' not in source and '\\' not in source and not source.endswith('.yaml'):
+        bundle_path = _get_bundles_dir() / f"{source}.yaml"
+        if bundle_path.exists():
+            return bundle_path
+
+    # Expand ~ and check if absolute
+    expanded = Path(source).expanduser()
+    if expanded.is_absolute():
+        return expanded
+
+    # Relative to config dir
+    return get_consult_config_dir() / source
+
+
+def _load_rules_from_source(source_path: Path) -> list[dict]:
+    """Load rules array from a YAML file."""
+    if not source_path.exists():
+        logger.warning(f"Import source not found: {source_path}")
+        return []
+
+    try:
+        with open(source_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+            return data.get('rules', [])
+    except (yaml.YAMLError, IOError) as e:
+        logger.warning(f"Failed to load import source {source_path}: {e}")
+        return []
+
+
+def _filter_rules_by_patterns(rules: list[dict], patterns: list[str]) -> list[dict]:
+    """
+    Filter rules by ID patterns using fnmatch.
+
+    Patterns:
+    - "*" matches all
+    - "github-*" matches prefix
+    - "*-notification" matches suffix
+    - "exact-id" matches exactly
+    """
+    import fnmatch
+
+    if not patterns or "*" in patterns:
+        return rules
+
+    filtered = []
+    for rule in rules:
+        rule_id = rule.get('id', '')
+        for pattern in patterns:
+            if fnmatch.fnmatch(rule_id, pattern):
+                filtered.append(rule)
+                break
+
+    return filtered
+
+
+def _process_imports(imports: list[dict]) -> list[dict]:
+    """Process imports array and return collected rules."""
+    collected = []
+
+    for imp in imports:
+        source = imp.get('source')
+        if not source:
+            continue
+
+        source_path = _resolve_import_source(source)
+        source_rules = _load_rules_from_source(source_path)
+
+        patterns = imp.get('rules', ['*'])
+        if isinstance(patterns, str):
+            patterns = [patterns]
+
+        filtered = _filter_rules_by_patterns(source_rules, patterns)
+        collected.extend(filtered)
+
+    return collected
+
+
 def load_email_rules() -> list[dict]:
-    """Load email processing rules from config file."""
+    """
+    Load email processing rules from config file.
+
+    Supports imports for extensibility:
+        imports:
+          - source: personal          # bundle name
+            rules: ["*"]              # patterns (fnmatch)
+          - source: ./work.yaml       # relative to config dir
+            rules: ["slack-*"]
+
+        rules:
+          - id: my-rule
+            ...
+    """
     path = get_email_config_path()
     if not path.exists():
         return []
@@ -145,10 +250,21 @@ def load_email_rules() -> list[dict]:
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
-            return data.get('rules', [])
     except (yaml.YAMLError, IOError) as e:
         logger.warning(f"Failed to load email rules: {e}")
         return []
+
+    # Process imports first
+    imports = data.get('imports', [])
+    imported_rules = _process_imports(imports)
+
+    # Then inline rules
+    inline_rules = data.get('rules', [])
+
+    # Imported first, inline can override by ID
+    all_rules = imported_rules + inline_rules
+
+    return all_rules
 
 
 def save_email_rules(rules: list[dict]) -> Path:

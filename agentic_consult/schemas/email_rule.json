@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "email_rule.json",
+  "title": "EmailRule",
+  "description": "An email processing rule - supports both pattern-based (match) and condition-based rules",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique rule identifier. System rules prefixed with 'sys-'",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["archive", "track_as_task", "review"],
+      "description": "Action to take when rule matches. Priority: track_as_task > review > archive"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["auto_archive", "custom"],
+      "description": "DEPRECATED: Use 'action' instead. Kept for backwards compatibility with user rules."
+    },
+    "match": {
+      "type": "object",
+      "description": "Pattern-based matching (for user rules)",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Sender pattern to match (partial match)"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Subject pattern to match (partial match)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "condition": {
+      "type": "string",
+      "description": "Natural language condition for matching (for system rules and advanced user rules)"
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Custom instructions (for type=custom rules)"
+    }
+  },
+  "required": ["id"],
+  "additionalProperties": false
+}

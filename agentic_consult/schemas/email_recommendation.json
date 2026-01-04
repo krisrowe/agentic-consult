@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "email_recommendation.json",
+  "title": "EmailRecommendation",
+  "description": "A single email triage recommendation from Gemini",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Gmail message ID"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Email date (YYYY-MM-DD)"
+    },
+    "from": {
+      "type": "string",
+      "description": "Sender email address"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Email subject line"
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": ["archive", "track_as_task", "review", "needs_triage"],
+      "description": "Recommended action: archive (routine, no issues), track_as_task (requires follow-up), review (rule requires human attention), needs_triage (no rule matched, agent should decide with user)"
+    },
+    "rule_id": {
+      "type": ["string", "null"],
+      "description": "ID of matching rule, if any"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable explanation for the recommendation"
+    }
+  },
+  "required": ["id", "date", "from", "subject", "recommended_action", "reason"],
+  "additionalProperties": false
+}

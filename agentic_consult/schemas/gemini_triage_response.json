@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gemini_triage_response.json",
+  "title": "GeminiTriageResponse",
+  "description": "Response format expected from Gemini email triage",
+  "type": "object",
+  "properties": {
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "$ref": "email_recommendation.json"
+      },
+      "description": "Array of email recommendations"
+    }
+  },
+  "required": ["recommendations"],
+  "additionalProperties": false
+}
