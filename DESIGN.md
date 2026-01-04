@@ -380,4 +380,35 @@ Workflow tools that support user-configurable rules (like `process_email` with `
 - Agent follows the instruction, tool returns agenda, agent presents to user
 - MCP servers can't push proactively; this relies on agent following kernel instructions
 
-**Open question:** Could agent CLIs (Gemini CLI, Claude Code) support a `startup_tools` setting for auto-invocation? Not currently available but worth proposing to both.
+**IMPORTANT: SessionStart Hooks Available**
+
+Gemini CLI already supports `SessionStart` hooks that can initialize workflows at session start:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "name": "init-workflows",
+            "type": "command",
+            "command": "consult guide-user --json",
+            "description": "Initialize Smart Workflow Assistant"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+This could invoke `guide_user` (or a CLI equivalent) to inject workflow suggestions into the session context automatically.
+
+**Research TODO:**
+- [ ] Investigate Gemini CLI SessionStart hook integration for `guide_user`
+- [ ] Check if Claude Code has equivalent hook (user-prompt-submit exists, but SessionStart?)
+- [ ] Design the CLI command `consult guide-user` that outputs JSON for hook consumption
+
+Reference: https://geminicli.com/docs/hooks/writing-hooks/#configuration
