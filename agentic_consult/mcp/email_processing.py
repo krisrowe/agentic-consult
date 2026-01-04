@@ -1,0 +1,409 @@
+"""
+Email processing rules and workflow instructions for agents.
+
+Rules are stored in ~/.config/agentic-consult/email.yaml (or CONSULT_CONFIG_DIR).
+Template is loaded from ~/.config/agentic-consult/templates/process_email.md
+
+## Archive Tracking
+
+Archive logs are stored in $XDG_CACHE_HOME/agentic-consult/email-archive-log.jsonl
+
+This logging serves two purposes:
+
+1. **Rule Efficiency Analysis**: Each archived email is logged with its rule_id.
+   The list_email_rules tool reads these logs to report use_count and last_used
+   for each rule. Rules showing zero usage over months are candidates for removal
+   to reduce agent context overhead (fewer rules = smaller prompts = faster/cheaper).
+
+2. **Forensic Recovery**: If emails are incorrectly archived, the log provides
+   a complete record of what was archived, when, and why (which rule triggered it).
+   Users can search Gmail by message_id to find and restore emails if needed.
+
+Logs are automatically cleaned up after the configured retention period (default 90 days)
+as a best-effort operation on each write. Cleanup failures are logged as warnings
+but don't fail the archive operation.
+"""
+
+import logging
+import json
+import os
+from datetime import datetime, timedelta
+from typing import Any, Optional
+from pathlib import Path
+
+import yaml
+
+from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config
+from gwsa.sdk.mail.label import remove_label as gwsa_remove_label
+
+logger = logging.getLogger(__name__)
+
+EMAIL_CONFIG_FILE = "email.yaml"
+TEMPLATE_FILE = "templates/process_email.md"
+ARCHIVE_LOG_FILE = "email-archive-log.jsonl"
+
+
+def get_cache_dir() -> Path:
+    """Get XDG cache directory for agentic-consult."""
+    xdg_cache = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+    cache_dir = Path(xdg_cache) / "agentic-consult"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def get_archive_log_path() -> Path:
+    """Get path to archive log file."""
+    return get_cache_dir() / ARCHIVE_LOG_FILE
+
+
+def get_retention_days() -> int:
+    """Get log retention days from app config."""
+    try:
+        config = load_app_config()
+        return config.get("email", {}).get("archive_log_retention_days", 90)
+    except Exception:
+        return 90  # Default fallback
+
+
+def load_template() -> str:
+    """Load email processing template from config directory."""
+    template_path = get_consult_config_dir() / TEMPLATE_FILE
+
+    if template_path.exists():
+        try:
+            return template_path.read_text(encoding='utf-8')
+        except IOError as e:
+            logger.warning(f"Failed to load template: {e}")
+
+    # Fallback if template doesn't exist
+    return """## Email Processing Workflow
+
+Execute these steps to process email:
+
+### Step 1: Check All Profiles
+Use `list_profiles` (gwsa) to discover available profiles. Process ALL profiles shown as active/validated.
+
+### Step 2: For Each Profile
+1. Switch to profile using `switch_profile`
+2. Search inbox: `in:inbox newer_than:3d`
+3. Apply auto-archive rules (see below)
+4. Present remaining items to user for action
+
+### Step 3: Auto-Archive Rules
+{rules_section}
+
+### Step 4: User Interaction
+- Present actionable items grouped by priority (bills, requests, FYI)
+- Get user approval before batch operations
+- Archive processed items after user confirms
+
+### Step 5: Celebrate
+When ANY profile reaches inbox zero, display:
+
+```
+✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨
+
+   🎉  INBOX ZERO  🎉
+
+✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨
+```
+"""
+
+
+def get_email_config_path() -> Path:
+    """Returns path to email.yaml config file."""
+    return get_config_path(EMAIL_CONFIG_FILE)
+
+
+def load_email_rules() -> list[dict]:
+    """Load email processing rules from config file."""
+    path = get_email_config_path()
+    if not path.exists():
+        return []
+
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+            return data.get('rules', [])
+    except (yaml.YAMLError, IOError) as e:
+        logger.warning(f"Failed to load email rules: {e}")
+        return []
+
+
+def save_email_rules(rules: list[dict]) -> Path:
+    """Save email processing rules to config file."""
+    path = get_email_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(path, 'w', encoding='utf-8') as f:
+        yaml.dump({'rules': rules}, f, default_flow_style=False, sort_keys=False)
+
+    return path
+
+
+def format_rules_for_instructions(rules: list[dict]) -> str:
+    """Format rules as markdown for agent instructions."""
+    if not rules:
+        return "No auto-archive rules configured. Use `add_email_processing_rule` to add rules."
+
+    lines = []
+    for rule in rules:
+        rule_id = rule.get('id', 'unknown')
+        rule_type = rule.get('type', 'unknown')
+        match = rule.get('match', {})
+
+        match_desc = []
+        if match.get('from'):
+            match_desc.append(f"from: `{match['from']}`")
+        if match.get('subject'):
+            match_desc.append(f"subject: `{match['subject']}`")
+
+        match_str = ", ".join(match_desc) if match_desc else "no match criteria"
+
+        if rule_type == 'auto_archive':
+            lines.append(f"- **{rule_id}** [{rule_type}]: {match_str} → Archive immediately")
+        elif rule_type == 'custom':
+            instructions = rule.get('instructions', 'No instructions')
+            lines.append(f"- **{rule_id}** [{rule_type}]: {match_str} → {instructions}")
+
+    return "\n".join(lines)
+
+
+def get_process_email_instructions() -> str:
+    """Get full email processing instructions with current rules."""
+    rules = load_email_rules()
+    rules_section = format_rules_for_instructions(rules)
+    template = load_template()
+    return template.format(rules_section=rules_section)
+
+
+def add_rule(
+    rule_id: str,
+    rule_type: str,
+    match_from: Optional[str] = None,
+    match_subject: Optional[str] = None,
+    instructions: Optional[str] = None
+) -> dict:
+    """Add a new email processing rule."""
+    rules = load_email_rules()
+
+    # Check for duplicate ID
+    if any(r.get('id') == rule_id for r in rules):
+        raise ValueError(f"Rule with id '{rule_id}' already exists")
+
+    if rule_type not in ('auto_archive', 'custom'):
+        raise ValueError(f"Invalid rule type: {rule_type}. Must be 'auto_archive' or 'custom'")
+
+    if rule_type == 'custom' and not instructions:
+        raise ValueError("Custom rules require 'instructions' field")
+
+    new_rule = {
+        'id': rule_id,
+        'type': rule_type,
+        'match': {}
+    }
+
+    if match_from:
+        new_rule['match']['from'] = match_from
+    if match_subject:
+        new_rule['match']['subject'] = match_subject
+    if instructions:
+        new_rule['instructions'] = instructions
+
+    rules.append(new_rule)
+    save_email_rules(rules)
+
+    return new_rule
+
+
+def remove_rule(rule_id: str) -> bool:
+    """Remove an email processing rule by ID."""
+    rules = load_email_rules()
+    original_count = len(rules)
+
+    rules = [r for r in rules if r.get('id') != rule_id]
+
+    if len(rules) == original_count:
+        return False
+
+    save_email_rules(rules)
+    return True
+
+
+def list_rules() -> list[dict]:
+    """List all email processing rules."""
+    return load_email_rules()
+
+
+def cleanup_old_logs() -> int:
+    """
+    Remove log entries older than retention period.
+
+    This runs on write operations as a best-effort cleanup.
+    Errors are logged as warnings but don't fail the operation.
+
+    Returns:
+        Number of entries removed.
+    """
+    try:
+        log_path = get_archive_log_path()
+        if not log_path.exists():
+            return 0
+
+        retention_days = get_retention_days()
+        cutoff = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff_str = cutoff.isoformat()
+
+        # Read all entries
+        entries = []
+        with open(log_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        entry = json.loads(line)
+                        entries.append(entry)
+                    except json.JSONDecodeError:
+                        continue
+
+        # Filter to recent entries
+        original_count = len(entries)
+        recent_entries = [e for e in entries if e.get('timestamp', '') >= cutoff_str]
+        removed_count = original_count - len(recent_entries)
+
+        if removed_count > 0:
+            # Rewrite file with only recent entries
+            with open(log_path, 'w', encoding='utf-8') as f:
+                for entry in recent_entries:
+                    f.write(json.dumps(entry) + '\n')
+            logger.info(f"Cleaned up {removed_count} old archive log entries")
+
+        return removed_count
+
+    except Exception as e:
+        logger.warning(f"Failed to cleanup old archive logs: {e}")
+        return 0
+
+
+def log_archived_email(
+    rule_id: str,
+    message_id: str,
+    from_addr: str,
+    subject: str
+) -> None:
+    """
+    Log an archived email to the cache for rule usage tracking.
+
+    Args:
+        rule_id: The rule that triggered the archive
+        message_id: Gmail message ID
+        from_addr: Sender email address
+        subject: Email subject line
+    """
+    try:
+        log_path = get_archive_log_path()
+
+        entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "rule_id": rule_id,
+            "message_id": message_id,
+            "from": from_addr,
+            "subject": subject[:100]  # Truncate long subjects
+        }
+
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry) + '\n')
+
+        # Best-effort cleanup after write
+        cleanup_old_logs()
+
+    except Exception as e:
+        logger.warning(f"Failed to log archived email: {e}")
+
+
+def get_rule_usage_stats() -> dict[str, dict]:
+    """
+    Get usage statistics for each rule from the archive log.
+
+    Used to identify stale rules that can be removed to reduce agent context.
+
+    Returns:
+        Dict mapping rule_id to stats: {use_count, last_used}
+    """
+    try:
+        log_path = get_archive_log_path()
+        if not log_path.exists():
+            return {}
+
+        stats: dict[str, dict] = {}
+
+        with open(log_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    rule_id = entry.get('rule_id')
+                    timestamp = entry.get('timestamp')
+
+                    if rule_id:
+                        if rule_id not in stats:
+                            stats[rule_id] = {'use_count': 0, 'last_used': None}
+
+                        stats[rule_id]['use_count'] += 1
+
+                        if timestamp and (stats[rule_id]['last_used'] is None or
+                                         timestamp > stats[rule_id]['last_used']):
+                            stats[rule_id]['last_used'] = timestamp
+
+                except json.JSONDecodeError:
+                    continue
+
+        return stats
+
+    except Exception as e:
+        logger.warning(f"Failed to get rule usage stats: {e}")
+        return {}
+
+
+def archive_email_with_gwsa(
+    message_id: str,
+    rule_id: str,
+    from_addr: str,
+    subject: str,
+    profile: Optional[str] = None
+) -> dict[str, Any]:
+    """
+    Archive an email using gwsa SDK and log the action.
+
+    Args:
+        message_id: Gmail message ID to archive
+        rule_id: Rule that triggered this archive (for logging)
+        from_addr: Sender email (for logging)
+        subject: Email subject (for logging)
+        profile: Optional gwsa profile to use
+
+    Returns:
+        Dict with success status and details
+    """
+    try:
+        # Use gwsa SDK to remove INBOX label (archive)
+        gwsa_remove_label(message_id, "INBOX", profile=profile)
+
+        # Log the successful archive
+        log_archived_email(rule_id, message_id, from_addr, subject)
+
+        return {
+            "success": True,
+            "message_id": message_id,
+            "rule_id": rule_id,
+            "archived": True
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message_id": message_id,
+            "error": str(e)
+        }

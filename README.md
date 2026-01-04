@@ -60,7 +60,7 @@ pipx install . --force
 
 - **Python 3.10+** (Modern type hinting support)
 - **Git 2.11+** (Required for `consult repo-status` and backups; uses `--porcelain=v2` status format)
-- [Google Workspace Access (gwsa)](https://github.com/krisrowe/gworkspace-access) - For Gmail and Drive integration.
+- [Google Workspace Access (gwsa)](https://github.com/krisrowe/gworkspace-access) - Python dependency for email tools (installed automatically). **Requires auth setup via `gwsa profiles add`** before use.
 - [TickTick Access](https://github.com/krisrowe/ticktick-access) - For task management.
 
 ### TickTick Setup

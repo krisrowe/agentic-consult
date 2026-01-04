@@ -34,7 +34,36 @@ This document tracks known architectural issues and areas for improvement in the
 
 - [ ] **Orphaned Backup File Handling**: In `UserHomeBackup`, detect files that exist on Drive but not locally. Implement a strategy for handling these orphans, such as prompting the user for deletion (in interactive mode) or skipping them. Consider a `--prune` flag for non-interactive cleanup. An alternative could be archiving all home files into a single `.zip` per run, similar to how repos are handled, which would simplify cleanup.
 
-## 5. Optimize Local-Only Backup Status Checks (Reduce Network I/O)
+## 5. Consolidate Pre-commit Scanning
+- **Problem**: `consult precommit` and `devws precommit` are separate commands with overlapping concerns.
+- **Solution**: Have `consult precommit` proxy to `devws precommit` to avoid duplication.
+
+## 6. Configuration Directory Separation
+
+The current config/data separation is messy and the lines are blurring:
+
+**Current State:**
+- `settings.json` in XDG config dir controls where data lives
+- `local_data` setting points to customer data (legacy customer configs)
+- New files like `email.yaml` and `templates/` are hardcoded to XDG config dir
+- No easy way to point config files to a different repo
+
+**Desired State:**
+- `settings.json` should be the only file required in XDG config dir
+- Both `config_dir` and `data_dir` should be configurable via CLI (`consult config set`)
+- User can point config (email.yaml, etc.) to a versioned repo
+- Note: `templates/process_email.md` should be pkg-bundled, not user-managed (users configure via rules, not template)
+- User can point data (customers/, cache files) to a separate location
+- CLI is the primary interface for configuration - no reliance on env vars for normal use
+- Env var logic may remain for testing and extensibility, but not required for typical workflows
+- Cache location doesn't need to be configurable (XDG cache is fine)
+
+**Why This Matters:**
+- Want to version control email.yaml and templates in a config repo
+- Don't want settings.json mixed in with versioned configs
+- Legacy customer data management works but new email rules don't follow same pattern
+
+## 7. Optimize Local-Only Backup Status Checks (Reduce Network I/O)
 - **Context**: Currently, checking the status of a local-only repository (`consult repo-status`) requires making a Google Drive API call to fetch the `state_hash` from the remote bundle's `appProperties`. This adds latency and requires a network connection.
 - **Proposal**:
     - Store the hash of the last successfully backed-up state locally (e.g., in `.git/config` via `git config consult.backup.last_hash` or a separate metadata file in `.gemini/`).
