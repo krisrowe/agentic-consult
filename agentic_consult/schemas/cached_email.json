@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "cached_email.json",
+  "title": "CachedEmail",
+  "description": "Email cached locally for processing",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Gmail message ID"
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Gmail thread ID"
+    },
+    "date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Email date (ISO 8601)"
+    },
+    "from": {
+      "type": "string",
+      "description": "Sender (name and email)"
+    },
+    "to": {
+      "type": "string",
+      "description": "Recipient(s)"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Email subject line"
+    },
+    "snippet": {
+      "type": "string",
+      "description": "Short preview of email content"
+    },
+    "body_text": {
+      "type": ["string", "null"],
+      "description": "Plain text body content"
+    },
+    "body_html": {
+      "type": ["string", "null"],
+      "description": "HTML body content"
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Gmail label IDs"
+    },
+    "cached_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this email was cached (ISO 8601)"
+    }
+  },
+  "required": ["id", "date", "from", "subject", "cached_at"],
+  "additionalProperties": false
+}

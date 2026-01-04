@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "process_email_response.json",
+  "title": "ProcessEmailResponse",
+  "description": "Response from process_email MCP tool",
+  "type": "object",
+  "properties": {
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "$ref": "email_recommendation.json"
+      },
+      "description": "Email triage recommendations from Gemini"
+    },
+    "rules_referenced": {
+      "type": "array",
+      "items": {
+        "$ref": "email_rule.json"
+      },
+      "description": "Rules that were referenced in recommendations (filtered subset)"
+    },
+    "stats": {
+      "type": "object",
+      "properties": {
+        "total_emails": {
+          "type": "integer",
+          "description": "Total emails processed"
+        },
+        "archive_count": {
+          "type": "integer",
+          "description": "Emails recommended for archive"
+        },
+        "task_count": {
+          "type": "integer",
+          "description": "Emails recommended for task tracking"
+        },
+        "review_count": {
+          "type": "integer",
+          "description": "Emails needing human review"
+        }
+      },
+      "required": ["total_emails", "archive_count", "task_count", "review_count"]
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Guidance for the agent on how to proceed"
+    },
+    "available_actions": {
+      "type": "object",
+      "description": "Actions the agent can take after receiving this response",
+      "properties": {
+        "get_cached_email": {
+          "type": "string",
+          "description": "Tool to retrieve full cached email content by message ID for additional context before acting"
+        },
+        "archive_email": {
+          "type": "string",
+          "description": "Tool to archive an email (removes from inbox)"
+        },
+        "mark_email_in_review": {
+          "type": "string",
+          "description": "Tool to mark email for review (adds 'Reviewing' label). Pass reverse=true to remove the label."
+        }
+      }
+    }
+  },
+  "required": ["recommendations", "rules_referenced", "stats", "instructions"],
+  "additionalProperties": false
+}

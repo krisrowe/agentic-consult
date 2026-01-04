@@ -18,6 +18,12 @@ email:
   max_email_chars: 100000           # Truncate individual emails exceeding this limit
   # Archive logging - tracks rule usage for identifying stale rules
   archive_log_retention_days: 90    # How long to keep archive logs
+  # Review label for emails needing human attention
+  review_label: Reviewing           # Gmail label applied by mark_email_in_review
+  # Cache settings for email processing
+  cache:
+    email_max_age_days: 30          # Emails older than this + 1 week cache age get cleaned
+    cleanup_file_age_days: 7        # Files must be this old before cleanup considers them
 
 # Analyze Tool Configuration
 analyze:

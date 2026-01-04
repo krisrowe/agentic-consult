@@ -11,27 +11,57 @@ logger = logging.getLogger(__name__)
 
 SETTINGS_FILENAME = "settings.json"
 
-def get_consult_config_dir() -> Path:
+def _get_settings_dir() -> Path:
     """
-    Returns the base directory for agentic-consult's own settings.
-    Priority:
-    1. CONSULT_CONFIG_DIR environment variable
-    2. XDG App Config Directory (via click.get_app_dir)
+    Returns directory where settings.json lives.
+    Always XDG, unless CONSULT_CONFIG_DIR env var is set (for testing).
     """
     env_config_dir = os.environ.get('CONSULT_CONFIG_DIR')
     if env_config_dir:
         return Path(env_config_dir)
     return Path(click.get_app_dir('agentic-consult'))
 
+
+def _load_settings_json() -> dict:
+    """Load settings.json from the settings directory."""
+    settings_path = _get_settings_dir() / SETTINGS_FILENAME
+    if not settings_path.exists():
+        return {}
+    try:
+        with open(settings_path, 'r', encoding='utf-8') as f:
+            return json.load(f) or {}
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
+def get_consult_config_dir() -> Path:
+    """
+    Returns directory for config files (email.yaml, templates/, etc).
+    Priority:
+    1. CONSULT_CONFIG_DIR env var (for testing)
+    2. config_dir in settings.json
+    3. Same directory as settings.json
+    """
+    env_config_dir = os.environ.get('CONSULT_CONFIG_DIR')
+    if env_config_dir:
+        return Path(env_config_dir)
+
+    settings = _load_settings_json()
+    if settings.get('config_dir'):
+        return Path(settings['config_dir']).expanduser()
+
+    return _get_settings_dir()
+
+
 def get_config_path(filename=None):
     """
-    Returns the authoritative path for the global settings file or a specific file.
-    Always uses the result from get_consult_config_dir.
+    Returns path to a config file.
+    - No filename: returns settings.json path (always in settings dir)
+    - With filename: returns path in config dir (may differ from settings dir)
     """
-    base_dir = get_consult_config_dir()
     if filename:
-        return base_dir / filename
-    return base_dir / SETTINGS_FILENAME
+        return get_consult_config_dir() / filename
+    return _get_settings_dir() / SETTINGS_FILENAME
 
 def load_main_config():
     """
@@ -66,7 +96,7 @@ def get_local_data_root():
     """
     config = load_main_config()
     if config.get('local_data'):
-        return Path(config['local_data'])
+        return Path(config['local_data']).expanduser()
     
     # Default XDG Data location (relative to actual HOME, not BACKUPS_HOME_LOCAL_PATH)
     return Path.home() / ".local" / "share" / "agentic-consult"

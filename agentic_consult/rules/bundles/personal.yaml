@@ -1,0 +1,35 @@
+# Personal Bundle - Opt-in rules for personal email management
+#
+# Import in email.yaml:
+#   imports:
+#     - source: personal
+#       rules: ["*"]  # or specific patterns like ["marketing-*"]
+#
+# Source resolution hierarchy (future):
+#   1. Bundle name → package (e.g., "personal" → this file)
+#   2. Relative path → config dir (e.g., "./work.yaml")
+#   3. Absolute path → as-is (e.g., "~/shared/team.yaml")
+
+rules:
+  - id: marketing-promo
+    action: archive
+    condition: >
+      Email is clearly promotional/marketing: sales, discounts, coupons,
+      "limited time offer", newsletters with no actionable content
+
+  - id: social-notification
+    action: archive
+    condition: >
+      Email is a social media notification (likes, comments, follows, friend requests)
+      with no actionable content beyond "click to view"
+
+  - id: shipping-delivered
+    action: archive
+    condition: >
+      Email confirms a package was delivered successfully with no issues reported
+
+  - id: routine-confirmation
+    action: archive
+    condition: >
+      Email is a routine confirmation of a user-initiated action (subscription confirmed,
+      settings updated, preferences saved) with no issues or action needed

@@ -3,7 +3,7 @@ import sys
 import json
 import logging
 import tempfile
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from dataclasses import asdict
 
 from mcp.server.fastmcp import FastMCP
@@ -26,6 +26,11 @@ from agentic_consult.mcp.email_processing import (
     list_rules,
     get_rule_usage_stats,
     archive_email_with_gwsa,
+)
+from agentic_consult.email.triage import (
+    triage_emails,
+    get_cached_emails as sdk_get_cached_emails,
+    mark_email_in_review as sdk_mark_email_in_review,
 )
 
 logger = logging.getLogger(__name__)
@@ -286,24 +291,114 @@ async def run_precommit_scan(
         return {"error": f"An unexpected error occurred: {str(e)}"}
 
 @mcp.tool()
-async def process_email() -> dict[str, Any]:
+async def triage_emails(
+    review_status: Literal["new", "reviewing", "all"] = "all",
+    limit: int = 20,
+    profile: Optional[str] = None,
+    model: Optional[str] = None
+) -> dict[str, Any]:
     """
-    Returns email processing workflow instructions for the agent.
+    Triage inbox emails using Gemini-powered analysis.
 
-    This tool reads configured rules from email.yaml and returns step-by-step
-    instructions for processing email across all profiles, including auto-archive
-    rules and user interaction guidelines.
+    Fetches emails, caches them locally, and uses Gemini to analyze each email
+    against configured rules (system + user). Returns structured recommendations.
 
-    Call this when the user asks to check/process their email.
+    Args:
+        review_status: Filter emails by state
+            - "new": Emails in inbox without Reviewing label (default starting point)
+            - "reviewing": Emails previously marked for review
+            - "all": All inbox emails
+        limit: Maximum emails to fetch (default 20, max recommended for context)
+        profile: Optional gwsa profile name (omit for default)
+        model: Optional Gemini model override (default from app.yaml)
 
     Returns:
-        Dictionary with 'instructions' containing the full workflow.
+        Dictionary with:
+            - recommendations: List of {id, date, from, subject, recommended_action, rule_id, reason}
+            - rules_referenced: Rules that matched at least one email
+            - instructions: Next steps guidance
+            - stats: Processing statistics
+
+        recommended_action values:
+            - "archive": Safe to archive (matched archive rule or routine noise)
+            - "track_as_task": Requires follow-up action (create task, then archive)
+            - "review": Needs human attention (apply Reviewing label)
+            - "needs_triage": No rule matched (present to user for decision)
+
+        Follow-up tools:
+            - get_cached_emails([message_ids]): Get full cached email content
+            - archive_email(...): Archive with logging
+            - mark_email_in_review(message_id): Apply/remove Reviewing label
     """
     try:
-        instructions = get_process_email_instructions()
-        return {"instructions": instructions}
+        return sdk_triage_emails(
+            review_status=review_status,
+            limit=limit,
+            profile=profile,
+            model=model
+        )
     except Exception as e:
-        logger.exception("Error in process_email")
+        logger.exception("Error in triage_emails")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def get_cached_emails(message_ids: list[str]) -> dict[str, Any]:
+    """
+    Retrieve multiple cached emails by message IDs.
+
+    Emails are cached when process_email runs. Use this to get full content
+    for emails where the recommendation summary isn't sufficient.
+
+    Args:
+        message_ids: List of Gmail message IDs (from process_email recommendations).
+
+    Returns:
+        Dict with 'messages' array. Each item has 'id' at top level, then either:
+            - The email fields (from, subject, body, cached_at, etc.) if successful
+            - An 'error' object {code, message} if failed
+
+        Check for 'error' field to detect failures; no 'error' means success.
+
+        Error codes:
+            - "not_cached": Use gwsa read_email to fetch
+            - "read_error": Cache file exists but couldn't be read
+    """
+    try:
+        return sdk_get_cached_emails(message_ids)
+    except Exception as e:
+        logger.exception("Error in get_cached_emails")
+        return {"messages": [{"id": mid, "error": {"code": "internal_error", "message": str(e)}} for mid in message_ids]}
+
+
+@mcp.tool()
+async def mark_email_in_review(
+    message_id: str,
+    reverse: bool = False,
+    profile: Optional[str] = None
+) -> dict[str, Any]:
+    """
+    Apply or remove the Reviewing label from an email.
+
+    Use this for emails with recommended_action="review" from process_email.
+    The Reviewing label keeps emails in inbox but marks them for later attention.
+
+    Args:
+        message_id: Gmail message ID
+        reverse: If True, remove the Reviewing label (default False = add label)
+        profile: Optional gwsa profile name
+
+    Returns:
+        Success status with label action taken.
+    """
+    try:
+        return sdk_mark_email_in_review(
+            message_id=message_id,
+            reverse=reverse,
+            profile=profile
+        )
+    except Exception as e:
+        logger.exception("Error in mark_email_in_review")
         return {"error": str(e)}
 
 
