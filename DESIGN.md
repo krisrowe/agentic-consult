@@ -335,7 +335,13 @@ All workflow tools (public reusable or private/workspace-specific) follow a comm
 3. **Docstring Pattern**:
    > "Invoke this tool and follow the instructions it provides."
 
-4. **Framework Role**:
+4. **Registry & Scheduling**:
+   - All workflow tools (public and private) must be listable via a registry
+   - Each entry includes: suggested cadence (daily, weekly, monthly), timing hints, triggers
+   - Example: `process_email` → daily; `process_bills` → weekly on the 8th
+   - The agent can query the registry to suggest what workflows to run in a session
+
+5. **Framework Role**:
    - agentic-consult provides the **template loading** and **config merging** mechanisms
    - agentic-consult provides **base templates** for public workflows
    - Private repos provide **rule configs** (what to match, what to do)
@@ -343,3 +349,14 @@ All workflow tools (public reusable or private/workspace-specific) follow a comm
    - The agent orchestrates by calling the tool and executing the returned instructions
 
 This pattern ensures workflow tools are declarative (config-driven) rather than imperative, letting the agent reason about the instructions rather than executing hardcoded logic.
+
+### Open Question: Rule Management & Configuration Discovery
+
+Workflow tools that support user-configurable rules (like `process_email` with `email.yaml`) raise the question: how does the user discover they can configure rules, and when should the agent suggest it?
+
+**Options being explored:**
+1. **Kernel injection**: The shared system prompt (KERNEL.md) instructs agents to look for `*_rules` or `add_*_rule` companion tools and suggest configuration when patterns emerge (e.g., "I noticed you archived 5 similar emails - want me to add a rule?")
+2. **Docstring-driven**: Each workflow tool's docstring explains configuration options; agent uses reasoning to surface them at appropriate times
+3. **Per-workflow tools**: Each workflow provides its own rule management tools; discovery is implicit through tool listing
+
+**Current stance:** Not yet implemented. The framework may eventually inject guidance via KERNEL.md telling agents to proactively discover configuration tools and suggest them. For now, we rely on agents reading tool descriptions and using judgment.
