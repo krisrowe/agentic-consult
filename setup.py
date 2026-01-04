@@ -15,7 +15,7 @@ setup(
         "google-auth",
         "mcp>=1.0.0",
         "pathspec",
-        "google-workspace-access",  # gwsa SDK for email operations
+        "gwsa",  # gwsa SDK for email operations
     ],
     extras_require={
         "dev": [

@@ -400,23 +400,28 @@ async def remove_email_rule(rule_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def auto_archive_email(
+async def archive_email(
     message_id: str,
-    rule_id: str,
     from_addr: str,
     subject: str,
+    reason: str,
+    rule_id: Optional[str] = None,
     profile: Optional[str] = None
 ) -> dict[str, Any]:
     """
     Archive an email and log it for tracking and recovery.
+
+    **IMPORTANT:** This tool is intended ONLY for use within the email processing
+    workflow triggered by `process_email`. For archiving emails in other contexts,
+    use the gwsa `remove_email_label` tool directly with label_name="INBOX".
 
     This tool serves two purposes:
 
     1. **Archive emails** - Removes the INBOX label via gwsa SDK, moving the
        email out of inbox while preserving it in Gmail (not deleted).
 
-    2. **Track rule usage** - Logs each archived email to a cache file with
-       rule_id, message_id, sender, and subject. This enables:
+    2. **Track usage** - Logs each archived email to a cache file with
+       reason, rule_id (if applicable), message_id, sender, and subject. This enables:
 
        - **Rule efficiency**: The `list_email_rules` tool uses these logs to
          report use_count and last_used for each rule. Rules with zero usage
@@ -429,31 +434,42 @@ async def auto_archive_email(
     Archive logs are stored in $XDG_CACHE_HOME/agentic-consult/email-archive-log.jsonl
     and automatically cleaned up after the configured retention period (default 90 days).
 
-    IMPORTANT: Always use this tool instead of directly calling gwsa email tools
-    when archiving emails that match processing rules. This ensures proper tracking.
-
     Args:
         message_id: Gmail message ID to archive
-        rule_id: ID of the rule that triggered this archive (for logging/stats)
         from_addr: Sender email address (for logging)
         subject: Email subject line (for logging, truncated to 100 chars)
+        reason: Why this email is being archived:
+                - "rules-based": Matches a configured auto-archive rule (rule_id required)
+                - "ad-hoc": User explicitly approved archiving during review
+        rule_id: ID of the rule that triggered this archive (required when reason="rules-based")
         profile: Optional gwsa profile name if not using default
 
     Returns:
-        Dict with success status, message_id, rule_id, and archived flag.
+        Dict with success status, message_id, reason, rule_id (if applicable), and archived flag.
         On failure, includes error message.
     """
+    # Validate reason
+    if reason not in ("rules-based", "ad-hoc"):
+        return {"error": f"Invalid reason: {reason}. Must be 'rules-based' or 'ad-hoc'", "message_id": message_id}
+
+    # Require rule_id for rules-based archiving
+    if reason == "rules-based" and not rule_id:
+        return {"error": "rule_id is required when reason='rules-based'", "message_id": message_id}
+
     try:
         result = archive_email_with_gwsa(
             message_id=message_id,
-            rule_id=rule_id,
+            rule_id=rule_id or "ad-hoc",  # Use "ad-hoc" as rule_id for logging when not rules-based
             from_addr=from_addr,
             subject=subject,
             profile=profile
         )
+        # Add reason to result
+        if result.get("success"):
+            result["reason"] = reason
         return result
     except Exception as e:
-        logger.exception("Error in auto_archive_email")
+        logger.exception("Error in archive_email")
         return {"error": str(e), "message_id": message_id}
 
 
