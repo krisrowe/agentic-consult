@@ -319,3 +319,27 @@ The public repo provides mechanisms; private repos provide configs and personal 
 **Potential value:** A unified list of things the agent can help with - standard workflows (process_email) alongside personal ones (check water bills). Suggest them at the right cadence. Remind the user what's available.
 
 **Current stance:** Wait for the need to evolve. We haven't identified what this would look like yet. Let it emerge from usage.
+
+### Workflow Tool Pattern
+
+All workflow tools (public reusable or private/workspace-specific) follow a common pattern:
+
+1. **Naming**: `process_*` (e.g., `process_email`, `process_bills`)
+
+2. **Behavior**:
+   - Read config file (e.g., `email.yaml`, `bills.yaml`)
+   - Load a prompt/instructions template
+   - Inject user rules and context into template
+   - Return instructions as MCP tool response
+
+3. **Docstring Pattern**:
+   > "Invoke this tool and follow the instructions it provides."
+
+4. **Framework Role**:
+   - agentic-consult provides the **template loading** and **config merging** mechanisms
+   - agentic-consult provides **base templates** for public workflows
+   - Private repos provide **rule configs** (what to match, what to do)
+   - Private repos may provide **custom templates** for personal workflows
+   - The agent orchestrates by calling the tool and executing the returned instructions
+
+This pattern ensures workflow tools are declarative (config-driven) rather than imperative, letting the agent reason about the instructions rather than executing hardcoded logic.
