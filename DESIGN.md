@@ -380,10 +380,11 @@ Workflow tools that support user-configurable rules (like `process_email` with `
 - Agent follows the instruction, tool returns agenda, agent presents to user
 - MCP servers can't push proactively; this relies on agent following kernel instructions
 
-**IMPORTANT: SessionStart Hooks Available**
+**IMPORTANT: SessionStart Hooks Available in Both CLIs**
 
-Gemini CLI already supports `SessionStart` hooks that can initialize workflows at session start:
+Both Gemini CLI and Claude Code support `SessionStart` hooks that can initialize workflows at session start. This is the key integration point for `guide_user`.
 
+**Gemini CLI** (`.gemini/settings.json`):
 ```json
 {
   "hooks": {
@@ -404,11 +405,31 @@ Gemini CLI already supports `SessionStart` hooks that can initialize workflows a
 }
 ```
 
-This could invoke `guide_user` (or a CLI equivalent) to inject workflow suggestions into the session context automatically.
+**Claude Code** (`.claude/settings.json`):
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "consult guide-user"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 
-**Research TODO:**
-- [ ] Investigate Gemini CLI SessionStart hook integration for `guide_user`
-- [ ] Check if Claude Code has equivalent hook (user-prompt-submit exists, but SessionStart?)
-- [ ] Design the CLI command `consult guide-user` that outputs JSON for hook consumption
+Both can inject context via stdout or `additionalContext` in JSON output. The hook runs at session start and the output becomes part of the agent's initial context.
 
-Reference: https://geminicli.com/docs/hooks/writing-hooks/#configuration
+**Implementation TODO:**
+- [ ] Create `consult guide-user` CLI command that outputs workflow agenda
+- [ ] Test SessionStart hook integration in both Gemini CLI and Claude Code
+- [ ] Document hook setup in agentic-consult README
+
+References:
+- Gemini CLI: https://geminicli.com/docs/hooks/writing-hooks/#configuration
+- Claude Code: https://docs.anthropic.com/en/docs/claude-code/hooks#sessionstart
