@@ -360,3 +360,24 @@ Workflow tools that support user-configurable rules (like `process_email` with `
 3. **Per-workflow tools**: Each workflow provides its own rule management tools; discovery is implicit through tool listing
 
 **Current stance:** Not yet implemented. The framework may eventually inject guidance via KERNEL.md telling agents to proactively discover configuration tools and suggest them. For now, we rely on agents reading tool descriptions and using judgment.
+
+### Session Bootstrap: `guide_user` Tool
+
+**Concept:** A tool the agent invokes at session start to get personalized workflow suggestions.
+
+**Possible names:**
+- `guide_user` - what should we do today?
+- `introduce_workflows` - what's available?
+- `get_session_agenda` - what's due?
+
+**What it returns:**
+- List of registered workflows with cadence (daily/weekly/monthly)
+- Which are "due" based on last run timestamp
+- Natural language greeting: "Good morning! Shall we process emails? Your weekly backup check is also due."
+
+**Bootstrap mechanism:**
+- KERNEL.md includes instruction: "On new session, invoke `mcp__consult__guide_user` to see what workflows are suggested"
+- Agent follows the instruction, tool returns agenda, agent presents to user
+- MCP servers can't push proactively; this relies on agent following kernel instructions
+
+**Open question:** Could agent CLIs (Gemini CLI, Claude Code) support a `startup_tools` setting for auto-invocation? Not currently available but worth proposing to both.
