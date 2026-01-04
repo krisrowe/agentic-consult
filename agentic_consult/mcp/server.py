@@ -19,6 +19,14 @@ from agentic_consult.gemini import GeminiAPIClient
 from agentic_consult.backup.status import assess_repo_status
 from agentic_consult.backup.orchestrator import BackupOrchestrator
 from agentic_consult.backup.metadata_manager import BackupMetadataManager
+from agentic_consult.mcp.email_processing import (
+    get_process_email_instructions,
+    add_rule,
+    remove_rule,
+    list_rules,
+    get_rule_usage_stats,
+    archive_email_with_gwsa,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -276,6 +284,178 @@ async def run_precommit_scan(
     except Exception as e:
         logger.exception(f"Unexpected error during run_precommit_scan for {path}")
         return {"error": f"An unexpected error occurred: {str(e)}"}
+
+@mcp.tool()
+async def process_email() -> dict[str, Any]:
+    """
+    Returns email processing workflow instructions for the agent.
+
+    This tool reads configured rules from email.yaml and returns step-by-step
+    instructions for processing email across all profiles, including auto-archive
+    rules and user interaction guidelines.
+
+    Call this when the user asks to check/process their email.
+
+    Returns:
+        Dictionary with 'instructions' containing the full workflow.
+    """
+    try:
+        instructions = get_process_email_instructions()
+        return {"instructions": instructions}
+    except Exception as e:
+        logger.exception("Error in process_email")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def list_email_rules() -> dict[str, Any]:
+    """
+    Lists all configured email processing rules with usage statistics.
+
+    Usage stats help identify stale rules that can be removed to reduce agent
+    context overhead. Rules that haven't been used in months are candidates
+    for cleanup.
+
+    Returns:
+        Dictionary with 'rules' list containing all configured rules.
+        Each rule includes 'use_count' and 'last_used' from archive logs.
+    """
+    try:
+        rules = list_rules()
+        usage_stats = get_rule_usage_stats()
+
+        # Merge usage stats into rules
+        for rule in rules:
+            rule_id = rule.get('id')
+            if rule_id and rule_id in usage_stats:
+                rule['use_count'] = usage_stats[rule_id]['use_count']
+                rule['last_used'] = usage_stats[rule_id]['last_used']
+            else:
+                rule['use_count'] = 0
+                rule['last_used'] = None
+
+        return {"rules": rules, "count": len(rules)}
+    except Exception as e:
+        logger.exception("Error in list_email_rules")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def add_email_rule(
+    rule_id: str,
+    rule_type: str,
+    match_from: Optional[str] = None,
+    match_subject: Optional[str] = None,
+    instructions: Optional[str] = None
+) -> dict[str, Any]:
+    """
+    Adds a new email processing rule.
+
+    Args:
+        rule_id: Unique identifier for the rule (e.g., 'usps-digest', 'airbnb-payouts')
+        rule_type: Either 'auto_archive' or 'custom'
+        match_from: Email sender pattern to match (partial match)
+        match_subject: Subject line pattern to match (partial match)
+        instructions: Required for 'custom' type - what to do with matching emails
+
+    Returns:
+        The created rule, or an error message.
+    """
+    try:
+        rule = add_rule(
+            rule_id=rule_id,
+            rule_type=rule_type,
+            match_from=match_from,
+            match_subject=match_subject,
+            instructions=instructions
+        )
+        return {"success": True, "rule": rule}
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        logger.exception("Error in add_email_rule")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def remove_email_rule(rule_id: str) -> dict[str, Any]:
+    """
+    Removes an email processing rule by ID.
+
+    Args:
+        rule_id: The ID of the rule to remove.
+
+    Returns:
+        Success status or error message.
+    """
+    try:
+        removed = remove_rule(rule_id)
+        if removed:
+            return {"success": True, "message": f"Rule '{rule_id}' removed"}
+        else:
+            return {"success": False, "message": f"Rule '{rule_id}' not found"}
+    except Exception as e:
+        logger.exception("Error in remove_email_rule")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def auto_archive_email(
+    message_id: str,
+    rule_id: str,
+    from_addr: str,
+    subject: str,
+    profile: Optional[str] = None
+) -> dict[str, Any]:
+    """
+    Archive an email and log it for tracking and recovery.
+
+    This tool serves two purposes:
+
+    1. **Archive emails** - Removes the INBOX label via gwsa SDK, moving the
+       email out of inbox while preserving it in Gmail (not deleted).
+
+    2. **Track rule usage** - Logs each archived email to a cache file with
+       rule_id, message_id, sender, and subject. This enables:
+
+       - **Rule efficiency**: The `list_email_rules` tool uses these logs to
+         report use_count and last_used for each rule. Rules with zero usage
+         over months are candidates for removal to reduce agent context.
+
+       - **Forensic recovery**: If emails are incorrectly archived, the log
+         provides a record of what was archived and when, enabling review
+         and recovery via Gmail search by message_id.
+
+    Archive logs are stored in $XDG_CACHE_HOME/agentic-consult/email-archive-log.jsonl
+    and automatically cleaned up after the configured retention period (default 90 days).
+
+    IMPORTANT: Always use this tool instead of directly calling gwsa email tools
+    when archiving emails that match processing rules. This ensures proper tracking.
+
+    Args:
+        message_id: Gmail message ID to archive
+        rule_id: ID of the rule that triggered this archive (for logging/stats)
+        from_addr: Sender email address (for logging)
+        subject: Email subject line (for logging, truncated to 100 chars)
+        profile: Optional gwsa profile name if not using default
+
+    Returns:
+        Dict with success status, message_id, rule_id, and archived flag.
+        On failure, includes error message.
+    """
+    try:
+        result = archive_email_with_gwsa(
+            message_id=message_id,
+            rule_id=rule_id,
+            from_addr=from_addr,
+            subject=subject,
+            profile=profile
+        )
+        return result
+    except Exception as e:
+        logger.exception("Error in auto_archive_email")
+        return {"error": str(e), "message_id": message_id}
+
 
 def run_server():
     """Run the MCP server with stdio transport."""

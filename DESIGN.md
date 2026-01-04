@@ -212,3 +212,110 @@ The existing `issues/` directory serves as the **Episodic Memory** (or Topic Mem
 *   **Role:** These files provide the qualitative context ("Why we decided X", "Customer constraints Y") that is missing from structured Task/Email data.
 *   **Persistence:** These files are **not** replaced or deleted by the pipeline. They are treated as the "Source of Truth" for narrative history.
 *   **Prompting:** The content of active issues is prioritized in the "Context Brief" synthesis.
+
+## 8. Google Workspace Authentication Strategy
+
+### Decision: gwsa as the Auth Management Layer
+
+We use [gworkspace-access (gwsa)](https://github.com/krisrowe/gworkspace-access) as our Google Workspace authentication and access layer, rather than direct ADC (Application Default Credentials) with optional overrides.
+
+### Alternatives Considered
+
+1. **Direct ADC with fallback**: Use `google.auth.default()` directly, allowing users to configure via `gcloud auth application-default login` or custom `GOOGLE_APPLICATION_CREDENTIALS`.
+
+2. **gwsa as required dependency**: Require gwsa to be installed and configured (`gwsa profiles add`) before agentic-consult email features work.
+
+### Why We Chose gwsa
+
+Direct ADC fallback was rejected due to **unpredictable user experience**:
+
+- **No profile management**: ADC is single-identity. Many users have multiple Google accounts (personal, work, rental properties). gwsa provides `profiles add/use/list` for clean multi-identity workflows.
+
+- **No scope validation**: ADC silently fails or returns partial data when scopes are insufficient. gwsa validates scopes during profile setup and provides clear error messages.
+
+- **No token status tracking**: With ADC, users discover auth problems at runtime via cryptic API errors. gwsa provides `profiles current` and `status` commands for proactive health checks.
+
+- **Mysterious errors**: When ADC-based auth fails (expired tokens, wrong project, missing scopes), debugging requires understanding Google Cloud internals. gwsa centralizes auth state and provides actionable diagnostics.
+
+- **Client ID complexity**: Using ADC with custom OAuth client IDs (required for some restricted accounts) involves manual credential file management. gwsa abstracts this behind `client set` and `profiles add`.
+
+### Trade-off Acknowledged
+
+This decision **adds a setup step** for users: they must run `gwsa profiles add` before email tools work. We accept this trade-off because:
+
+1. The setup is a one-time operation with clear interactive prompts
+2. Multi-profile support is essential for the target use case (personal + work accounts)
+3. Auth failures surface early (at setup) rather than mysteriously at runtime
+4. The gwsa MCP server provides the same auth context to other agents
+
+### Future Consideration
+
+If gwsa adds an ADC fallback mode with proper validation (scope checking, token status, clear error messages), we could revisit making auth setup optional. Until then, explicit `gwsa profiles add` remains the required path.
+
+## 9. Future: Bill Payment Tracking (`process_bills`)
+
+### Concept
+
+A `process_bills` MCP tool analogous to `process_email`:
+
+- **Rules-based**: Configure expected recurring bills (water, electric, insurance, etc.) with due dates and amounts
+- **Monarch integration**: Check transactions to verify payments were made
+- **Proactive alerts**: If expected payment not found by threshold date, prompt user
+- **Better than email**: Monarch transactions are more reliable than payment confirmation emails
+
+### Why This Matters
+
+Recurring bills without auto-pay (e.g., water bills for rental properties) are easy to forget. Email confirmations can be missed or delayed. Checking Monarch for the actual transaction is definitive.
+
+### Potential Schema
+
+```yaml
+bills:
+  - id: clement-water
+    payee: "Marshall County Water"
+    amount_range: [40, 80]
+    due_day: 15
+    check_by_day: 8
+    account_hint: "Ally Checking"
+```
+
+### Status
+
+Not implemented. Tracking here for future consideration.
+
+## 10. Public vs Personal Workflows
+
+### Design Principle
+
+agentic-consult provides **reusable workflow mechanisms** that make sense to abstract. Some workflows are too personal/opinionated to belong here.
+
+**Belongs in agentic-consult (public):**
+- Workflows around universal tools (email, calendar, git)
+- Mechanisms others would realistically adopt
+- Config schemas that work across different users' data
+
+**Belongs in user's private config repo:**
+- Workflows built on niche tool choices others won't adopt
+- Processes too opinionated to abstract
+- When the effort to generalize wouldn't pay off
+
+**The test:** Would someone install your tool stack just to use this workflow?
+- Email processing: Yes - everyone has email, Gmail is common
+- Niche finance app integration: No - nobody adopts a finance tool for one workflow
+
+### Relationship to Config Repos
+
+agentic-consult is designed to work with private "config repos" that hold:
+- User-specific rule configs (email.yaml, etc.)
+- Personal workflow definitions that aren't worth abstracting
+- Context docs (like CLAUDE.md) with personal details
+
+The public repo provides mechanisms; private repos provide configs and personal workflows.
+
+### Framework Role for Personal Workflows
+
+**Open question:** Should agentic-consult provide a registry of workflows (both public and personal) that suggests what the user should periodically do?
+
+**Potential value:** A unified list of things the agent can help with - standard workflows (process_email) alongside personal ones (check water bills). Suggest them at the right cadence. Remind the user what's available.
+
+**Current stance:** Wait for the need to evolve. We haven't identified what this would look like yet. Let it emerge from usage.

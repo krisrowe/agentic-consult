@@ -16,6 +16,8 @@ email:
   # Email content batching limits (in characters)
   max_prompt_content_chars: 100000  # Stop adding emails after this limit is reached/exceeded
   max_email_chars: 100000           # Truncate individual emails exceeding this limit
+  # Archive logging - tracks rule usage for identifying stale rules
+  archive_log_retention_days: 90    # How long to keep archive logs
 
 # Analyze Tool Configuration
 analyze:

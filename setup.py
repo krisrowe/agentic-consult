@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="agentic-consult",
-    version="0.0.1",
+    version="0.0.3",
     description="Email scan + TickTick refresh tooling",
     packages=find_packages(exclude=("tests", "tests.*")),
     include_package_data=True,
@@ -15,6 +15,7 @@ setup(
         "google-auth",
         "mcp>=1.0.0",
         "pathspec",
+        "google-workspace-access",  # gwsa SDK for email operations
     ],
     extras_require={
         "dev": [

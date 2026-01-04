@@ -21,6 +21,25 @@ The [Model Context Protocol](https://modelcontextprotocol.io/) enables AI assist
 | `backup_local_repo` | Backs up a single local git repository to Google Drive. |
 | `check_repo_status` | Checks the backup status of a git repository (Local-Only or Remote). |
 | `run_precommit_scan` | Runs a pre-commit scan for sensitive data in a local directory. |
+| `process_email` | Returns email processing workflow instructions with configured rules. |
+| `list_email_rules` | Lists all email processing rules with usage statistics. |
+| `add_email_rule` | Adds a new email processing rule (auto_archive or custom). |
+| `remove_email_rule` | Removes an email processing rule by ID. |
+| `auto_archive_email` | Archives an email via gwsa and logs for tracking/recovery. |
+
+### Email Processing Tools
+
+The email tools help automate inbox management with rule-based archiving:
+
+1. **Rules Configuration**: Rules are stored in `~/.config/agentic-consult/email.yaml`. Use `add_email_rule` to create auto-archive or custom rules with time-based conditions.
+
+2. **Archive Tracking**: The `auto_archive_email` tool both archives emails (via gwsa SDK) AND logs each action to a cache file. This enables:
+   - **Rule efficiency analysis**: `list_email_rules` shows `use_count` and `last_used` for each rule. Rules with zero usage over months are candidates for removal to reduce agent context overhead.
+   - **Forensic recovery**: If emails are incorrectly archived, the log (`$XDG_CACHE_HOME/agentic-consult/email-archive-log.jsonl`) provides a record for review and recovery.
+
+3. **Workflow Instructions**: Call `process_email` to get the full workflow with current rules interpolated.
+
+**Always use `auto_archive_email`** instead of direct gwsa calls when archiving rule-matched emails to ensure proper tracking.
 
 ### Configuration Dependency
 
