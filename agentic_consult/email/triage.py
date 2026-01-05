@@ -25,7 +25,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Callable, Literal, Optional
 
 import yaml
 
@@ -503,7 +503,8 @@ def triage_emails(
     review_status: Literal["new", "reviewing", "all"] = "all",
     limit: int = 20,
     profile: Optional[str] = None,
-    model: Optional[str] = None
+    model: Optional[str] = None,
+    progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict[str, Any]:
     """
     Triage inbox emails using Gemini.
@@ -540,6 +541,9 @@ def triage_emails(
         query = _build_gmail_query(review_status)
         logger.info(f"Fetching emails with query: {query}")
 
+        if progress_callback:
+            progress_callback(1, 2)  # Step 1/2: Fetching emails
+
         emails = _fetch_emails(query, limit, profile)
 
         if not emails:
@@ -571,6 +575,9 @@ def triage_emails(
         )
 
         # Step 5: Call Gemini (or use mock response)
+        if progress_callback:
+            progress_callback(2, 2)  # Step 2/2: Calling Gemini
+
         user_config = _load_user_email_config()
 
         if user_config.get('use_mock_gemini', False):
