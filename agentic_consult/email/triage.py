@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 TRIAGE_TEMPLATE_FILE = "templates/email_triage.txt"
 EMAIL_CACHE_SUBDIR = "emails"
 CONTACTS_CONFIG_FILE = "contacts.yaml"
+REF_MAP_FILE = "ref_map.json"
 
 
 def _get_package_dir() -> Path:
@@ -134,6 +135,44 @@ def load_triage_template() -> str:
         raise FileNotFoundError(f"Triage template not found: {template_path}")
 
     return template_path.read_text(encoding='utf-8')
+
+
+# -----------------------------------------------------------------------------
+# Shortcode Management
+# -----------------------------------------------------------------------------
+
+def _generate_shortcodes(count: int) -> list[str]:
+    """
+    Generate a list of shortcodes (A0..Z9).
+    Enough for 260 items.
+    """
+    codes = []
+    chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    for char in chars:
+        for digit in range(10):
+            codes.append(f"{char}{digit}")
+            if len(codes) >= count:
+                return codes
+    return codes
+
+def _save_ref_map(mapping: dict) -> None:
+    """Save the shortcode -> message_id mapping to cache."""
+    cache_dir = get_cache_dir()
+    map_path = cache_dir / REF_MAP_FILE
+    with open(map_path, 'w', encoding='utf-8') as f:
+        json.dump(mapping, f, indent=2)
+
+def load_ref_map() -> dict:
+    """Load the shortcode -> message_id mapping from cache."""
+    cache_dir = get_cache_dir()
+    map_path = cache_dir / REF_MAP_FILE
+    if not map_path.exists():
+        return {}
+    try:
+        with open(map_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 # -----------------------------------------------------------------------------
@@ -505,33 +544,6 @@ def triage_emails(
 ) -> dict[str, Any]:
     """
     Triage inbox emails using Gemini.
-
-    This is the main SDK function that:
-    1. Fetches emails based on review_status filter
-    2. Caches each email locally
-    3. Loads rules (unified from MCP loader)
-    4. Calls Gemini with emails + rules + template
-    5. Returns structured recommendations
-
-    Args:
-        review_status: Filter emails by state
-            - "new": Emails in inbox without Reviewing label
-            - "reviewing": Emails with Reviewing label
-            - "all": All inbox emails
-        limit: Maximum emails to fetch (default 20)
-        profile: Optional gwsa profile name
-        model: Optional Gemini model override
-
-    For testing: Set CONSULT_CONFIG_DIR and XDG_CACHE_HOME to temp dirs, then:
-        - In email.yaml: use_mock_emails: true, use_mock_gemini: true
-        - In cache dir: mock-triage-emails.json, mock-triage-response.json
-
-    Returns:
-        Dict with:
-            - recommendations: List of email recommendations from Gemini
-            - rules_referenced: Rules that were mentioned in recommendations
-            - instructions: Guidance for the agent on next steps
-            - stats: Processing statistics
     """
     try:
         # Step 1: Build query and fetch emails
@@ -539,7 +551,7 @@ def triage_emails(
         logger.info(f"Fetching emails with query: {query}")
 
         if progress_callback:
-            progress_callback(1, 2)  # Step 1/2: Fetching emails
+            progress_callback(1, 2)
 
         emails = _fetch_emails(query, limit, profile)
 
@@ -552,7 +564,7 @@ def triage_emails(
             }
 
         # Step 2: Cache each email (triggers cleanup as side effect)
-        cleanup_email_cache()  # Best-effort cleanup before caching
+        cleanup_email_cache()
         for email in emails:
             cache_email(email)
 
@@ -577,7 +589,7 @@ def triage_emails(
 
         # Step 5: Call Gemini (or use mock response)
         if progress_callback:
-            progress_callback(2, 2)  # Step 2/2: Calling Gemini
+            progress_callback(2, 2)
 
         user_config = _load_user_email_config()
 
@@ -594,7 +606,6 @@ def triage_emails(
             try:
                 client = GeminiAPIClient(model_name=model)
             except ValueError as e:
-                # Diagnostic for API key issues
                 import os
                 gemini_keys = {k: len(v) for k, v in os.environ.items() if 'GEMINI' in k.upper()}
                 return {
@@ -612,7 +623,20 @@ def triage_emails(
 
         recommendations = result.get('recommendations', [])
 
-        # Step 6: Extract referenced rules
+        # Step 6: Generate Shortcodes and Update Map
+        shortcodes = _generate_shortcodes(len(recommendations))
+        ref_map = {}
+        for i, rec in enumerate(recommendations):
+            code = shortcodes[i]
+            msg_id = rec.get('id')
+            rec['ref'] = code  # Add shortcode to recommendation
+            if msg_id:
+                ref_map[code] = msg_id
+        
+        # Persist mapping for agent use
+        _save_ref_map(ref_map)
+
+        # Step 7: Extract referenced rules
         referenced_rule_ids = set()
         for rec in recommendations:
             rule_id = rec.get('rule_id')
@@ -643,44 +667,83 @@ def triage_emails(
 
 def _build_agent_instructions(review_status: str, recommendations: list[dict]) -> str:
     """Build instructions for the agent based on triage results."""
-
-    # Count by action
-    action_counts = {}
+    
+    # Group by action
+    grouped = {}
     for rec in recommendations:
         action = rec.get('recommended_action', 'unknown')
-        action_counts[action] = action_counts.get(action, 0) + 1
+        if action not in grouped:
+            grouped[action] = []
+        grouped[action].append(rec)
 
+    # 1. Triage Table
     lines = [
         "## Triage Results",
         "",
-        f"Processed {len(recommendations)} emails.",
-        ""
+        "| Ref | Date | From | Subject | Action | Reason |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- |"
     ]
+    
+    # Priority order for display
+    display_order = ['review', 'track_as_task', 'ask_user', 'archive_now', 'archive_later']
+    
+    for action in display_order:
+        if action in grouped:
+            for rec in grouped[action]:
+                ref = rec.get('ref', '??')
+                date = rec.get('date', '')[:10]
+                sender = rec.get('from', '').split('<')[0].strip()[:20]
+                subj = rec.get('subject', '')[:40].replace('|', '-')
+                reason = rec.get('reason', '')
+                lines.append(f"| **{ref}** | {date} | {sender} | {subj} | `{action}` | {reason} |")
+    
+    # Handle any actions not in priority list
+    for action, items in grouped.items():
+        if action not in display_order:
+             for rec in items:
+                ref = rec.get('ref', '??')
+                date = rec.get('date', '')[:10]
+                sender = rec.get('from', '').split('<')[0].strip()[:20]
+                subj = rec.get('subject', '')[:40].replace('|', '-')
+                reason = rec.get('reason', '')
+                lines.append(f"| **{ref}** | {date} | {sender} | {subj} | `{action}` | {reason} |")
 
-    if action_counts:
-        lines.append("**Actions breakdown:**")
-        for action, count in sorted(action_counts.items()):
-            lines.append(f"- {action}: {count}")
+    lines.append("")
+    lines.append("## Suggested Actions (Copy/Paste Block)")
+    lines.append("```bash")
+
+    # 2. Command Block
+    # archive_now -> do arc
+    if 'archive_now' in grouped:
+        refs = [r['ref'] for r in grouped['archive_now']]
+        lines.append(f"do arc {' '.join(refs)}")
+    
+    if 'archive_later' in grouped:
+        refs = [r['ref'] for r in grouped['archive_later']]
+        lines.append(f"do arc {' '.join(refs)}")
+        
+    # review -> do rev
+    if 'review' in grouped:
+        refs = [r['ref'] for r in grouped['review']]
+        lines.append(f"do rev {' '.join(refs)}")
+        
+    # track_as_task -> do task (requires manual input usually, but we list them)
+    if 'track_as_task' in grouped:
+        for rec in grouped['track_as_task']:
+            lines.append(f"# Task: {rec.get('subject')}")
+            lines.append(f"do task {rec['ref']}")
+            
+    # ask_user -> commented out suggestions
+    if 'ask_user' in grouped:
         lines.append("")
+        lines.append("# Unsure / Ask User:")
+        for rec in grouped['ask_user']:
+             lines.append(f"# do [arc|rev|task] {rec['ref']}  # {rec.get('subject')}")
 
-    lines.extend([
-        "## Next Steps",
-        "",
-        "1. **Review recommendations** with the user before taking action",
-        "2. For `archive_now` recommendations: use `archive_email` tool",
-        "3. For `archive_later` recommendations: use `mark_email_archivable` tool",
-        "4. For `track_as_task` recommendations: check for existing task, create if needed, then archive",
-        "5. For `review` recommendations: use `mark_email_in_review` to apply Reviewing label",
-        "6. For `ask_user` recommendations: present to user for decision",
-        "",
-        "**Available tools:**",
-        "- `get_cached_emails([message_ids])`: Get full email content from cache (batch)",
-        "- `archive_email(...)`: Archive and log the action",
-        "- `mark_email_archivable(message_id)`: Apply Archivable label",
-        "- `mark_email_in_review(message_id, reverse=False)`: Apply/remove Reviewing label",
-        ""
-    ])
-
+    lines.append("```")
+    lines.append("")
+    lines.append("**Commands:** `do arc [refs]`, `do rev [refs]`, `do task [refs]`, `do show [refs]`")
+    
     if review_status == "new":
         lines.append("Continue with `triage_emails(review_status='new')` until inbox is triaged.")
 
