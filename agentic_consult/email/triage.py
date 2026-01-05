@@ -413,90 +413,31 @@ def _fetch_emails(
             return []
 
     from gwsa.sdk.mail.search import search_messages
-    from gwsa.sdk.mail.message import get_message
 
-    # Search for message IDs
-    search_result = search_messages(
+    # search_messages returns tuple: (list of message dicts, metadata dict)
+    # With format="full", messages already include body, snippet, attachments
+    messages, _metadata = search_messages(
         query=query,
         max_results=limit,
-        format="full",  # Get full content
+        format="full",
         profile=profile
     )
 
-    messages = search_result.get('messages', [])
-
+    # Transform to our expected format
     emails = []
     for msg in messages:
-        try:
-            # Get full message content
-            full_msg = get_message(msg['id'], profile=profile)
-
-            # Extract key fields
-            email = {
-                'id': full_msg.get('id'),
-                'thread_id': full_msg.get('threadId'),
-                'date': _extract_header(full_msg, 'Date'),
-                'from': _extract_header(full_msg, 'From'),
-                'to': _extract_header(full_msg, 'To'),
-                'subject': _extract_header(full_msg, 'Subject'),
-                'body': _extract_body(full_msg),
-                'labels': full_msg.get('labelIds', [])
-            }
-
-            emails.append(email)
-        except Exception as e:
-            logger.warning(f"Failed to fetch message {msg.get('id')}: {e}")
+        email = {
+            'id': msg.get('id'),
+            'date': msg.get('date', ''),
+            'from': msg.get('from', ''),
+            'to': msg.get('to', ''),
+            'subject': msg.get('subject', ''),
+            'body': msg.get('body', ''),
+            'labels': msg.get('labelIds', [])
+        }
+        emails.append(email)
 
     return emails
-
-
-def _extract_header(message: dict, header_name: str) -> str:
-    """Extract a header value from a Gmail message."""
-    headers = message.get('payload', {}).get('headers', [])
-    for header in headers:
-        if header.get('name', '').lower() == header_name.lower():
-            return header.get('value', '')
-    return ''
-
-
-def _extract_body(message: dict) -> str:
-    """Extract body text from a Gmail message."""
-    import base64
-
-    payload = message.get('payload', {})
-
-    # Check for direct body
-    body_data = payload.get('body', {}).get('data')
-    if body_data:
-        try:
-            return base64.urlsafe_b64decode(body_data).decode('utf-8', errors='replace')
-        except Exception:
-            pass
-
-    # Check parts for text/plain
-    parts = payload.get('parts', [])
-    for part in parts:
-        if part.get('mimeType') == 'text/plain':
-            part_data = part.get('body', {}).get('data')
-            if part_data:
-                try:
-                    return base64.urlsafe_b64decode(part_data).decode('utf-8', errors='replace')
-                except Exception:
-                    pass
-
-        # Recurse into nested parts
-        nested_parts = part.get('parts', [])
-        for nested in nested_parts:
-            if nested.get('mimeType') == 'text/plain':
-                nested_data = nested.get('body', {}).get('data')
-                if nested_data:
-                    try:
-                        return base64.urlsafe_b64decode(nested_data).decode('utf-8', errors='replace')
-                    except Exception:
-                        pass
-
-    # Fallback to snippet
-    return message.get('snippet', '')
 
 
 def _prepare_emails_for_prompt(emails: list[dict]) -> str:
