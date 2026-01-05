@@ -316,7 +316,7 @@ async def triage_emails(
        - archive_now → `archive_email()` → done
        - archive_later → `mark_email_archivable()` → stays until aged
        - review → `mark_email_in_review()` → stays for user attention
-       - track_as_task → create task, then `archive_email()` → done
+       - track_as_task → create task (include email link in notes), then `archive_email()` → done
        - ask_user → get user decision, act accordingly → done
 
     3. **Subsequent batches** - Use `review_status="new"` to skip labeled emails
