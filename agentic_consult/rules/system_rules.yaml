@@ -4,6 +4,12 @@
 # They catch urgent issues that should never be auto-archived.
 
 rules:
+  - id: sys-important-direct
+    action: review
+    condition: >
+      Email is from a known Customer domain or VIP list AND is addressed directly to the user
+      (To/Cc line or mentions name/nickname in body), unless it is an automated notification.
+
   - id: sys-past-due-penalty
     action: track_as_task
     condition: >
