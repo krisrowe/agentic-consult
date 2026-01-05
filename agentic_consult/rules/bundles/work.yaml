@@ -1,6 +1,5 @@
 # Work Rules
 # Standard rules for professional email management.
-# Default: DISABLED (User must enable via email.yaml)
 
 rules:
   - id: work-calendar-invite
@@ -18,5 +17,8 @@ rules:
     condition: >
       Email is a request for access to a file, folder, or resource owned by the user.
 
+# DEFAULT STATE: DISABLED
+# To enable these rules, add "work-*" to the 'enable' list in your 
+# user configuration file (e.g. config://email.yaml).
 disable:
   - "work-*"

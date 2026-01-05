@@ -1,5 +1,4 @@
-# System Rules - Always applied
-#
+# System Rules
 # These are universal safety-net rules that apply regardless of user config.
 # They catch urgent issues that should never be auto-archived.
 
@@ -22,6 +21,7 @@ rules:
       Email is a security alert about suspicious activity, unauthorized access,
       password reset request not initiated by user, new device login, or similar
 
-# Default: ENABLED
+# DEFAULT STATE: ENABLED
+# These rules are active by default to ensure basic safety and responsiveness.
 enable:
   - "sys-*"

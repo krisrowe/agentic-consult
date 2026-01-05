@@ -1,6 +1,5 @@
 # Personal Finance Rules
 # Optional bundle for tracking bills, payments, and financial alerts.
-# Default: DISABLED (User must enable via email.yaml)
 
 rules:
   - id: home-past-due-penalty
@@ -21,5 +20,8 @@ rules:
       Email indicates a new financial account, credit card, or loan was opened
       in the recipient's name
 
+# DEFAULT STATE: DISABLED
+# To enable these rules, add "home-*" to the 'enable' list in your 
+# user configuration file (e.g. config://email.yaml).
 disable:
   - "home-*"
