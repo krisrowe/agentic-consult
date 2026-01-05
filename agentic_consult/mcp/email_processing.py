@@ -145,8 +145,9 @@ def _apply_state_directives(merged_rules: dict, data: dict, source_name: str) ->
     """
     Apply 'enable' and 'disable' lists from loaded YAML to current rules.
     """
-    enable_patterns = data.get('enable', [])
-    disable_patterns = data.get('disable', [])
+    # Use 'or []' to handle cases where key exists but is null in YAML
+    enable_patterns = data.get('enable') or []
+    disable_patterns = data.get('disable') or []
 
     if not enable_patterns and not disable_patterns:
         return
@@ -178,7 +179,8 @@ def _load_layer(path: Path, merged_rules: dict[str, dict]) -> None:
             data = yaml.safe_load(f) or {}
             
             # 1. Merge Rules
-            source_rules = data.get('rules', [])
+            # Use 'or []' to handle 'rules: null' cases
+            source_rules = data.get('rules') or []
             for rule in source_rules:
                 rule_id = rule.get('id')
                 if rule_id:
@@ -284,7 +286,7 @@ def add_rule(
         try:
             with open(user_config_path, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f) or {}
-                user_rules = data.get('rules', [])
+                user_rules = data.get('rules') or []
         except Exception:
             pass
 
@@ -319,7 +321,7 @@ def remove_rule(rule_id: str) -> bool:
     try:
         with open(user_config_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
-            user_rules = data.get('rules', [])
+            user_rules = data.get('rules') or []
     except Exception:
         return False
 
