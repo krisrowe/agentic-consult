@@ -28,3 +28,13 @@ This architecture leverages a "Reasoning Tool" (or Cognitive Tool) pattern. Inst
 
 ### Orphaned Backup File Handling
 In `UserHomeBackup`, detect files that exist on Drive but not locally. Implement a strategy for handling these orphans, such as prompting the user for deletion (in interactive mode) or skipping them. Consider a `--prune` flag for non-interactive cleanup. An alternative could be archiving all home files into a single `.zip` per run, similar to how repos are handled, which would simplify cleanup.
+
+## Configuration & Extensibility
+
+### Extensible Rule Sources (Email Processing)
+Currently, email rule sources are defined statically in the package's `app.yaml`. We need to enable users to extend this list via their user configuration (`settings.json`) without modifying the installed package.
+
+- **Proposal**: Add an `email.extra_rules_sources` (or similar) list to `~/.config/agentic-consult/settings.json`.
+- **Mechanism**: The loader should read the default sources from `app.yaml`, then append sources from `settings.json`.
+- **Use Case**: A user wants to enable a bundled rule set (e.g., `pkg://rules/bundles/personal.yaml`) or include a shared team rules file from a separate path, without rebuilding or hacking the tool.
+

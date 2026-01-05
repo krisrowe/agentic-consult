@@ -1,8 +1,9 @@
-"""
-Email processing rules and workflow instructions for agents.
+"Email processing rules and workflow instructions for agents.
 
-Rules are stored in ~/.config/agentic-consult/email.yaml (or CONSULT_CONFIG_DIR).
-Template is loaded from ~/.config/agentic-consult/templates/process_email.md
+Rule Loading Order (Stacking):
+1. System Rules (pkg://rules/system_rules.yaml) - The base layer.
+2. User Bundles (from settings.json) - Optional intermediate layers (e.g. personal.yaml).
+3. User Config (config://email.yaml) - The final override layer.
 
 ## Archive Tracking
 
@@ -22,7 +23,7 @@ This logging serves two purposes:
 Logs are automatically cleaned up after the configured retention period (default 90 days)
 as a best-effort operation on each write. Cleanup failures are logged as warnings
 but don't fail the archive operation.
-"""
+"
 
 import logging
 import json
@@ -33,7 +34,7 @@ from pathlib import Path
 
 import yaml
 
-from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config
+from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config, load_main_config
 from gwsa.sdk.mail.label import remove_label as gwsa_remove_label
 
 logger = logging.getLogger(__name__)
@@ -128,7 +129,7 @@ When ANY profile reaches inbox zero, display:
 
 ✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨
 ```
-"""
+""
 
 
 def get_email_config_path() -> Path:
@@ -136,139 +137,94 @@ def get_email_config_path() -> Path:
     return get_config_path(EMAIL_CONFIG_FILE)
 
 
-def _get_bundles_dir() -> Path:
-    """Returns package bundles directory."""
-    return Path(__file__).parent.parent / "rules" / "bundles"
+def _get_package_root() -> Path:
+    """Returns the package root directory (agentic_consult)."""
+    return Path(__file__).parent.parent
 
 
-def _resolve_import_source(source: str) -> Path:
+def _resolve_rules_source(source_uri: str) -> Optional[Path]:
     """
-    Resolve import source to a file path.
+    Resolve a rules source URI to a file path.
 
-    Source resolution hierarchy:
-    1. Bundle name → package (e.g., "personal" → rules/bundles/personal.yaml)
-    2. Relative path → config dir (e.g., "./work.yaml")
-    3. Absolute/home path → as-is (e.g., "~/shared/team.yaml")
+    Schemes:
+    - pkg://path/to/file.yaml -> Relative to package root
+    - config://file.yaml -> Relative to user config directory
+    - /abs/path/file.yaml -> Absolute path
     """
-    # Check if it's a simple bundle name (no path separators, no extension)
-    if '/' not in source and '\\' not in source and not source.endswith('.yaml'):
-        bundle_path = _get_bundles_dir() / f"{source}.yaml"
-        if bundle_path.exists():
-            return bundle_path
-
-    # Expand ~ and check if absolute
-    expanded = Path(source).expanduser()
-    if expanded.is_absolute():
-        return expanded
-
-    # Relative to config dir
-    return get_consult_config_dir() / source
-
-
-def _load_rules_from_source(source_path: Path) -> list[dict]:
-    """Load rules array from a YAML file."""
-    if not source_path.exists():
-        logger.warning(f"Import source not found: {source_path}")
-        return []
-
-    try:
-        with open(source_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f) or {}
-            return data.get('rules', [])
-    except (yaml.YAMLError, IOError) as e:
-        logger.warning(f"Failed to load import source {source_path}: {e}")
-        return []
-
-
-def _filter_rules_by_patterns(rules: list[dict], patterns: list[str]) -> list[dict]:
-    """
-    Filter rules by ID patterns using fnmatch.
-
-    Patterns:
-    - "*" matches all
-    - "github-*" matches prefix
-    - "*-notification" matches suffix
-    - "exact-id" matches exactly
-    """
-    import fnmatch
-
-    if not patterns or "*" in patterns:
-        return rules
-
-    filtered = []
-    for rule in rules:
-        rule_id = rule.get('id', '')
-        for pattern in patterns:
-            if fnmatch.fnmatch(rule_id, pattern):
-                filtered.append(rule)
-                break
-
-    return filtered
-
-
-def _process_imports(imports: list[dict]) -> list[dict]:
-    """Process imports array and return collected rules."""
-    collected = []
-
-    for imp in imports:
-        source = imp.get('source')
-        if not source:
-            continue
-
-        source_path = _resolve_import_source(source)
-        source_rules = _load_rules_from_source(source_path)
-
-        patterns = imp.get('rules', ['*'])
-        if isinstance(patterns, str):
-            patterns = [patterns]
-
-        filtered = _filter_rules_by_patterns(source_rules, patterns)
-        collected.extend(filtered)
-
-    return collected
+    if source_uri.startswith("pkg://"):
+        rel_path = source_uri.replace("pkg://", "")
+        return _get_package_root() / rel_path
+    
+    if source_uri.startswith("config://"):
+        rel_path = source_uri.replace("config://", "")
+        return get_consult_config_dir() / rel_path
+        
+    # Standard path handling
+    path = Path(source_uri).expanduser()
+    if path.is_absolute():
+        return path
+        
+    # Default to config dir if no scheme/abs path
+    return get_consult_config_dir() / source_uri
 
 
 def load_email_rules() -> list[dict]:
     """
-    Load email processing rules from config file.
-
-    Supports imports for extensibility:
-        imports:
-          - source: personal          # bundle name
-            rules: ["*"]              # patterns (fnmatch)
-          - source: ./work.yaml       # relative to config dir
-            rules: ["slack-*"]
-
-        rules:
-          - id: my-rule
-            ...
+    Load email processing rules from fixed sequence of sources.
+    
+    Order (Later overrides earlier):
+    1. System Rules (pkg://rules/system_rules.yaml)
+    2. User Bundles (from settings.json - Placeholder)
+    3. User Config (config://email.yaml)
     """
-    path = get_email_config_path()
-    if not path.exists():
-        return []
+    sources = []
+    
+    # 1. System Base (Always first)
+    sources.append("pkg://rules/system_rules.yaml")
+    
+    # 2. User Bundles (Placeholder)
+    # TODO: Load 'email.rule_bundles' from settings.json and append here
+    # Example: sources.extend(load_main_config().get('email', {}).get('rule_bundles', []))
+    
+    # 3. User Overrides (Always last)
+    sources.append("config://email.yaml")
 
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f) or {}
-    except (yaml.YAMLError, IOError) as e:
-        logger.warning(f"Failed to load email rules: {e}")
-        return []
+    # Merge map: rule_id -> rule_dict
+    merged_rules: dict[str, dict] = {}
 
-    # Process imports first
-    imports = data.get('imports', [])
-    imported_rules = _process_imports(imports)
+    for uri in sources:
+        path = _resolve_rules_source(uri)
+        if not path or not path.exists():
+            # Only warn if it's not the optional user config
+            if "email.yaml" not in str(path):
+                logger.warning(f"Rules source not found: {path} (from {uri})")
+            continue
 
-    # Then inline rules
-    inline_rules = data.get('rules', [])
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+                source_rules = data.get('rules', [])
+                
+                for rule in source_rules:
+                    rule_id = rule.get('id')
+                    if not rule_id:
+                        continue
+                    # Overwrite existing rule with same ID
+                    merged_rules[rule_id] = rule
+                    
+        except (yaml.YAMLError, IOError) as e:
+            logger.warning(f"Failed to load rules from {path}: {e}")
 
-    # Imported first, inline can override by ID
-    all_rules = imported_rules + inline_rules
-
-    return all_rules
+    return list(merged_rules.values())
 
 
 def save_email_rules(rules: list[dict]) -> Path:
-    """Save email processing rules to config file."""
+    """
+    Save email processing rules to user config file (email.yaml).
+    
+    WARNING: This overwrites the entire email.yaml file.
+    It does NOT modify system rules.
+    """
     path = get_email_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -280,28 +236,39 @@ def save_email_rules(rules: list[dict]) -> Path:
 
 def format_rules_for_instructions(rules: list[dict]) -> str:
     """Format rules as markdown for agent instructions."""
-    if not rules:
-        return "No auto-archive rules configured. Use `add_email_processing_rule` to add rules."
+    active_rules = [r for r in rules if not r.get('disabled', False)]
+    
+    if not active_rules:
+        return "No active auto-archive rules configured."
 
     lines = []
-    for rule in rules:
+    for rule in active_rules:
         rule_id = rule.get('id', 'unknown')
         rule_type = rule.get('type', 'unknown')
-        match = rule.get('match', {})
+        # System rules might not have 'type' if defined differently, assume 'custom'-ish behavior
+        condition = rule.get('condition')
+        
+        # Format based on rule structure
+        if condition:
+            # System rule style
+            action = rule.get('action', 'review')
+            lines.append(f"- **{rule_id}**: {condition.strip()} → {action.upper()}")
+        else:
+            # User rule style (match/type)
+            match = rule.get('match', {})
+            match_desc = []
+            if match.get('from'):
+                match_desc.append(f"from: `{match['from']}`")
+            if match.get('subject'):
+                match_desc.append(f"subject: `{match['subject']}`")
 
-        match_desc = []
-        if match.get('from'):
-            match_desc.append(f"from: `{match['from']}`")
-        if match.get('subject'):
-            match_desc.append(f"subject: `{match['subject']}`")
+            match_str = ", ".join(match_desc) if match_desc else "no match criteria"
 
-        match_str = ", ".join(match_desc) if match_desc else "no match criteria"
-
-        if rule_type == 'auto_archive':
-            lines.append(f"- **{rule_id}** [{rule_type}]: {match_str} → Archive immediately")
-        elif rule_type == 'custom':
-            instructions = rule.get('instructions', 'No instructions')
-            lines.append(f"- **{rule_id}** [{rule_type}]: {match_str} → {instructions}")
+            if rule_type == 'auto_archive':
+                lines.append(f"- **{rule_id}**: {match_str} → ARCHIVE")
+            elif rule_type == 'custom':
+                instructions = rule.get('instructions', 'No instructions')
+                lines.append(f"- **{rule_id}**: {match_str} → {instructions}")
 
     return "\n".join(lines)
 
@@ -321,12 +288,24 @@ def add_rule(
     match_subject: Optional[str] = None,
     instructions: Optional[str] = None
 ) -> dict:
-    """Add a new email processing rule."""
-    rules = load_email_rules()
+    """Add a new email processing rule to user config."""
+    # We explicitly load ONLY user rules to append, then save back
+    # This prevents baking system rules into user config
+    
+    user_config_path = get_email_config_path()
+    user_rules = []
+    
+    if user_config_path.exists():
+        try:
+            with open(user_config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+                user_rules = data.get('rules', [])
+        except Exception:
+            pass
 
-    # Check for duplicate ID
-    if any(r.get('id') == rule_id for r in rules):
-        raise ValueError(f"Rule with id '{rule_id}' already exists")
+    # Check for duplicate ID in user rules
+    if any(r.get('id') == rule_id for r in user_rules):
+        raise ValueError(f"Rule with id '{rule_id}' already exists in user config")
 
     if rule_type not in ('auto_archive', 'custom'):
         raise ValueError(f"Invalid rule type: {rule_type}. Must be 'auto_archive' or 'custom'")
@@ -347,28 +326,37 @@ def add_rule(
     if instructions:
         new_rule['instructions'] = instructions
 
-    rules.append(new_rule)
-    save_email_rules(rules)
+    user_rules.append(new_rule)
+    save_email_rules(user_rules)
 
     return new_rule
 
 
 def remove_rule(rule_id: str) -> bool:
-    """Remove an email processing rule by ID."""
-    rules = load_email_rules()
-    original_count = len(rules)
-
-    rules = [r for r in rules if r.get('id') != rule_id]
-
-    if len(rules) == original_count:
+    """Remove an email processing rule by ID from user config."""
+    user_config_path = get_email_config_path()
+    if not user_config_path.exists():
+        return False
+        
+    try:
+        with open(user_config_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+            user_rules = data.get('rules', [])
+    except Exception:
         return False
 
-    save_email_rules(rules)
+    original_count = len(user_rules)
+    user_rules = [r for r in user_rules if r.get('id') != rule_id]
+
+    if len(user_rules) == original_count:
+        return False
+
+    save_email_rules(user_rules)
     return True
 
 
 def list_rules() -> list[dict]:
-    """List all email processing rules."""
+    """List all email processing rules (system + user)."""
     return load_email_rules()
 
 

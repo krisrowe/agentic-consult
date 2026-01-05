@@ -8,7 +8,7 @@ to allow direct testing without spinning up a server.
 
 1. Fetch emails from Gmail based on review_status filter
 2. Cache emails locally for efficient retrieval
-3. Load system rules (packaged) + user rules (from email.yaml)
+3. Load rules (unified system + user rules from MCP loader)
 4. Call Gemini with emails + rules + prompt template
 5. Return structured recommendations
 
@@ -35,8 +35,6 @@ from agentic_consult.mcp.email_processing import load_email_rules, get_cache_dir
 
 logger = logging.getLogger(__name__)
 
-# Package-relative paths
-SYSTEM_RULES_FILE = "rules/system_rules.yaml"
 TRIAGE_TEMPLATE_FILE = "templates/email_triage.txt"
 EMAIL_CACHE_SUBDIR = "emails"
 
@@ -83,27 +81,6 @@ def _load_user_email_config() -> dict:
         return {}
 
 
-def load_system_rules() -> list[dict]:
-    """
-    Load system rules packaged with the app.
-
-    System rules have IDs prefixed with 'sys-' and are always applied
-    alongside user rules.
-    """
-    rules_path = _get_package_dir() / SYSTEM_RULES_FILE
-    if not rules_path.exists():
-        logger.warning(f"System rules file not found: {rules_path}")
-        return []
-
-    try:
-        with open(rules_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f) or {}
-            return data.get('rules', [])
-    except (yaml.YAMLError, IOError) as e:
-        logger.warning(f"Failed to load system rules: {e}")
-        return []
-
-
 def load_triage_template() -> str:
     """Load the Gemini triage prompt template."""
     template_path = _get_package_dir() / TRIAGE_TEMPLATE_FILE
@@ -111,39 +88,6 @@ def load_triage_template() -> str:
         raise FileNotFoundError(f"Triage template not found: {template_path}")
 
     return template_path.read_text(encoding='utf-8')
-
-
-def merge_rules(system_rules: list[dict], user_rules: list[dict]) -> list[dict]:
-    """
-    Merge system and user rules.
-
-    System rules come first, user rules can override by ID.
-    """
-    # Index user rules by ID for potential override
-    user_by_id = {r.get('id'): r for r in user_rules if r.get('id')}
-
-    merged = []
-    seen_ids = set()
-
-    # Add system rules first (unless overridden by user)
-    for rule in system_rules:
-        rule_id = rule.get('id')
-        if rule_id:
-            if rule_id in user_by_id:
-                # User overrides system rule
-                merged.append(user_by_id[rule_id])
-            else:
-                merged.append(rule)
-            seen_ids.add(rule_id)
-
-    # Add remaining user rules
-    for rule in user_rules:
-        rule_id = rule.get('id')
-        if rule_id and rule_id not in seen_ids:
-            merged.append(rule)
-            seen_ids.add(rule_id)
-
-    return merged
 
 
 # -----------------------------------------------------------------------------
@@ -519,7 +463,7 @@ def triage_emails(
     This is the main SDK function that:
     1. Fetches emails based on review_status filter
     2. Caches each email locally
-    3. Loads and merges system + user rules
+    3. Loads rules (unified from MCP loader)
     4. Calls Gemini with emails + rules + template
     5. Returns structured recommendations
 
@@ -566,15 +510,15 @@ def triage_emails(
         for email in emails:
             cache_email(email)
 
-        # Step 3: Load and merge rules
-        system_rules = load_system_rules()
-        user_rules = load_email_rules()
-        all_rules = merge_rules(system_rules, user_rules)
+        # Step 3: Load and filter rules (NEW: Use unified loader)
+        all_rules = load_email_rules()
+        # Filter disabled rules
+        active_rules = [r for r in all_rules if not r.get('disabled', False)]
 
         # Step 4: Build prompt
         template = load_triage_template()
         emails_json = _prepare_emails_for_prompt(emails)
-        rules_json = json.dumps(all_rules, indent=2)
+        rules_json = json.dumps(active_rules, indent=2)
 
         prompt = template.format(
             rules_json=rules_json,
@@ -625,7 +569,7 @@ def triage_emails(
             if rule_id:
                 referenced_rule_ids.add(rule_id)
 
-        rules_referenced = [r for r in all_rules if r.get('id') in referenced_rule_ids]
+        rules_referenced = [r for r in active_rules if r.get('id') in referenced_rule_ids]
 
         # Step 8: Build instructions for the agent
         instructions = _build_agent_instructions(review_status, recommendations)
@@ -637,7 +581,7 @@ def triage_emails(
             'stats': {
                 'email_count': len(emails),
                 'recommendation_count': len(recommendations),
-                'rules_loaded': len(all_rules),
+                'rules_loaded': len(active_rules),
                 'rules_matched': len(rules_referenced)
             }
         }
