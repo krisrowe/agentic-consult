@@ -6,7 +6,7 @@ import tempfile
 from typing import Any, Literal, Optional
 from dataclasses import asdict
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Context
 
 from agentic_consult.backup.providers.local_repos import LocalRepoBackup
 from agentic_consult.backup.folder_providers.factory import get_folder_provider
@@ -295,7 +295,8 @@ async def triage_emails(
     review_status: Literal["new", "reviewing", "all"] = "all",
     limit: int = 20,
     profile: Optional[str] = None,
-    model: Optional[str] = None
+    model: Optional[str] = None,
+    ctx: Context = None
 ) -> dict[str, Any]:
     """
     Triage inbox emails using Gemini-powered analysis.
@@ -334,11 +335,23 @@ async def triage_emails(
             - mark_email_in_review(message_id): Apply/remove Reviewing label
     """
     try:
+        # Create sync progress callback that wraps async report_progress
+        def progress_callback(current: int, total: int) -> None:
+            if ctx:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(ctx.report_progress(current, total))
+                except Exception:
+                    pass  # Silently ignore if progress reporting fails
+
         return sdk_triage_emails(
             review_status=review_status,
             limit=limit,
             profile=profile,
-            model=model
+            model=model,
+            progress_callback=progress_callback
         )
     except Exception as e:
         logger.exception("Error in triage_emails")
