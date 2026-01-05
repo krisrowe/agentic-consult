@@ -6,6 +6,11 @@ The following rules are configured. System rules (prefixed `sys-`) and user rule
 
 {rules_json}
 
+## Contact Context
+
+The following identities are configured for VIP/Customer detection:
+{contacts_context}
+
 ## Emails to Process
 
 {emails_json}
@@ -23,8 +28,8 @@ For each email, determine which rule (if any) matches based on the FULL email co
   - All conditions except age met → respond with `archive_later`
 - For rules with `action: review` or `action: track_as_task`, use that action when matched
 - When multiple rules match, apply the one with highest-priority action:
-  - `track_as_task` (highest)
-  - `review` (medium)
+  - `review` (highest - especially for VIP/Customer direct messages)
+  - `track_as_task` (medium)
   - `archive_now` / `archive_later` (lowest)
 - Set `rule_id` to the matching rule's ID (include rule_id even when age not met)
 - If NO rule matches, use action `ask_user` with `rule_id: null`

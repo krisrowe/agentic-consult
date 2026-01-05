@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 TRIAGE_TEMPLATE_FILE = "templates/email_triage.txt"
 EMAIL_CACHE_SUBDIR = "emails"
+CONTACTS_CONFIG_FILE = "contacts.yaml"
 
 
 def _get_package_dir() -> Path:
@@ -79,6 +80,51 @@ def _load_user_email_config() -> dict:
             return yaml.safe_load(f) or {}
     except Exception:
         return {}
+
+
+def _load_contacts_config() -> dict:
+    """Load contacts configuration from config dir."""
+    path = get_consult_config_dir() / CONTACTS_CONFIG_FILE
+    if not path.exists():
+        return {}
+
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.warning(f"Failed to load contacts config: {e}")
+        return {}
+
+
+def _format_contacts_context(config: dict) -> str:
+    """Format contacts configuration for the prompt."""
+    contacts = config.get('contacts', {})
+    if not contacts:
+        return "No contact context configured."
+
+    lines = []
+    
+    customers = contacts.get('customers', [])
+    if customers:
+        lines.append(f"- **Customers (Domains/Patterns):** {', '.join(customers)}")
+        
+vips = contacts.get('vips', [])
+    if vips:
+        lines.append(f"- **VIPs (Managers/Leads):** {', '.join(vips)}")
+        
+    identity = contacts.get('identity', {})
+    emails = identity.get('emails', [])
+    names = identity.get('names', [])
+    
+    if emails or names:
+        parts = []
+        if emails:
+            parts.append(f"Emails: {', '.join(emails)}")
+        if names:
+            parts.append(f"Names/Nicknames: {', '.join(names)}")
+        lines.append(f"- **User Identity:** {'; '.join(parts)}")
+        
+    return "\n".join(lines)
 
 
 def load_triage_template() -> str:
@@ -510,10 +556,13 @@ def triage_emails(
         for email in emails:
             cache_email(email)
 
-        # Step 3: Load and filter rules (NEW: Use unified loader)
+        # Step 3: Load rules and config
         all_rules = load_email_rules()
-        # Filter disabled rules
         active_rules = [r for r in all_rules if not r.get('disabled', False)]
+        
+        # Load contact context
+        contacts_config = _load_contacts_config()
+        contacts_context = _format_contacts_context(contacts_config)
 
         # Step 4: Build prompt
         template = load_triage_template()
@@ -522,7 +571,8 @@ def triage_emails(
 
         prompt = template.format(
             rules_json=rules_json,
-            emails_json=emails_json
+            emails_json=emails_json,
+            contacts_context=contacts_context
         )
 
         # Step 5: Call Gemini (or use mock response)
