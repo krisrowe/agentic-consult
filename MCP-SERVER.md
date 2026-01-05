@@ -101,6 +101,16 @@ When you run a command like `gemini "backup this repo"`, the Gemini client:
 
 Gemini Code Assist in VS Code uses the same user-level configuration as the Gemini CLI. Once you have registered the server with the `--scope user` flag, it will be **automatically available** in VS Code. Use the `@consult` handle in the VS Code sidebar to direct requests to these tools.
 
+## Claude Code CLI
+
+For Claude Code, use the `-e` flag to pass the required `GEMINI_API_KEY`:
+
+```bash
+claude mcp add --scope user consult -e 'GEMINI_API_KEY=${GEMINI_API_KEY}' -- consult-mcp
+```
+
+For detailed setup, troubleshooting, and configuration, see **[docs/CLAUDE-CODE.md](./docs/CLAUDE-CODE.md)**.
+
 ## Usage Examples
 
 **Gemini CLI:**

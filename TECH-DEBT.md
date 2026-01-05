@@ -79,3 +79,8 @@ The current config/data separation is messy and the lines are blurring:
     - Alternatively, default to the safe network check but allow an `--offline` flag.
 - **Goal**: Improve CLI responsiveness and support offline usage for status checks.
 
+## 9. Clean Up Gmail Labels on Archive
+- **Problem**: When archiving an email, the `Reviewing` and `Archivable` labels persist. This affects usability: searching `label:Reviewing` shows archived emails, requiring `-in:inbox label:Reviewing` to filter properly.
+- **Solution**: When `archive_email` is called, also remove `Reviewing` and `Archivable` labels if present.
+- **Priority**: Medium - affects search usability.
+
