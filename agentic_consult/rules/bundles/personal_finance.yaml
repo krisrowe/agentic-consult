@@ -1,0 +1,25 @@
+# Personal Finance Rules
+# Optional bundle for tracking bills, payments, and financial alerts.
+# Default: DISABLED (User must enable via email.yaml)
+
+disable:
+  - "home-*"
+
+rules:
+  - id: home-past-due-penalty
+    action: track_as_task
+    condition: >
+      Email indicates something is past due, overdue, or penalties are/would be
+      assessed or imposed (e.g., late fees, fines, interest charges, disconnection
+      of service, account suspension, collection action, or similar consequences)
+
+  - id: home-payment-failed
+    action: track_as_task
+    condition: >
+      Email indicates a payment failed, was declined, bounced, or could not be processed
+
+  - id: home-new-account-opened
+    action: review
+    condition: >
+      Email indicates a new financial account, credit card, or loan was opened
+      in the recipient's name

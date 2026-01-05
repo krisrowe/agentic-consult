@@ -1,40 +1,27 @@
 """Email processing rules and workflow instructions for agents.
 
-Rule Loading Order (Stacking):
-1. System Rules (pkg://rules/system_rules.yaml) - The base layer.
-2. User Bundles (from settings.json) - Optional intermediate layers (e.g. personal.yaml).
-3. User Config (config://email.yaml) - The final override layer.
+Rule Loading Order (Progressive Layering):
+1. System Rules (pkg://rules/system_rules.yaml)
+2. Bundles (pkg://rules/bundles/*.yaml) - Auto-discovered
+3. User Config (config://email.yaml)
 
-## Archive Tracking
-
-Archive logs are stored in $XDG_CACHE_HOME/agentic-consult/email-archive-log.jsonl
-
-This logging serves two purposes:
-
-1. **Rule Efficiency Analysis**: Each archived email is logged with its rule_id.
-   The list_email_rules tool reads these logs to report use_count and last_used
-   for each rule. Rules showing zero usage over months are candidates for removal
-   to reduce agent context overhead (fewer rules = smaller prompts = faster/cheaper).
-
-2. **Forensic Recovery**: If emails are incorrectly archived, the log provides
-   a complete record of what was archived, when, and why (which rule triggered it).
-   Users can search Gmail by message_id to find and restore emails if needed.
-
-Logs are automatically cleaned up after the configured retention period (default 90 days)
-as a best-effort operation on each write. Cleanup failures are logged as warnings
-but don't fail the archive operation.
+Logic:
+- Each layer merges its rules (overwriting previous rules with same ID).
+- IMMEDIATELY after merging, the layer's `enable` and `disable` lists are applied.
+- This allows each layer to modify the state of its own rules OR rules from previous layers.
 """
 
 import logging
 import json
 import os
+import fnmatch
 from datetime import datetime, timedelta
 from typing import Any, Optional
 from pathlib import Path
 
 import yaml
 
-from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config, load_main_config
+from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config
 from gwsa.sdk.mail.label import remove_label as gwsa_remove_label
 
 logger = logging.getLogger(__name__)
@@ -142,89 +129,84 @@ def _get_package_root() -> Path:
     return Path(__file__).parent.parent
 
 
-def _resolve_rules_source(source_uri: str) -> Optional[Path]:
-    """
-    Resolve a rules source URI to a file path.
+def _resolve_path(uri: str) -> Optional[Path]:
+    """Resolve URI (pkg:// or config://) to path."""
+    if uri.startswith("pkg://"):
+        return _get_package_root() / uri.replace("pkg://", "")
+    if uri.startswith("config://"):
+        return get_consult_config_dir() / uri.replace("config://", "")
+    return Path(uri)
 
-    Schemes:
-    - pkg://path/to/file.yaml -> Relative to package root
-    - config://file.yaml -> Relative to user config directory
-    - /abs/path/file.yaml -> Absolute path
+
+def _apply_state_directives(merged_rules: dict, data: dict) -> None:
     """
-    if source_uri.startswith("pkg://"):
-        rel_path = source_uri.replace("pkg://", "")
-        return _get_package_root() / rel_path
-    
-    if source_uri.startswith("config://"):
-        rel_path = source_uri.replace("config://", "")
-        return get_consult_config_dir() / rel_path
-        
-    # Standard path handling
-    path = Path(source_uri).expanduser()
-    if path.is_absolute():
-        return path
-        
-    # Default to config dir if no scheme/abs path
-    return get_consult_config_dir() / source_uri
+    Apply 'enable' and 'disable' lists from loaded YAML to current rules.
+    """
+    enable_patterns = data.get('enable', [])
+    disable_patterns = data.get('disable', [])
+
+    if not enable_patterns and not disable_patterns:
+        return
+
+    for rule_id, rule in merged_rules.items():
+        # Check disable first (default priority)
+        for pattern in disable_patterns:
+            if fnmatch.fnmatch(rule_id, pattern):
+                rule['disabled'] = True
+                
+        # Check enable (overrides disable)
+        for pattern in enable_patterns:
+            if fnmatch.fnmatch(rule_id, pattern):
+                rule['disabled'] = False
+
+
+def _load_layer(path: Path, merged_rules: dict[str, dict]) -> None:
+    """Load a single YAML file layer, merge rules, and apply directives."""
+    if not path.exists():
+        return
+
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+            
+            # 1. Merge Rules
+            source_rules = data.get('rules', [])
+            for rule in source_rules:
+                rule_id = rule.get('id')
+                if rule_id:
+                    merged_rules[rule_id] = rule
+            
+            # 2. Apply Enable/Disable Directives
+            _apply_state_directives(merged_rules, data)
+                
+    except (yaml.YAMLError, IOError) as e:
+        logger.warning(f"Failed to load rules from {path}: {e}")
 
 
 def load_email_rules() -> list[dict]:
     """
-    Load email processing rules from fixed sequence of sources. 
-    
-    Order (Later overrides earlier):
-    1. System Rules (pkg://rules/system_rules.yaml)
-    2. User Bundles (from settings.json - Placeholder)
-    3. User Config (config://email.yaml)
+    Load email rules from System -> Bundles -> User Config.
+    Each layer merges rules and applies state directives.
     """
-    sources = []
-    
-    # 1. System Base (Always first)
-    sources.append("pkg://rules/system_rules.yaml")
-    
-    # 2. User Bundles (Placeholder)
-    # TODO: Load 'email.rule_bundles' from settings.json and append here
-    # Example: sources.extend(load_main_config().get('email', {}).get('rule_bundles', []))
-    
-    # 3. User Overrides (Always last)
-    sources.append("config://email.yaml")
-
-    # Merge map: rule_id -> rule_dict
     merged_rules: dict[str, dict] = {}
 
-    for uri in sources:
-        path = _resolve_rules_source(uri)
-        if not path or not path.exists():
-            # Only warn if it's not the optional user config
-            if "email.yaml" not in str(path):
-                logger.warning(f"Rules source not found: {path} (from {uri})")
-            continue
+    # 1. System Rules
+    _load_layer(_resolve_path("pkg://rules/system_rules.yaml"), merged_rules)
 
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-                source_rules = data.get('rules', [])
-                
-                for rule in source_rules:
-                    rule_id = rule.get('id')
-                    if not rule_id:
-                        continue
-                    # Overwrite existing rule with same ID
-                    merged_rules[rule_id] = rule
-                    
-        except (yaml.YAMLError, IOError) as e:
-            logger.warning(f"Failed to load rules from {path}: {e}")
+    # 2. Bundles (Auto-discovered)
+    bundles_dir = _get_package_root() / "rules" / "bundles"
+    if bundles_dir.exists():
+        for bundle_file in sorted(bundles_dir.glob("*.yaml")):
+            _load_layer(bundle_file, merged_rules)
+
+    # 3. User Config
+    _load_layer(_resolve_path("config://email.yaml"), merged_rules)
 
     return list(merged_rules.values())
 
 
 def save_email_rules(rules: list[dict]) -> Path:
-    """
-    Save email processing rules to user config file (email.yaml).
-    
-    WARNING: This overwrites the entire email.yaml file.
-    It does NOT modify system rules.
-    """
+    """Save email rules to user config. Does not touch system files."""
     path = get_email_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -235,7 +217,7 @@ def save_email_rules(rules: list[dict]) -> Path:
 
 
 def format_rules_for_instructions(rules: list[dict]) -> str:
-    """Format rules as markdown for agent instructions."""
+    """Format enabled rules as markdown."""
     active_rules = [r for r in rules if not r.get('disabled', False)]
     
     if not active_rules:
@@ -244,31 +226,21 @@ def format_rules_for_instructions(rules: list[dict]) -> str:
     lines = []
     for rule in active_rules:
         rule_id = rule.get('id', 'unknown')
-        rule_type = rule.get('type', 'unknown')
-        # System rules might not have 'type' if defined differently, assume 'custom'-ish behavior
         condition = rule.get('condition')
         
-        # Format based on rule structure
         if condition:
-            # System rule style
             action = rule.get('action', 'review')
             lines.append(f"- **{rule_id}**: {condition.strip()} → {action.upper()}")
         else:
-            # User rule style (match/type)
             match = rule.get('match', {})
-            match_desc = []
-            if match.get('from'):
-                match_desc.append(f"from: `{match['from']}`")
-            if match.get('subject'):
-                match_desc.append(f"subject: `{match['subject']}`")
-
-            match_str = ", ".join(match_desc) if match_desc else "no match criteria"
-
+            match_str = ", ".join([f"{k}: `{v}`" for k, v in match.items() if v]) or "no criteria"
+            
+            rule_type = rule.get('type', 'custom')
             if rule_type == 'auto_archive':
                 lines.append(f"- **{rule_id}**: {match_str} → ARCHIVE")
-            elif rule_type == 'custom':
-                instructions = rule.get('instructions', 'No instructions')
-                lines.append(f"- **{rule_id}**: {match_str} → {instructions}")
+            else:
+                instr = rule.get('instructions', 'No instructions')
+                lines.append(f"- **{rule_id}**: {match_str} → {instr}")
 
     return "\n".join(lines)
 
@@ -288,10 +260,7 @@ def add_rule(
     match_subject: Optional[str] = None,
     instructions: Optional[str] = None
 ) -> dict:
-    """Add a new email processing rule to user config."""
-    # We explicitly load ONLY user rules to append, then save back
-    # This prevents baking system rules into user config
-    
+    """Add a new rule to user config."""
     user_config_path = get_email_config_path()
     user_rules = []
     
@@ -303,15 +272,8 @@ def add_rule(
         except Exception:
             pass
 
-    # Check for duplicate ID in user rules
     if any(r.get('id') == rule_id for r in user_rules):
-        raise ValueError(f"Rule with id '{rule_id}' already exists in user config")
-
-    if rule_type not in ('auto_archive', 'custom'):
-        raise ValueError(f"Invalid rule type: {rule_type}. Must be 'auto_archive' or 'custom'")
-
-    if rule_type == 'custom' and not instructions:
-        raise ValueError("Custom rules require 'instructions' field")
+        raise ValueError(f"Rule '{rule_id}' already exists in user config")
 
     new_rule = {
         'id': rule_id,
@@ -333,7 +295,7 @@ def add_rule(
 
 
 def remove_rule(rule_id: str) -> bool:
-    """Remove an email processing rule by ID from user config."""
+    """Remove a rule by ID from user config."""
     user_config_path = get_email_config_path()
     if not user_config_path.exists():
         return False
@@ -356,20 +318,13 @@ def remove_rule(rule_id: str) -> bool:
 
 
 def list_rules() -> list[dict]:
-    """List all email processing rules (system + user)."""
-    return load_email_rules()
+    """List all enabled email processing rules."""
+    all_rules = load_email_rules()
+    return [r for r in all_rules if not r.get('disabled', False)]
 
 
 def cleanup_old_logs() -> int:
-    """
-    Remove log entries older than retention period.
-
-    This runs on write operations as a best-effort cleanup.
-    Errors are logged as warnings but don't fail the operation.
-
-    Returns:
-        Number of entries removed.
-    """
+    """Remove log entries older than retention period."""
     try:
         log_path = get_archive_log_path()
         if not log_path.exists():
@@ -379,25 +334,20 @@ def cleanup_old_logs() -> int:
         cutoff = datetime.utcnow() - timedelta(days=retention_days)
         cutoff_str = cutoff.isoformat()
 
-        # Read all entries
         entries = []
         with open(log_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line:
                     try:
-                        entry = json.loads(line)
-                        entries.append(entry)
+                        entries.append(json.loads(line))
                     except json.JSONDecodeError:
                         continue
 
-        # Filter to recent entries
-        original_count = len(entries)
         recent_entries = [e for e in entries if e.get('timestamp', '') >= cutoff_str]
-        removed_count = original_count - len(recent_entries)
+        removed_count = len(entries) - len(recent_entries)
 
         if removed_count > 0:
-            # Rewrite file with only recent entries
             with open(log_path, 'w', encoding='utf-8') as f:
                 for entry in recent_entries:
                     f.write(json.dumps(entry) + '\n')
@@ -416,77 +366,47 @@ def log_archived_email(
     from_addr: str,
     subject: str
 ) -> None:
-    """
-    Log an archived email to the cache for rule usage tracking.
-
-    Args:
-        rule_id: The rule that triggered the archive
-        message_id: Gmail message ID
-        from_addr: Sender email address
-        subject: Email subject line
-    """
+    """Log an archived email to the cache."""
     try:
         log_path = get_archive_log_path()
-
         entry = {
             "timestamp": datetime.utcnow().isoformat(),
             "rule_id": rule_id,
             "message_id": message_id,
             "from": from_addr,
-            "subject": subject[:100]  # Truncate long subjects
+            "subject": subject[:100]
         }
-
         with open(log_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry) + '\n')
-
-        # Best-effort cleanup after write
         cleanup_old_logs()
-
     except Exception as e:
         logger.warning(f"Failed to log archived email: {e}")
 
 
 def get_rule_usage_stats() -> dict[str, dict]:
-    """
-    Get usage statistics for each rule from the archive log.
-
-    Used to identify stale rules that can be removed to reduce agent context.
-
-    Returns:
-        Dict mapping rule_id to stats: {use_count, last_used}
-    """
+    """Get usage statistics for each rule."""
     try:
         log_path = get_archive_log_path()
         if not log_path.exists():
             return {}
 
         stats: dict[str, dict] = {}
-
         with open(log_path, 'r', encoding='utf-8') as f:
             for line in f:
-                line = line.strip()
-                if not line:
-                    continue
+                if not line.strip(): continue
                 try:
                     entry = json.loads(line)
                     rule_id = entry.get('rule_id')
                     timestamp = entry.get('timestamp')
-
                     if rule_id:
                         if rule_id not in stats:
                             stats[rule_id] = {'use_count': 0, 'last_used': None}
-
                         stats[rule_id]['use_count'] += 1
-
-                        if timestamp and (stats[rule_id]['last_used'] is None or
-                                         timestamp > stats[rule_id]['last_used']):
+                        if timestamp and (stats[rule_id]['last_used'] is None or timestamp > stats[rule_id]['last_used']):
                             stats[rule_id]['last_used'] = timestamp
-
                 except json.JSONDecodeError:
                     continue
-
         return stats
-
     except Exception as e:
         logger.warning(f"Failed to get rule usage stats: {e}")
         return {}
@@ -499,36 +419,10 @@ def archive_email_with_gwsa(
     subject: str,
     profile: Optional[str] = None
 ) -> dict[str, Any]:
-    """
-    Archive an email using gwsa SDK and log the action.
-
-    Args:
-        message_id: Gmail message ID to archive
-        rule_id: Rule that triggered this archive (for logging)
-        from_addr: Sender email (for logging)
-        subject: Email subject (for logging)
-        profile: Optional gwsa profile to use
-
-    Returns:
-        Dict with success status and details
-    """
+    """Archive an email using gwsa SDK and log the action."""
     try:
-        # Use gwsa SDK to remove INBOX label (archive)
         gwsa_remove_label(message_id, "INBOX", profile=profile)
-
-        # Log the successful archive
         log_archived_email(rule_id, message_id, from_addr, subject)
-
-        return {
-            "success": True,
-            "message_id": message_id,
-            "rule_id": rule_id,
-            "archived": True
-        }
-
+        return {"success": True, "message_id": message_id, "rule_id": rule_id, "archived": True}
     except Exception as e:
-        return {
-            "success": False,
-            "message_id": message_id,
-            "error": str(e)
-        }
+        return {"success": False, "message_id": message_id, "error": str(e)}
