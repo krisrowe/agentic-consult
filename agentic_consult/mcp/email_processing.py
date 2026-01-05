@@ -1,4 +1,4 @@
-"Email processing rules and workflow instructions for agents.
+"""Email processing rules and workflow instructions for agents.
 
 Rule Loading Order (Stacking):
 1. System Rules (pkg://rules/system_rules.yaml) - The base layer.
@@ -23,7 +23,7 @@ This logging serves two purposes:
 Logs are automatically cleaned up after the configured retention period (default 90 days)
 as a best-effort operation on each write. Cleanup failures are logged as warnings
 but don't fail the archive operation.
-"
+"""
 
 import logging
 import json
@@ -129,7 +129,7 @@ When ANY profile reaches inbox zero, display:
 
 ✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨
 ```
-""
+"""
 
 
 def get_email_config_path() -> Path:
@@ -170,7 +170,7 @@ def _resolve_rules_source(source_uri: str) -> Optional[Path]:
 
 def load_email_rules() -> list[dict]:
     """
-    Load email processing rules from fixed sequence of sources.
+    Load email processing rules from fixed sequence of sources. 
     
     Order (Later overrides earlier):
     1. System Rules (pkg://rules/system_rules.yaml)
