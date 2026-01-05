@@ -305,11 +305,32 @@ async def triage_emails(
     Fetches emails, caches them locally, and uses Gemini to analyze each email
     against configured rules (system + user). Returns structured recommendations.
 
+    ## Workflow
+
+    1. **Start with "all" (default)** - See full inbox state, including emails
+       previously marked Archivable that may now be candidates for archive_now.
+
+    2. **Process results** - For each recommendation, apply the appropriate action:
+       - archive_now → call `archive_email()`
+       - archive_later → call `mark_email_archivable()`
+       - review → call `mark_email_in_review()`
+       - track_as_task → create task, then archive
+       - ask_user → present to user, then act on their decision
+
+    3. **Subsequent batches** - Use `review_status="new"` when appropriate to
+       skip already-labeled emails and fetch the next batch efficiently.
+
+    4. **Completion check** - When "new" returns no emails, revisit with "all"
+       to catch any Archivable emails that have aged into archive_now candidates.
+
+    5. **Done** - Triage complete when inbox is empty or all remaining emails
+       are archived/labeled in their terminal state.
+
     Args:
         review_status: Filter emails by state
-            - "new": Emails in inbox without Reviewing label (default starting point)
+            - "all": All inbox emails (default - use for initial triage and final passes)
+            - "new": Emails without Reviewing/Archivable labels (efficient for mid-session batches)
             - "reviewing": Emails previously marked for review
-            - "all": All inbox emails
         limit: Maximum emails to fetch (default 20, max recommended for context)
         profile: Optional gwsa profile name (omit for default)
         model: Optional Gemini model override (default from app.yaml)
