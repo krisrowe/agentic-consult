@@ -141,38 +141,90 @@ def load_triage_template() -> str:
 # Shortcode Management
 # -----------------------------------------------------------------------------
 
-def _generate_shortcodes(count: int) -> list[str]:
-    """
-    Generate a list of shortcodes (A0..Z9).
-    Enough for 260 items.
-    """
+def _get_shortcode_pool() -> list[str]:
+    """Generate the full pool of shortcodes (A0..Z9)."""
     codes = []
     chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     for char in chars:
         for digit in range(10):
             codes.append(f"{char}{digit}")
-            if len(codes) >= count:
-                return codes
     return codes
 
-def _save_ref_map(mapping: dict) -> None:
-    """Save the shortcode -> message_id mapping to cache."""
-    cache_dir = get_cache_dir()
-    map_path = cache_dir / REF_MAP_FILE
-    with open(map_path, 'w', encoding='utf-8') as f:
-        json.dump(mapping, f, indent=2)
-
-def load_ref_map() -> dict:
-    """Load the shortcode -> message_id mapping from cache."""
+def _load_ref_map() -> dict:
+    """
+    Load the ref map from cache.
+    Structure: {"next_seq": int, "refs": {code: {"id": msg_id, "seq": int}}}
+    """
     cache_dir = get_cache_dir()
     map_path = cache_dir / REF_MAP_FILE
     if not map_path.exists():
-        return {}
+        return {"next_seq": 1, "refs": {}}
     try:
         with open(map_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+            # Schema validation/migration
+            if "refs" not in data: 
+                return {"next_seq": 1, "refs": {}}
+            return data
     except Exception:
-        return {}
+        return {"next_seq": 1, "refs": {}}
+
+def _save_ref_map(data: dict) -> None:
+    """Save the ref map to cache."""
+    cache_dir = get_cache_dir()
+    map_path = cache_dir / REF_MAP_FILE
+    with open(map_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+
+def _assign_shortcodes(message_ids: list[str]) -> dict[str, str]:
+    """
+    Assign shortcodes to a list of message IDs using LRU strategy.
+    Returns dict: {msg_id: code}
+    """
+    data = _load_ref_map()
+    refs = data["refs"]
+    next_seq = data.get("next_seq", 1)
+    
+    # 1. Index existing IDs to codes
+    id_to_code = {info["id"]: code for code, info in refs.items()}
+    
+    assignments = {}
+    
+    # 2. Process requests
+    for msg_id in message_ids:
+        if msg_id in id_to_code:
+            # Reuse existing code
+            code = id_to_code[msg_id]
+            refs[code]["seq"] = next_seq
+            assignments[msg_id] = code
+            next_seq += 1
+        else:
+            # Assign new code
+            # Find unused codes
+            pool = set(_get_shortcode_pool())
+            used_codes = set(refs.keys())
+            available = sorted(list(pool - used_codes))
+            
+            if available:
+                code = available[0]
+                refs[code] = {"id": msg_id, "seq": next_seq}
+                assignments[msg_id] = code
+                next_seq += 1
+            else:
+                # Recycle LRU
+                # Find code with lowest seq
+                if not refs: # Should not happen given pool size, but safety check
+                     continue 
+                lru_code = min(refs, key=lambda k: refs[k]["seq"])
+                refs[lru_code] = {"id": msg_id, "seq": next_seq}
+                assignments[msg_id] = lru_code
+                next_seq += 1
+    
+    # Save state
+    data["next_seq"] = next_seq
+    _save_ref_map(data)
+    
+    return assignments
 
 
 # -----------------------------------------------------------------------------
@@ -544,6 +596,33 @@ def triage_emails(
 ) -> dict[str, Any]:
     """
     Triage inbox emails using Gemini.
+
+    This is the main SDK function that:
+    1. Fetches emails based on review_status filter
+    2. Caches each email locally
+    3. Loads rules (unified from MCP loader)
+    4. Calls Gemini with emails + rules + prompt template
+    5. Returns structured recommendations
+
+    Args:
+        review_status: Filter emails by state
+            - "new": Emails in inbox without Reviewing label
+            - "reviewing": Emails with Reviewing label
+            - "all": All inbox emails
+        limit: Maximum emails to fetch (default 20)
+        profile: Optional gwsa profile name
+        model: Optional Gemini model override
+
+    For testing: Set CONSULT_CONFIG_DIR and XDG_CACHE_HOME to temp dirs, then:
+        - In email.yaml: use_mock_emails: true, use_mock_gemini: true
+        - In cache dir: mock-triage-emails.json, mock-triage-response.json
+
+    Returns:
+        Dict with:
+            - recommendations: List of email recommendations from Gemini
+            - rules_referenced: Rules that were mentioned in recommendations
+            - instructions: Guidance for the agent on next steps
+            - stats: Processing statistics
     """
     try:
         # Step 1: Build query and fetch emails
@@ -623,18 +702,17 @@ def triage_emails(
 
         recommendations = result.get('recommendations', [])
 
-        # Step 6: Generate Shortcodes and Update Map
-        shortcodes = _generate_shortcodes(len(recommendations))
-        ref_map = {}
-        for i, rec in enumerate(recommendations):
-            code = shortcodes[i]
-            msg_id = rec.get('id')
-            rec['ref'] = code  # Add shortcode to recommendation
-            if msg_id:
-                ref_map[code] = msg_id
+        # Step 6: Assign Shortcodes (LRU Persistence)
+        msg_ids = [r.get('id') for r in recommendations if r.get('id')]
+        assignments = _assign_shortcodes(msg_ids)
         
-        # Persist mapping for agent use
-        _save_ref_map(ref_map)
+        # Attach refs to recommendations
+        for rec in recommendations:
+            msg_id = rec.get('id')
+            if msg_id in assignments:
+                rec['ref'] = assignments[msg_id]
+            else:
+                rec['ref'] = '??'
 
         # Step 7: Extract referenced rules
         referenced_rule_ids = set()
@@ -678,7 +756,14 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
 
     # 1. Triage Table
     lines = [
-        "## Triage Results",
+        "## Triage Suggestions",
+        "",
+        "**Context:** These are rule-based suggestions generated by a sub-agent for consideration.",
+        "",
+        "**Your Role:**",
+        "1. **Analyze:** Evaluate each suggestion against the Rule, Reason, and metadata.",
+        "2. **Verify:** If the summary is insufficient, call `get_cached_emails([ids])` to inspect the content.",
+        "3. **Decide:** Apply your session context. If a suggestion contradicts user intent, override it.",
         "",
         "| Ref | Date | From | Subject | Action | Reason |",
         "| :--- | :--- | :--- | :--- | :--- | :--- |"
