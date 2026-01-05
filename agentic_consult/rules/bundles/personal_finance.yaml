@@ -2,9 +2,6 @@
 # Optional bundle for tracking bills, payments, and financial alerts.
 # Default: DISABLED (User must enable via email.yaml)
 
-disable:
-  - "home-*"
-
 rules:
   - id: home-past-due-penalty
     action: track_as_task
@@ -23,3 +20,6 @@ rules:
     condition: >
       Email indicates a new financial account, credit card, or loan was opened
       in the recipient's name
+
+disable:
+  - "home-*"

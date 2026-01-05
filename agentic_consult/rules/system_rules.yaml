@@ -3,10 +3,6 @@
 # These are universal safety-net rules that apply regardless of user config.
 # They catch urgent issues that should never be auto-archived.
 
-# Default: ENABLED
-enable:
-  - "sys-*"
-
 rules:
   - id: sys-important-direct
     action: review
@@ -25,3 +21,7 @@ rules:
     condition: >
       Email is a security alert about suspicious activity, unauthorized access,
       password reset request not initiated by user, new device login, or similar
+
+# Default: ENABLED
+enable:
+  - "sys-*"

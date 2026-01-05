@@ -1,0 +1,22 @@
+# Work Rules
+# Standard rules for professional email management.
+# Default: DISABLED (User must enable via email.yaml)
+
+rules:
+  - id: work-calendar-invite
+    action: review
+    condition: >
+      Email is a calendar invitation, update, or cancellation for a meeting.
+
+  - id: work-document-share
+    action: review
+    condition: >
+      Email indicates a document, spreadsheet, or slide deck was shared with the user.
+
+  - id: work-access-request
+    action: review
+    condition: >
+      Email is a request for access to a file, folder, or resource owned by the user.
+
+disable:
+  - "work-*"
