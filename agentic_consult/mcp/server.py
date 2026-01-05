@@ -31,6 +31,7 @@ from agentic_consult.email.triage import (
     triage_emails as sdk_triage_emails,
     get_cached_emails as sdk_get_cached_emails,
     mark_email_in_review as sdk_mark_email_in_review,
+    mark_email_archivable as sdk_mark_email_archivable,
 )
 
 logger = logging.getLogger(__name__)
@@ -322,9 +323,9 @@ async def triage_emails(
 
         recommended_action values:
             - "archive_now": Archive immediately (routine email, aged sufficiently for user visibility)
-            - "archive_later": Archivable per rules, but kept visible a bit longer; Archivable
-              label applied so user can archive manually anytime via Gmail UI (web/app) and so
-              our tooling can skip these emails efficiently via filter when pulling batches
+            - "archive_later": Archivable per rules, but kept visible a bit longer; use
+              `mark_email_archivable` tool to apply label so user can archive manually via
+              Gmail UI and our tooling can skip these emails via filter when pulling batches
             - "track_as_task": Requires follow-up action (create task, then archive)
             - "review": Needs human attention (apply Reviewing label)
             - "ask_user": No rule matched (present to user for decision)
@@ -332,6 +333,7 @@ async def triage_emails(
         Follow-up tools:
             - get_cached_emails([message_ids]): Get full cached email content
             - archive_email(...): Archive with logging
+            - mark_email_archivable(message_id): Apply Archivable label
             - mark_email_in_review(message_id): Apply/remove Reviewing label
     """
     try:
@@ -415,6 +417,37 @@ async def mark_email_in_review(
         )
     except Exception as e:
         logger.exception("Error in mark_email_in_review")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def mark_email_archivable(
+    message_id: str,
+    reverse: bool = False,
+    profile: Optional[str] = None
+) -> dict[str, Any]:
+    """
+    Apply or remove the Archivable label from an email.
+
+    Use this for emails with recommended_action="archive_later" from triage_emails.
+    The Archivable label marks emails that can be archived later (age threshold not yet met).
+
+    Args:
+        message_id: Gmail message ID
+        reverse: If True, remove the Archivable label (default False = add label)
+        profile: Optional gwsa profile name
+
+    Returns:
+        Success status with label action taken.
+    """
+    try:
+        return sdk_mark_email_archivable(
+            message_id=message_id,
+            reverse=reverse,
+            profile=profile
+        )
+    except Exception as e:
+        logger.exception("Error in mark_email_archivable")
         return {"error": str(e)}
 
 
