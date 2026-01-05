@@ -432,4 +432,23 @@ Both can inject context via stdout or `additionalContext` in JSON output. The ho
 
 References:
 - Gemini CLI: https://geminicli.com/docs/hooks/writing-hooks/#configuration
-- Claude Code: https://docs.anthropic.com/en/docs/claude-code/hooks#sessionstart
+- Claude Code: https://docs.anthropic.com/en/docs/claude-code/hooks
+
+## Decision Record: Programmatic Configuration of Email Rule Directives
+
+**Context:**
+The email triage system uses a layered configuration model (System -> Bundles -> User) where each layer can `enable` or `disable` rules by pattern. We considered adding MCP tools to programmatically manage these directives (e.g., `add_directive("enable", "work-*")`, `remove_directive("hash...")`).
+
+**Decision:**
+**DEFERRED.** We will rely on manual/offline configuration (editing `email.yaml`) for managing rule sets for the foreseeable future.
+
+**Rationale:**
+1.  **Complexity vs. Value:** Implementing tools to manage a stack of state directives introduces significant complexity. We would need to:
+    *   Track provenance (which file set the directive?).
+    *   Implement logic to "override" or "remove" directives that might exist in read-only system files.
+    *   Generate stable IDs (hashing) for UI/manipulation.
+    *   Handle merge conflicts and ordering nuances.
+    This is excessive for a feature used infrequently (setting up a profile).
+2.  **User Experience:** It is simpler and clearer for a user to open `email.yaml` and add `enable: ["work-*"]` than to navigate a complex CLI/tool interface for state management.
+3.  **Stability:** Simple file-based configuration is less brittle and easier to debug than state mutation logic.
+#sessionstart
