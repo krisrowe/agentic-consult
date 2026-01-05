@@ -108,7 +108,7 @@ def _format_contacts_context(config: dict) -> str:
     if customers:
         lines.append(f"- **Customers (Domains/Patterns):** {', '.join(customers)}")
         
-vips = contacts.get('vips', [])
+    vips = contacts.get('vips', [])
     if vips:
         lines.append(f"- **VIPs (Managers/Leads):** {', '.join(vips)}")
         
