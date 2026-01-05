@@ -378,29 +378,36 @@ def mark_email_in_review(
 
 def mark_email_archivable(
     message_id: str,
+    reverse: bool = False,
     profile: Optional[str] = None
 ) -> dict[str, Any]:
     """
-    Apply the Archivable label to an email (for archive_later recommendations).
+    Apply or remove the Archivable label from an email.
 
     Args:
         message_id: Gmail message ID
+        reverse: If True, remove the label instead of adding
         profile: Optional gwsa profile
 
     Returns:
         Dict with success status
     """
     from gwsa.sdk.mail.label import add_label as gwsa_add_label
+    from gwsa.sdk.mail.label import remove_label as gwsa_remove_label
 
     label = get_archivable_label()
 
     try:
-        gwsa_add_label(message_id, label, profile=profile)
+        if reverse:
+            gwsa_remove_label(message_id, label, profile=profile)
+        else:
+            gwsa_add_label(message_id, label, profile=profile)
+
         return {
             'success': True,
             'message_id': message_id,
             'label': label,
-            'action': 'applied'
+            'action': 'removed' if reverse else 'applied'
         }
     except Exception as e:
         return {
@@ -611,22 +618,7 @@ def triage_emails(
 
         recommendations = result.get('recommendations', [])
 
-        # Step 6: Apply Archivable label to archive_later emails
-        archivable_count = 0
-        for rec in recommendations:
-            if rec.get('recommended_action') == 'archive_later':
-                message_id = rec.get('id')
-                if message_id:
-                    result = mark_email_archivable(message_id, profile=profile)
-                    if result.get('success'):
-                        archivable_count += 1
-                    else:
-                        logger.warning(f"Failed to mark {message_id} archivable: {result.get('error')}")
-
-        if archivable_count > 0:
-            logger.info(f"Applied Archivable label to {archivable_count} emails")
-
-        # Step 7: Extract referenced rules
+        # Step 6: Extract referenced rules
         referenced_rule_ids = set()
         for rec in recommendations:
             rule_id = rec.get('rule_id')
@@ -646,8 +638,7 @@ def triage_emails(
                 'email_count': len(emails),
                 'recommendation_count': len(recommendations),
                 'rules_loaded': len(all_rules),
-                'rules_matched': len(rules_referenced),
-                'archivable_labeled': archivable_count
+                'rules_matched': len(rules_referenced)
             }
         }
 
@@ -683,7 +674,7 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
         "",
         "1. **Review recommendations** with the user before taking action",
         "2. For `archive_now` recommendations: use `archive_email` tool",
-        "3. For `archive_later` recommendations: Archivable label already applied, no action needed",
+        "3. For `archive_later` recommendations: use `mark_email_archivable` tool",
         "4. For `track_as_task` recommendations: check for existing task, create if needed, then archive",
         "5. For `review` recommendations: use `mark_email_in_review` to apply Reviewing label",
         "6. For `ask_user` recommendations: present to user for decision",
@@ -691,6 +682,7 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
         "**Available tools:**",
         "- `get_cached_emails([message_ids])`: Get full email content from cache (batch)",
         "- `archive_email(...)`: Archive and log the action",
+        "- `mark_email_archivable(message_id)`: Apply Archivable label",
         "- `mark_email_in_review(message_id, reverse=False)`: Apply/remove Reviewing label",
         ""
     ])
