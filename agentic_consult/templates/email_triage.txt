@@ -18,14 +18,16 @@ For each email, determine which rule (if any) matches based on the FULL email co
 
 - Evaluate each rule's `condition` or `match` criteria against the full email content
 - Rules may have age/time conditions (e.g., "3+ days old", "5+ days old")
-- A rule FULLY matches only if ALL its conditions are satisfied (including age)
-- A rule PARTIALLY matches if pattern matches but age threshold is not yet met
+- For rules with `action: archive`:
+  - All conditions met (including age) → respond with `archive_now`
+  - All conditions except age met → respond with `archive_later`
+- For rules with `action: review` or `action: track_as_task`, use that action when matched
 - When multiple rules match, apply the one with highest-priority action:
   - `track_as_task` (highest)
   - `review` (medium)
   - `archive_now` / `archive_later` (lowest)
-- Set `rule_id` to the matching rule's ID
-- If NO rule matches (not even partially), use action `ask_user` with `rule_id: null`
+- Set `rule_id` to the matching rule's ID (include rule_id even when age not met)
+- If NO rule matches, use action `ask_user` with `rule_id: null`
 
 ### Actions
 
