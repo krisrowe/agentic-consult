@@ -21,10 +21,13 @@ from pathlib import Path
 
 import yaml
 
-from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config
+from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config, load_main_config
 from gwsa.sdk.mail.label import remove_label as gwsa_remove_label
 
 logger = logging.getLogger(__name__)
+# Default to INFO if not set elsewhere
+if not logger.level:
+    logger.setLevel(logging.INFO)
 
 EMAIL_CONFIG_FILE = "email.yaml"
 TEMPLATE_FILE = "templates/process_email.md"
@@ -138,7 +141,7 @@ def _resolve_path(uri: str) -> Optional[Path]:
     return Path(uri)
 
 
-def _apply_state_directives(merged_rules: dict, data: dict) -> None:
+def _apply_state_directives(merged_rules: dict, data: dict, source_name: str) -> None:
     """
     Apply 'enable' and 'disable' lists from loaded YAML to current rules.
     """
@@ -152,11 +155,15 @@ def _apply_state_directives(merged_rules: dict, data: dict) -> None:
         # Check disable first (default priority)
         for pattern in disable_patterns:
             if fnmatch.fnmatch(rule_id, pattern):
+                if not rule.get('disabled'):
+                    logger.debug(f"Rule '{rule_id}' DISABLED by pattern '{pattern}' in {source_name}")
                 rule['disabled'] = True
                 
         # Check enable (overrides disable)
         for pattern in enable_patterns:
             if fnmatch.fnmatch(rule_id, pattern):
+                if rule.get('disabled'):
+                    logger.debug(f"Rule '{rule_id}' ENABLED by pattern '{pattern}' in {source_name}")
                 rule['disabled'] = False
 
 
@@ -165,6 +172,7 @@ def _load_layer(path: Path, merged_rules: dict[str, dict]) -> None:
     if not path.exists():
         return
 
+    source_name = path.name
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
@@ -174,10 +182,14 @@ def _load_layer(path: Path, merged_rules: dict[str, dict]) -> None:
             for rule in source_rules:
                 rule_id = rule.get('id')
                 if rule_id:
+                    if rule_id in merged_rules:
+                        logger.debug(f"Rule '{rule_id}' OVERRIDDEN by {source_name}")
+                    else:
+                        logger.debug(f"Rule '{rule_id}' ADDED from {source_name}")
                     merged_rules[rule_id] = rule
             
             # 2. Apply Enable/Disable Directives
-            _apply_state_directives(merged_rules, data)
+            _apply_state_directives(merged_rules, data, source_name)
                 
     except (yaml.YAMLError, IOError) as e:
         logger.warning(f"Failed to load rules from {path}: {e}")
@@ -188,6 +200,7 @@ def load_email_rules() -> list[dict]:
     Load email rules from System -> Bundles -> User Config.
     Each layer merges rules and applies state directives.
     """
+    logger.debug("Loading email processing rules...")
     merged_rules: dict[str, dict] = {}
 
     # 1. System Rules
@@ -201,6 +214,9 @@ def load_email_rules() -> list[dict]:
 
     # 3. User Config
     _load_layer(_resolve_path("config://email.yaml"), merged_rules)
+
+    enabled_count = len([r for r in merged_rules.values() if not r.get('disabled')])
+    logger.debug(f"Loaded {len(merged_rules)} total rules ({enabled_count} enabled)")
 
     return list(merged_rules.values())
 
