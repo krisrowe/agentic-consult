@@ -84,3 +84,18 @@ The current config/data separation is messy and the lines are blurring:
 - **Solution**: When `archive_email` is called, also remove `Reviewing` and `Archivable` labels if present.
 - **Priority**: Medium - affects search usability.
 
+## 10. MCP Progress Indicators for Long-Running Tools
+- **Problem**: `triage_emails` can take 10+ seconds (Gmail fetch + Gemini call) with no progress feedback to the client.
+- **Context**: FastMCP supports `ctx.report_progress(progress, total)` but requires:
+  1. Client to send `progressToken` (unclear if Claude Code/Gemini CLI support this)
+  2. Granular progress points within operations
+- **Blocker**: gwsa's `search_messages` fetches all emails in one call internally. We can't report per-email progress without gwsa changes.
+- **Solution (multi-step)**:
+  1. **gwsa**: Add progress callback support to `search_messages` (or expose individual fetch calls)
+  2. **consult**: Pass callback to gwsa, call `ctx.report_progress` with email count
+  3. **Test**: Verify Claude Code and Gemini CLI actually display progress
+- **References**:
+  - [FastMCP Progress Docs](https://gofastmcp.com/servers/progress)
+  - [Issue #953 - report_progress not working on streamable-http](https://github.com/modelcontextprotocol/python-sdk/issues/953)
+- **Priority**: Low - nice-to-have UX improvement, blocked on gwsa changes and client support verification.
+
