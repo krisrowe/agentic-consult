@@ -28,7 +28,7 @@ from agentic_consult.mcp.email_processing import (
     archive_email_with_gwsa,
 )
 from agentic_consult.email.triage import (
-    triage_emails,
+    triage_emails as sdk_triage_emails,
     get_cached_emails as sdk_get_cached_emails,
     mark_email_in_review as sdk_mark_email_in_review,
 )
