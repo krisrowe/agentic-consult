@@ -327,6 +327,12 @@ def get_review_label() -> str:
     return config.get('review_label', 'Reviewing')
 
 
+def get_archivable_label() -> str:
+    """Get the Gmail label used for emails pending age-based archive."""
+    config = _load_app_email_config()
+    return config.get('archivable_label', 'Archivable')
+
+
 def mark_email_in_review(
     message_id: str,
     reverse: bool = False,
@@ -370,6 +376,40 @@ def mark_email_in_review(
         }
 
 
+def mark_email_archivable(
+    message_id: str,
+    profile: Optional[str] = None
+) -> dict[str, Any]:
+    """
+    Apply the Archivable label to an email (for archive_later recommendations).
+
+    Args:
+        message_id: Gmail message ID
+        profile: Optional gwsa profile
+
+    Returns:
+        Dict with success status
+    """
+    from gwsa.sdk.mail.label import add_label as gwsa_add_label
+
+    label = get_archivable_label()
+
+    try:
+        gwsa_add_label(message_id, label, profile=profile)
+        return {
+            'success': True,
+            'message_id': message_id,
+            'label': label,
+            'action': 'applied'
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'message_id': message_id,
+            'error': str(e)
+        }
+
+
 # -----------------------------------------------------------------------------
 # Main Triage Function
 # -----------------------------------------------------------------------------
@@ -377,9 +417,11 @@ def mark_email_in_review(
 def _build_gmail_query(review_status: str) -> str:
     """Build Gmail query based on review status filter."""
     review_label = get_review_label()
+    archivable_label = get_archivable_label()
 
     if review_status == "new":
-        return f"in:inbox -label:{review_label}"
+        # Exclude both Reviewing and Archivable labels
+        return f"in:inbox -label:{review_label} -label:{archivable_label}"
     elif review_status == "reviewing":
         return f"in:inbox label:{review_label}"
     else:  # "all"
@@ -541,7 +583,16 @@ def triage_emails(
                 logger.warning(f"use_mock_gemini=true but {mock_file} not found")
                 result = {'recommendations': []}
         else:
-            client = GeminiAPIClient(model_name=model)
+            try:
+                client = GeminiAPIClient(model_name=model)
+            except ValueError as e:
+                # Diagnostic for API key issues
+                import os
+                gemini_keys = {k: len(v) for k, v in os.environ.items() if 'GEMINI' in k.upper()}
+                return {
+                    'error': f"{e}. Env vars with GEMINI: {gemini_keys}",
+                    'stats': {'email_count': len(emails)}
+                }
             try:
                 result = client.generate_prompt_driven_json(prompt)
             except (GeminiJSONParseError, GeminiJSONExtractionError) as e:
@@ -553,7 +604,22 @@ def triage_emails(
 
         recommendations = result.get('recommendations', [])
 
-        # Step 6: Extract referenced rules
+        # Step 6: Apply Archivable label to archive_later emails
+        archivable_count = 0
+        for rec in recommendations:
+            if rec.get('recommended_action') == 'archive_later':
+                message_id = rec.get('id')
+                if message_id:
+                    result = mark_email_archivable(message_id, profile=profile)
+                    if result.get('success'):
+                        archivable_count += 1
+                    else:
+                        logger.warning(f"Failed to mark {message_id} archivable: {result.get('error')}")
+
+        if archivable_count > 0:
+            logger.info(f"Applied Archivable label to {archivable_count} emails")
+
+        # Step 7: Extract referenced rules
         referenced_rule_ids = set()
         for rec in recommendations:
             rule_id = rec.get('rule_id')
@@ -562,7 +628,7 @@ def triage_emails(
 
         rules_referenced = [r for r in all_rules if r.get('id') in referenced_rule_ids]
 
-        # Step 7: Build instructions for the agent
+        # Step 8: Build instructions for the agent
         instructions = _build_agent_instructions(review_status, recommendations)
 
         return {
@@ -573,7 +639,8 @@ def triage_emails(
                 'email_count': len(emails),
                 'recommendation_count': len(recommendations),
                 'rules_loaded': len(all_rules),
-                'rules_matched': len(rules_referenced)
+                'rules_matched': len(rules_referenced),
+                'archivable_labeled': archivable_count
             }
         }
 
@@ -608,10 +675,11 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
         "## Next Steps",
         "",
         "1. **Review recommendations** with the user before taking action",
-        "2. For `archive` recommendations: use `archive_email` tool",
-        "3. For `track_as_task` recommendations: check for existing task, create if needed, then archive",
-        "4. For `review` recommendations: use `mark_email_in_review` to apply Reviewing label",
-        "5. For `needs_triage` recommendations: present to user for decision",
+        "2. For `archive_now` recommendations: use `archive_email` tool",
+        "3. For `archive_later` recommendations: Archivable label already applied, no action needed",
+        "4. For `track_as_task` recommendations: check for existing task, create if needed, then archive",
+        "5. For `review` recommendations: use `mark_email_in_review` to apply Reviewing label",
+        "6. For `ask_user` recommendations: present to user for decision",
         "",
         "**Available tools:**",
         "- `get_cached_emails([message_ids])`: Get full email content from cache (batch)",
@@ -621,6 +689,6 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
     ])
 
     if review_status == "new":
-        lines.append("Continue with `process_email(review_status='new')` until inbox is triaged.")
+        lines.append("Continue with `triage_emails(review_status='new')` until inbox is triaged.")
 
     return "\n".join(lines)

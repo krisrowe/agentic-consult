@@ -13,6 +13,7 @@ TODO.md
 .pytest_cache/
 *.log
 *.txt
+!agentic_consult/templates/*.txt
 mock-deltas.json
 .venv/
 temp/

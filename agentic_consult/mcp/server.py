@@ -320,10 +320,13 @@ async def triage_emails(
             - stats: Processing statistics
 
         recommended_action values:
-            - "archive": Safe to archive (matched archive rule or routine noise)
+            - "archive_now": Archive immediately (routine email, aged sufficiently for user visibility)
+            - "archive_later": Archivable per rules, but kept visible a bit longer; Archivable
+              label applied so user can archive manually anytime via Gmail UI (web/app) and so
+              our tooling can skip these emails efficiently via filter when pulling batches
             - "track_as_task": Requires follow-up action (create task, then archive)
             - "review": Needs human attention (apply Reviewing label)
-            - "needs_triage": No rule matched (present to user for decision)
+            - "ask_user": No rule matched (present to user for decision)
 
         Follow-up tools:
             - get_cached_emails([message_ids]): Get full cached email content
