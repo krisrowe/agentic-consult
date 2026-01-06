@@ -22,6 +22,13 @@ rules:
       Email is a security alert about suspicious activity, unauthorized access,
       password reset request not initiated by user, new device login, or similar
 
+  - id: sys-mailing-list-archive
+    action: archive_now
+    condition: >
+      Email is addressed to one of the following Mailing Lists: {{contacts.auto_archive_lists}}
+      AND the user is NOT explicitly in the To/Cc fields
+      AND the user is NOT mentioned by name in the body.
+
 # DEFAULT STATE: ENABLED
 # These rules are active by default to ensure basic safety and responsiveness.
 enable:

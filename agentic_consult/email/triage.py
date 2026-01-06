@@ -94,7 +94,44 @@ def _format_contacts_context(config: dict) -> str:
         if emails: parts.append(f"Emails: {', '.join(emails)}")
         if names: parts.append(f"Names/Nicknames: {', '.join(names)}")
         lines.append(f"- **User Identity:** {'; '.join(parts)}")
+
     return "\n".join(lines)
+
+
+def _resolve_config_value(config: dict, path: str) -> str:
+    """Resolve a dot-notation path (e.g., 'contacts.auto_archive_lists') in config."""
+    current = config
+    try:
+        for key in path.split('.'):
+            current = current.get(key, {})
+        
+        if isinstance(current, list):
+            return ", ".join(str(x) for x in current)
+        return str(current)
+    except Exception:
+        return f"[Missing config: {path}]"
+
+def _inject_config_into_rules(rules: list[dict], config: dict) -> list[dict]:
+    """Inject config values into rule conditions using {{path}} syntax."""
+    import re
+    processed_rules = []
+    
+    # Matches {{ path.to.value }}
+    pattern = re.compile(r'\{\{\s*([\w\.]+)\s*\}\}')
+    
+    for rule in rules:
+        new_rule = rule.copy()
+        condition = new_rule.get('condition', '')
+        
+        def replace_match(match):
+            path = match.group(1)
+            return _resolve_config_value(config, path)
+            
+        if pattern.search(condition):
+            new_rule['condition'] = pattern.sub(replace_match, condition)
+            
+        processed_rules.append(new_rule)
+    return processed_rules
 
 
 def load_triage_template() -> str:
@@ -362,8 +399,14 @@ def analyze_emails(message_ids: list[str], profile: Optional[str] = None, model:
 
         # 2. Load Rules & Context
         all_rules = load_email_rules()
-        active_rules = [r for r in all_rules if not r.get('disabled', False)]
-        contacts_context = _format_contacts_context(_load_contacts_config())
+        raw_active_rules = [r for r in all_rules if not r.get('disabled', False)]
+        
+        # Load full contacts config for injection
+        contacts_config = _load_contacts_config()
+        contacts_context = _format_contacts_context(contacts_config)
+        
+        # Inject dynamic config values into rules
+        active_rules = _inject_config_into_rules(raw_active_rules, contacts_config)
         
         # 3. Build Prompt
         prompt = load_triage_template().format(
@@ -428,10 +471,10 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
             for rec in recs:
                 ref = rec.get('ref', '??')
                 date = rec.get('date', '')[5:10] # MM-DD
-                sender = rec.get('from', '').split('<')[0].strip()[:20]
-                subj = rec.get('subject', '')[:40].replace('|', '-')
+                sender = rec.get('from', '').split('<')[0].strip()[:15]
+                subj = rec.get('subject', '')[:30].replace('|', '-')
                 rule_id = rec.get('rule_id', '-')
-                reason = rec.get('reason', 'No reason provided')
+                reason = rec.get('reason', 'No reason provided')[:75].replace('\n', ' ')
                 
                 lines.append(f"| **{ref}** | {date} | {sender} | {subj} | `{rule_id}` | {reason} |")
             lines.append("") # Spacer
@@ -441,15 +484,25 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
         if action in grouped and grouped[action]:
              cmd = cmd_map.get(action)
              if cmd:
-                 refs = [r['ref'] for r in grouped[action]]
-                 lines.append(f"{cmd} {' '.join(refs)}")
+                 # Group by rule_id to provide context
+                 by_rule = {}
+                 for r in grouped[action]:
+                     rule = r.get('rule_id') or "ad-hoc"
+                     if rule not in by_rule: by_rule[rule] = []
+                     by_rule[rule].append(r['ref'])
+                 
+                 for rule, refs in by_rule.items():
+                     lines.append(f"{cmd} {' '.join(refs)} # {rule}")
+                     
     lines.append("```")
     
     lines.append("\n**Agent Instructions:**")
-    lines.append("To execute these commands:")
-    lines.append("1. `do rev <refs>` -> Call `mark_email_in_review(message_id=...)` for each ref.")
-    lines.append("2. `do task <refs>` -> Create task, then `archive_email(message_id=...)`.")
-    lines.append("3. `do arc <refs>` -> Call `archive_email(message_id=..., reason='ad-hoc')`.")
-    lines.append("4. `do later <refs>` -> Call `mark_email_archivable(message_id=...)`.")
+    lines.append("1. **Display the Table:** You MUST present the table above exactly as shown, INCLUDING the 'Rule' and 'Reason' columns. Do not simplify it.")
+    lines.append("2. **Execute Commands:**")
+    lines.append("   - `do rev <refs>` -> Call `mark_email_in_review(message_id=...)`")
+    lines.append("   - `do task <refs>` -> Create task, then `archive_email(message_id=...)`")
+    lines.append("   - `do arc <refs>` -> Call `archive_email(message_id=..., reason='ad-hoc')`")
+    lines.append("   - `do later <refs>` -> Call `mark_email_archivable(message_id=...)`")
+    lines.append("3. **Loop:** After executing actions, check if inbox is empty. If not, call `triage_emails(review_status='new')` to fetch the next batch.")
     
     return "\n".join(lines)
