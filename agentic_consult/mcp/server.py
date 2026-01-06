@@ -34,6 +34,7 @@ from agentic_consult.email.triage import (
     mark_email_archivable as sdk_mark_email_archivable,
     suggest_email_action as sdk_suggest_email_action
 )
+import fnmatch
 
 logger = logging.getLogger(__name__)
 
@@ -496,7 +497,10 @@ async def mark_email_archivable(
 
 
 @mcp.tool()
-async def list_email_rules() -> dict[str, Any]:
+async def list_email_rules(
+    filter_pattern: Optional[str] = None,
+    include_disabled: bool = False
+) -> dict[str, Any]:
     """
     Lists all configured email processing rules with usage statistics.
 
@@ -504,12 +508,16 @@ async def list_email_rules() -> dict[str, Any]:
     context overhead. Rules that haven't been used in months are candidates
     for cleanup.
 
+    Args:
+        filter_pattern: Optional shell-style wildcard pattern to filter rules by ID (e.g., "*important*").
+        include_disabled: Whether to include disabled rules in the output. Defaults to False.
+
     Returns:
         Dictionary with 'rules' list containing all configured rules.
         Each rule includes 'use_count' and 'last_used' from archive logs.
     """
     try:
-        rules = list_rules()
+        rules = list_rules(include_disabled=include_disabled)
         usage_stats = get_rule_usage_stats()
 
         # Merge usage stats into rules
@@ -521,6 +529,9 @@ async def list_email_rules() -> dict[str, Any]:
             else:
                 rule['use_count'] = 0
                 rule['last_used'] = None
+
+        if filter_pattern:
+            rules = [r for r in rules if fnmatch.fnmatch(r.get('id', ''), filter_pattern)]
 
         return {"rules": rules, "count": len(rules)}
     except Exception as e:

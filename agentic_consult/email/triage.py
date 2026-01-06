@@ -8,6 +8,7 @@ to allow direct testing without spinning up a server.
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional
@@ -465,30 +466,52 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
         if action in grouped and grouped[action]:
             recs = grouped[action]
             lines.append(f"### Action: `{action}` ({len(recs)})")
-            lines.append("| Ref | Date | From | Subject | Rule | Reason |")
-            lines.append("|:---|:---|:---|:---|:---|:---|")
+            lines.append("| Ref | | Date | From | Subject | Rule | Reason |")
+            lines.append("|:---|:---|:---|:---|:---|:---|:---|")
             
             month_map = {
                 "01": "JA", "02": "FE", "03": "MR", "04": "AP",
                 "05": "MY", "06": "JN", "07": "JL", "08": "AU",
                 "09": "SE", "10": "OC", "11": "NV", "12": "DE"
             }
+            
+            audience_map = {
+                "DIRECT": "👤",
+                "GROUP": "👥", 
+                "MENTION": "🔔",
+                "BROADCAST": "📢"
+            }
+            
             for rec in recs:
                 ref = rec.get('ref', '??')
+                icon = audience_map.get(rec.get('audience', 'BROADCAST'), "📢")
+                
                 raw_date = rec.get('date', '')
                 if len(raw_date) >= 10:
-                    mm = raw_date[5:7]
-                    dd = raw_date[8:10]
-                    date = f"{dd}{month_map.get(mm, '??')}"
+                    try:
+                        dt = datetime.strptime(raw_date[:10], '%Y-%m-%d')
+                        # MTWRFSU mapping (R=Thu, U=Sun)
+                        day_code = ["M", "T", "W", "R", "F", "S", "U"][dt.weekday()]
+                        mm = raw_date[5:7]
+                        dd = raw_date[8:10]
+                        date = f"{day_code} {dd}{month_map.get(mm, '??')}"
+                    except Exception:
+                        date = "??"
                 else:
                     date = "??"
                 
-                sender = rec.get('from', '').split('<')[0].strip()[:15]
-                subj = rec.get('subject', '')[:30].replace('|', '-')
-                rule_id = rec.get('rule_id', '-')
-                reason = rec.get('reason', 'No reason provided')[:75].replace('\n', ' ')
+                sender = str(rec.get('from') or '').split('<')[0].strip()[:12]
+                subj = str(rec.get('subject') or '')[:20].replace('|', '-').replace('\n', ' ')
                 
-                lines.append(f"| **{ref}** | {date} | {sender} | {subj} | `{rule_id}` | {reason} |")
+                rule_id = str(rec.get('rule_id') or '-')
+                # Strip 3-4 char prefixes (like sys-, tech-, work-)
+                rule_id_disp = re.sub(r'^[a-z]{3,4}-', '', rule_id)
+                
+                if len(rule_id_disp) > 11: rule_id_disp = rule_id_disp[:11]
+                
+                reason = rec.get('reason', 'No reason provided')[:35].replace('\n', ' ')
+                
+                lines.append(f"| **{ref}** | {icon} | {date} | {sender} | {subj} | `{rule_id_disp}` | {reason} |")
             lines.append("") # Spacer
                 
     lines.append("\n## Suggested Actions (Copy/Paste Block)\n```bash")

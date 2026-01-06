@@ -31,11 +31,16 @@
       "type": ["string", "null"],
       "description": "ID of matching rule, if any"
     },
+    "audience": {
+      "type": "string",
+      "enum": ["DIRECT", "GROUP", "MENTION", "BROADCAST"],
+      "description": "Audience type: DIRECT (user is sole To), GROUP (To with others or CC), MENTION (user named in body), BROADCAST (not in To/CC)"
+    },
     "reason": {
       "type": "string",
       "description": "Human-readable explanation for the recommendation"
     }
   },
-  "required": ["id", "date", "from", "subject", "recommended_action", "reason"],
+  "required": ["id", "date", "from", "subject", "recommended_action", "audience", "reason"],
   "additionalProperties": false
 }
