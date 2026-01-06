@@ -34,6 +34,14 @@ For each email, determine which rule (if any) matches based on the FULL email co
 - Set `rule_id` to the matching rule's ID (include rule_id even when age not met)
 - If NO rule matches, use action `ask_user` with `rule_id: null`
 
+### Audience Classification
+
+Determine the `audience` field based on the User Identity provided in the Context:
+1. **MENTION**: User is explicitly mentioned by name/nickname in the email body (Highest Priority).
+2. **DIRECT**: User is on the 'To' line alone (no other To recipients).
+3. **GROUP**: User is on the 'To' line with others, OR on the 'Cc' line.
+4. **BROADCAST**: User is NOT on 'To' or 'Cc' lines (e.g., mailing list).
+
 ### Actions
 
 - **track_as_task** - Email requires follow-up action
@@ -56,6 +64,7 @@ Respond with valid JSON only. No markdown, no explanation outside the JSON.
       "subject": "Subject line",
       "recommended_action": "archive_now|archive_later|track_as_task|review|ask_user",
       "rule_id": "matching-rule-id-or-null",
+      "audience": "DIRECT|GROUP|MENTION|BROADCAST",
       "reason": "Brief explanation (1 sentence)"
     }}
   ]

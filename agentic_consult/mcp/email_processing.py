@@ -335,9 +335,11 @@ def remove_rule(rule_id: str) -> bool:
     return True
 
 
-def list_rules() -> list[dict]:
-    """List all enabled email processing rules."""
+def list_rules(include_disabled: bool = False) -> list[dict]:
+    """List email processing rules."""
     all_rules = load_email_rules()
+    if include_disabled:
+        return all_rules
     return [r for r in all_rules if not r.get('disabled', False)]
 
 
