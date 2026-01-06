@@ -422,27 +422,19 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
         if action in grouped and grouped[action]:
             recs = grouped[action]
             lines.append(f"### Action: `{action}` ({len(recs)})")
+            lines.append("| Ref | Date | From | Subject | Rule | Reason |")
+            lines.append("|:---|:---|:---|:---|:---|:---|")
             
             for rec in recs:
                 ref = rec.get('ref', '??')
-                date = rec.get('date', '')[:10]
-                sender = rec.get('from', '').split('<')[0].strip()[:30]
-                subj = rec.get('subject', '')[:60].replace('|', '-')
-                rule_id = rec.get('rule_id')
+                date = rec.get('date', '')[5:10] # MM-DD
+                sender = rec.get('from', '').split('<')[0].strip()[:20]
+                subj = rec.get('subject', '')[:40].replace('|', '-')
+                rule_id = rec.get('rule_id', '-')
                 reason = rec.get('reason', 'No reason provided')
                 
-                # Line 1: Metadata
-                lines.append(f"| **{ref}** | {date} | {sender} | {subj}")
-                
-                # Line 2: Rule (if applicable)
-                if rule_id:
-                    lines.append(f"| *Rule* | `{action}` | `{rule_id}` | {reason}")
-                
-                # Line 3: Agent/Command
-                cmd = f"{cmd_map.get(action, 'do ???')} {ref}"
-                agent_reason = "(see above)" if rule_id else reason
-                lines.append(f"| *Agent* | `{action}` | `{cmd}` | {agent_reason}")
-                lines.append("") # Spacer
+                lines.append(f"| **{ref}** | {date} | {sender} | {subj} | `{rule_id}` | {reason} |")
+            lines.append("") # Spacer
                 
     lines.append("\n## Suggested Actions (Copy/Paste Block)\n```bash")
     for action in display_order:
