@@ -49,3 +49,7 @@ precommit:
     - test@testcorp.com
     - test@fake.com
     - test@example.com
+    - sender@example.com
+    - newsletter@example.com
+    - user@example.com
+    - bank@example.com

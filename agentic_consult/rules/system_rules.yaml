@@ -6,8 +6,9 @@ rules:
   - id: sys-important-direct
     action: review
     condition: >
-      Email is from a known Customer domain or VIP list AND is addressed directly to the user
-      (To/Cc line or mentions name/nickname in body), unless it is an automated notification.
+      Email contains a message, request, or activity originating from or regarding 
+      a known Customer or VIP (including proxied notifications from Slack, Jira, 
+      or Docs), or is addressed directly to the user.
 
   - id: sys-urgent-action
     action: review

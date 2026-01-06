@@ -3,21 +3,6 @@ Email triage SDK - Gemini-powered email processing.
 
 This module provides the core logic for email triage, separate from MCP
 to allow direct testing without spinning up a server.
-
-## Architecture
-
-1. Fetch emails from Gmail based on review_status filter
-2. Cache emails locally for efficient retrieval
-3. Load rules (unified system + user rules from MCP loader)
-4. Call Gemini with emails + rules + prompt template
-5. Return structured recommendations
-
-## State Machine
-
-Emails transition through states via Gmail labels:
-- [Inbox, No Label] → Initial state
-- [Inbox, Reviewing] → Needs human attention
-- [Archived] → Removed from inbox
 """
 
 import json
@@ -63,19 +48,11 @@ def _load_app_email_config() -> dict:
 
 
 def _load_user_email_config() -> dict:
-    """
-    Load user email configuration from email.yaml (CONSULT_CONFIG_DIR).
-
-    This is where test flags like use_mock_emails/use_mock_gemini go,
-    since CONSULT_CONFIG_DIR can be overridden via env var for testing.
-    """
+    """Load user email configuration from email.yaml."""
     from agentic_consult.mcp.email_processing import get_email_config_path
-    import yaml
-
     path = get_email_config_path()
     if not path.exists():
         return {}
-
     try:
         with open(path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f) or {}
@@ -88,7 +65,6 @@ def _load_contacts_config() -> dict:
     path = get_consult_config_dir() / CONTACTS_CONFIG_FILE
     if not path.exists():
         return {}
-
     try:
         with open(path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f) or {}
@@ -104,27 +80,20 @@ def _format_contacts_context(config: dict) -> str:
         return "No contact context configured."
 
     lines = []
-    
     customers = contacts.get('customers', [])
     if customers:
         lines.append(f"- **Customers (Domains/Patterns):** {', '.join(customers)}")
-        
     vips = contacts.get('vips', [])
     if vips:
         lines.append(f"- **VIPs (Managers/Leads):** {', '.join(vips)}")
-        
     identity = contacts.get('identity', {})
     emails = identity.get('emails', [])
     names = identity.get('names', [])
-    
     if emails or names:
         parts = []
-        if emails:
-            parts.append(f"Emails: {', '.join(emails)}")
-        if names:
-            parts.append(f"Names/Nicknames: {', '.join(names)}")
+        if emails: parts.append(f"Emails: {', '.join(emails)}")
+        if names: parts.append(f"Names/Nicknames: {', '.join(names)}")
         lines.append(f"- **User Identity:** {'; '.join(parts)}")
-        
     return "\n".join(lines)
 
 
@@ -133,16 +102,10 @@ def load_triage_template() -> str:
     template_path = _get_package_dir() / TRIAGE_TEMPLATE_FILE
     if not template_path.exists():
         raise FileNotFoundError(f"Triage template not found: {template_path}")
-
     return template_path.read_text(encoding='utf-8')
 
 
-# -----------------------------------------------------------------------------
-# Shortcode Management
-# -----------------------------------------------------------------------------
-
 def _get_shortcode_pool() -> list[str]:
-    """Generate the full pool of shortcodes (A0..Z9)."""
     codes = []
     chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     for char in chars:
@@ -150,11 +113,8 @@ def _get_shortcode_pool() -> list[str]:
             codes.append(f"{char}{digit}")
     return codes
 
+
 def _load_ref_map() -> dict:
-    """
-    Load the ref map from cache.
-    Structure: {"next_seq": int, "refs": {code: {"id": msg_id, "seq": int}}}
-    """
     cache_dir = get_cache_dir()
     map_path = cache_dir / REF_MAP_FILE
     if not map_path.exists():
@@ -162,420 +122,152 @@ def _load_ref_map() -> dict:
     try:
         with open(map_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            # Schema validation/migration
-            if "refs" not in data: 
-                return {"next_seq": 1, "refs": {}}
-            return data
+            return data if "refs" in data else {"next_seq": 1, "refs": {}}
     except Exception:
         return {"next_seq": 1, "refs": {}}
 
+
 def _save_ref_map(data: dict) -> None:
-    """Save the ref map to cache."""
     cache_dir = get_cache_dir()
     map_path = cache_dir / REF_MAP_FILE
     with open(map_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
 
 def _assign_shortcodes(message_ids: list[str]) -> dict[str, str]:
-    """
-    Assign shortcodes to a list of message IDs using LRU strategy.
-    Returns dict: {msg_id: code}
-    """
     data = _load_ref_map()
     refs = data["refs"]
     next_seq = data.get("next_seq", 1)
-    
-    # 1. Index existing IDs to codes
     id_to_code = {info["id"]: code for code, info in refs.items()}
-    
     assignments = {}
-    
-    # 2. Process requests
     for msg_id in message_ids:
         if msg_id in id_to_code:
-            # Reuse existing code
             code = id_to_code[msg_id]
             refs[code]["seq"] = next_seq
             assignments[msg_id] = code
             next_seq += 1
         else:
-            # Assign new code
-            # Find unused codes
             pool = set(_get_shortcode_pool())
             used_codes = set(refs.keys())
             available = sorted(list(pool - used_codes))
-            
             if available:
                 code = available[0]
                 refs[code] = {"id": msg_id, "seq": next_seq}
                 assignments[msg_id] = code
                 next_seq += 1
             else:
-                # Recycle LRU
-                # Find code with lowest seq
-                if not refs: # Should not happen given pool size, but safety check
-                     continue 
-                lru_code = min(refs, key=lambda k: refs[k]["seq"])
-                refs[lru_code] = {"id": msg_id, "seq": next_seq}
-                assignments[msg_id] = lru_code
-                next_seq += 1
-    
-    # Save state
+                if refs:
+                    lru_code = min(refs, key=lambda k: refs[k]["seq"])
+                    refs[lru_code] = {"id": msg_id, "seq": next_seq}
+                    assignments[msg_id] = lru_code
+                    next_seq += 1
     data["next_seq"] = next_seq
     _save_ref_map(data)
-    
     return assignments
 
-
-# -----------------------------------------------------------------------------
-# Email Caching
-# -----------------------------------------------------------------------------
-
 def _cache_filename(message_id: str, email_date: str) -> str:
-    """Generate cache filename from message ID and date."""
-    # Sanitize message_id for filesystem
     safe_id = message_id.replace('/', '_').replace('\\', '_')
     return f"{safe_id}_{email_date}.json"
 
-
 def cache_email(email: dict) -> Path:
-    """
-    Cache an email to the local cache directory.
-
-    Args:
-        email: Email dict with id, date, from, subject, body, etc.
-
-    Returns:
-        Path to the cached file.
-    """
     cache_dir = _get_email_cache_dir()
-
     message_id = email.get('id', 'unknown')
-    # Extract date, default to today if not present
     email_date = email.get('date', datetime.now().strftime('%Y-%m-%d'))
     if isinstance(email_date, datetime):
         email_date = email_date.strftime('%Y-%m-%d')
     elif len(email_date) > 10:
-        # Truncate datetime strings to just date
         email_date = email_date[:10]
-
     filename = _cache_filename(message_id, email_date)
     cache_path = cache_dir / filename
-
-    # Add caching metadata
-    cached_email = {
-        **email,
-        'cached_at': datetime.utcnow().isoformat()
-    }
-
+    cached_email = {**email, 'cached_at': datetime.utcnow().isoformat()}
     with open(cache_path, 'w', encoding='utf-8') as f:
         json.dump(cached_email, f, indent=2, default=str)
-
     return cache_path
 
-
 def get_cached_emails(message_ids: list[str]) -> dict[str, Any]:
-    """
-    Retrieve multiple cached emails by message IDs.
-
-    Args:
-        message_ids: List of Gmail message IDs (minimum 1)
-
-    Returns:
-        Dict with 'messages' array. Each item has 'id' at top level, then either:
-            - The email fields (from, subject, body, cached_at, etc.)
-            - An 'error' object with {code, message}
-
-        Check for 'error' field to detect failures; absence means success.
-
-        Error codes:
-            - "not_cached": Email not found in cache
-            - "read_error": Failed to read cache file
-    """
     if not message_ids:
         return {'messages': []}
-
     cache_dir = _get_email_cache_dir()
     messages = []
-
     for message_id in message_ids:
-        # Sanitize for matching
         safe_id = message_id.replace('/', '_').replace('\\', '_')
-
-        # Find matching file (message_id is prefix before the date)
         found = False
         for cache_file in cache_dir.glob(f"{safe_id}_*.json"):
             try:
                 with open(cache_file, 'r', encoding='utf-8') as f:
                     email = json.load(f)
-                    # Flatten: id at top level, rest of email fields alongside
                     result = {'id': message_id}
                     result.update(email)
                     messages.append(result)
                     found = True
                     break
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Failed to read cached email {cache_file}: {e}")
-                messages.append({
-                    'id': message_id,
-                    'error': {
-                        'code': 'read_error',
-                        'message': f"Failed to read cache: {e}"
-                    }
-                })
-                found = True  # Don't also add not_cached
+            except Exception:
+                messages.append({'id': message_id, 'error': {'code': 'read_error'}})
+                found = True
                 break
-
         if not found:
-            messages.append({
-                'id': message_id,
-                'error': {
-                    'code': 'not_cached',
-                    'message': "Not in cache. Use gwsa read_email to fetch."
-                }
-            })
-
+            messages.append({'id': message_id, 'error': {'code': 'not_cached'}})
     return {'messages': messages}
 
-
 def cleanup_email_cache() -> int:
-    """
-    Clean up old cached emails based on configured retention.
-
-    Cleanup criteria - delete file if BOTH:
-    1. File creation date >= cleanup_file_age_days old
-    2. Email date (from filename) >= email_max_age_days old
-
-    Returns:
-        Number of files removed.
-    """
     cache_dir = _get_email_cache_dir()
     config = _load_app_email_config()
     cache_config = config.get('cache', {})
-
     file_age_days = cache_config.get('cleanup_file_age_days', 7)
     email_max_age_days = cache_config.get('email_max_age_days', 30)
-
     now = datetime.now()
     file_age_cutoff = now - timedelta(days=file_age_days)
     email_date_cutoff = now - timedelta(days=email_max_age_days)
-
     removed_count = 0
-
     for cache_file in cache_dir.glob("*.json"):
         try:
-            # Check file age (creation/modification time)
             file_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
-            if file_mtime >= file_age_cutoff:
-                # File is too recent, skip
-                continue
-
-            # Extract email date from filename (format: {id}_{YYYY-MM-DD}.json)
+            if file_mtime >= file_age_cutoff: continue
             parts = cache_file.stem.rsplit('_', 1)
-            if len(parts) != 2:
-                continue
-
-            try:
-                email_date = datetime.strptime(parts[1], '%Y-%m-%d')
-            except ValueError:
-                continue
-
-            if email_date >= email_date_cutoff:
-                # Email is too recent, skip
-                continue
-
-            # Both criteria met, delete
+            if len(parts) != 2: continue
+            email_date = datetime.strptime(parts[1], '%Y-%m-%d')
+            if email_date >= email_date_cutoff: continue
             cache_file.unlink()
             removed_count += 1
-            logger.debug(f"Cleaned up cached email: {cache_file.name}")
-
-        except Exception as e:
-            logger.warning(f"Failed to process cache file {cache_file}: {e}")
-
-    if removed_count > 0:
-        logger.info(f"Cleaned up {removed_count} cached emails")
-
+        except Exception: pass
     return removed_count
 
-
-# -----------------------------------------------------------------------------
-# Email Review State Management
-# -----------------------------------------------------------------------------
-
-def get_review_label() -> str:
-    """Get the Gmail label used for emails needing review."""
-    config = _load_app_email_config()
-    return config.get('review_label', 'Reviewing')
-
-
-def get_archivable_label() -> str:
-    """Get the Gmail label used for emails pending age-based archive."""
-    config = _load_app_email_config()
-    return config.get('archivable_label', 'Archivable')
-
-
-def mark_email_in_review(
-    message_id: str,
-    reverse: bool = False,
-    profile: Optional[str] = None
-) -> dict[str, Any]:
-    """
-    Apply or remove the Reviewing label from an email.
-
-    Args:
-        message_id: Gmail message ID
-        reverse: If True, remove the label instead of adding
-        profile: Optional gwsa profile
-
-    Returns:
-        Dict with success status
-    """
-    from gwsa.sdk.mail.label import add_label as gwsa_add_label
-    from gwsa.sdk.mail.label import remove_label as gwsa_remove_label
-
-    label = get_review_label()
-
+def mark_email_in_review(message_id: str, reverse: bool = False, profile: Optional[str] = None) -> dict[str, Any]:
+    from gwsa.sdk.mail.label import add_label, remove_label
+    label = _load_app_email_config().get('review_label', 'Reviewing')
     try:
         if reverse:
-            gwsa_remove_label(message_id, label, profile=profile)
-            action = "removed"
+            remove_label(message_id, label, profile=profile)
         else:
-            gwsa_add_label(message_id, label, profile=profile)
-            action = "applied"
-
-        return {
-            'success': True,
-            'message_id': message_id,
-            'label': label,
-            'action': action
-        }
+            add_label(message_id, label, profile=profile)
+        return {'success': True, 'message_id': message_id, 'action': 'removed' if reverse else 'applied'}
     except Exception as e:
-        return {
-            'success': False,
-            'message_id': message_id,
-            'error': str(e)
-        }
+        return {'success': False, 'message_id': message_id, 'error': str(e)}
 
-
-def mark_email_archivable(
-    message_id: str,
-    reverse: bool = False,
-    profile: Optional[str] = None
-) -> dict[str, Any]:
-    """
-    Apply or remove the Archivable label from an email.
-
-    Args:
-        message_id: Gmail message ID
-        reverse: If True, remove the label instead of adding
-        profile: Optional gwsa profile
-
-    Returns:
-        Dict with success status
-    """
-    from gwsa.sdk.mail.label import add_label as gwsa_add_label
-    from gwsa.sdk.mail.label import remove_label as gwsa_remove_label
-
-    label = get_archivable_label()
-
+def mark_email_archivable(message_id: str, reverse: bool = False, profile: Optional[str] = None) -> dict[str, Any]:
+    from gwsa.sdk.mail.label import add_label, remove_label
+    label = _load_app_email_config().get('archivable_label', 'Archivable')
     try:
         if reverse:
-            gwsa_remove_label(message_id, label, profile=profile)
+            remove_label(message_id, label, profile=profile)
         else:
-            gwsa_add_label(message_id, label, profile=profile)
-
-        return {
-            'success': True,
-            'message_id': message_id,
-            'label': label,
-            'action': 'removed' if reverse else 'applied'
-        }
+            add_label(message_id, label, profile=profile)
+        return {'success': True, 'message_id': message_id, 'action': 'removed' if reverse else 'applied'}
     except Exception as e:
-        return {
-            'success': False,
-            'message_id': message_id,
-            'error': str(e)
-        }
-
-
-# -----------------------------------------------------------------------------
-# Main Triage Function
-# -----------------------------------------------------------------------------
+        return {'success': False, 'message_id': message_id, 'error': str(e)}
 
 def _build_gmail_query(review_status: str) -> str:
-    """Build Gmail query based on review status filter."""
-    review_label = get_review_label()
-    archivable_label = get_archivable_label()
-
+    config = _load_app_email_config()
+    review_label = config.get('review_label', 'Reviewing')
+    archivable_label = config.get('archivable_label', 'Archivable')
     if review_status == "new":
-        # Exclude both Reviewing and Archivable labels
         return f"in:inbox -label:{review_label} -label:{archivable_label}"
     elif review_status == "reviewing":
         return f"in:inbox label:{review_label}"
-    else:  # "all"
-        return "in:inbox"
-
-
-def _fetch_emails(
-    query: str,
-    limit: int,
-    profile: Optional[str] = None
-) -> list[dict]:
-    """
-    Fetch emails from Gmail using gwsa, or from mock file if configured.
-
-    Returns list of email dicts with full content.
-
-    For testing: Set email.use_mock_emails: true in config, then place
-    mock-triage-emails.json in the cache directory.
-    """
-    user_config = _load_user_email_config()
-
-    # Check for mock mode (from user config, controllable via CONSULT_CONFIG_DIR)
-    if user_config.get('use_mock_emails', False):
-        mock_file = _get_email_cache_dir() / 'mock-triage-emails.json'
-        if mock_file.exists():
-            logger.info(f"Using mock emails from {mock_file}")
-            with open(mock_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        else:
-            logger.warning(f"use_mock_emails=true but {mock_file} not found")
-            return []
-
-    from gwsa.sdk.mail.search import search_messages
-
-    # search_messages returns tuple: (list of message dicts, metadata dict)
-    # With format="full", messages already include body, snippet, attachments
-    messages, _metadata = search_messages(
-        query=query,
-        max_results=limit,
-        format="full",
-        profile=profile
-    )
-
-    # Transform to our expected format
-    emails = []
-    for msg in messages:
-        email = {
-            'id': msg.get('id'),
-            'date': msg.get('date', ''),
-            'from': msg.get('from', ''),
-            'to': msg.get('to', ''),
-            'subject': msg.get('subject', ''),
-            'body': msg.get('body', ''),
-            'labels': msg.get('labelIds', [])
-        }
-        emails.append(email)
-
-    return emails
-
+    return "in:inbox"
 
 def _prepare_emails_for_prompt(emails: list[dict]) -> str:
-    """Format emails as JSON for the Gemini prompt."""
     config = _load_app_email_config()
     max_email_chars = config.get('max_email_chars', 100000)
-
-    # Truncate individual emails if needed
     truncated_emails = []
     for email in emails:
         email_copy = dict(email)
@@ -583,253 +275,189 @@ def _prepare_emails_for_prompt(emails: list[dict]) -> str:
         if len(body) > max_email_chars:
             email_copy['body'] = body[:max_email_chars] + "\n[TRUNCATED]"
         truncated_emails.append(email_copy)
-
     return json.dumps(truncated_emails, indent=2, default=str)
-
 
 def triage_emails(
     review_status: Literal["new", "reviewing", "all"] = "all",
-    limit: int = 20,
+    limit: int = 5,
     profile: Optional[str] = None,
     model: Optional[str] = None,
     progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict[str, Any]:
-    """
-    Triage inbox emails using Gemini.
-
-    This is the main SDK function that:
-    1. Fetches emails based on review_status filter
-    2. Caches each email locally
-    3. Loads rules (unified from MCP loader)
-    4. Calls Gemini with emails + rules + prompt template
-    5. Returns structured recommendations
-
-    Args:
-        review_status: Filter emails by state
-            - "new": Emails in inbox without Reviewing label
-            - "reviewing": Emails with Reviewing label
-            - "all": All inbox emails
-        limit: Maximum emails to fetch (default 20)
-        profile: Optional gwsa profile name
-        model: Optional Gemini model override
-
-    For testing: Set CONSULT_CONFIG_DIR and XDG_CACHE_HOME to temp dirs, then:
-        - In email.yaml: use_mock_emails: true, use_mock_gemini: true
-        - In cache dir: mock-triage-emails.json, mock-triage-response.json
-
-    Returns:
-        Dict with:
-            - recommendations: List of email recommendations from Gemini
-            - rules_referenced: Rules that were mentioned in recommendations
-            - instructions: Guidance for the agent on next steps
-            - stats: Processing statistics
-    """
     try:
-        # Step 1: Build query and fetch emails
         query = _build_gmail_query(review_status)
-        logger.info(f"Fetching emails with query: {query}")
-
-        if progress_callback:
-            progress_callback(1, 2)
-
-        emails = _fetch_emails(query, limit, profile)
-
-        if not emails:
-            return {
-                'recommendations': [],
-                'rules_referenced': [],
-                'instructions': "No emails found matching the filter.",
-                'stats': {'email_count': 0}
-            }
-
-        # Step 2: Cache each email (triggers cleanup as side effect)
-        cleanup_email_cache()
-        for email in emails:
-            cache_email(email)
-
-        # Step 3: Load rules and config
-        all_rules = load_email_rules()
-        active_rules = [r for r in all_rules if not r.get('disabled', False)]
+        if progress_callback: progress_callback(1, 2)
+        from gwsa.sdk.mail.search import search_messages
+        messages, _metadata = search_messages(query=query, max_results=limit, format="metadata", profile=profile)
+        message_ids = [m['id'] for m in messages]
+        if not message_ids:
+            return {'recommendations': [], 'rules_referenced': [], 'instructions': "No emails found.", 'stats': {'email_count': 0}}
+        if progress_callback: progress_callback(2, 2)
         
-        # Load contact context
-        contacts_config = _load_contacts_config()
-        contacts_context = _format_contacts_context(contacts_config)
-
-        # Step 4: Build prompt
-        template = load_triage_template()
-        emails_json = _prepare_emails_for_prompt(emails)
-        rules_json = json.dumps(active_rules, indent=2)
-
-        prompt = template.format(
-            rules_json=rules_json,
-            emails_json=emails_json,
-            contacts_context=contacts_context
-        )
-
-        # Step 5: Call Gemini (or use mock response)
-        if progress_callback:
-            progress_callback(2, 2)
-
-        user_config = _load_user_email_config()
-
-        if user_config.get('use_mock_gemini', False):
-            mock_file = _get_email_cache_dir() / 'mock-triage-response.json'
-            if mock_file.exists():
-                logger.info(f"Using mock Gemini response from {mock_file}")
-                with open(mock_file, 'r', encoding='utf-8') as f:
-                    result = json.load(f)
-            else:
-                logger.warning(f"use_mock_gemini=true but {mock_file} not found")
-                result = {'recommendations': []}
-        else:
-            try:
-                client = GeminiAPIClient(model_name=model)
-            except ValueError as e:
-                import os
-                gemini_keys = {k: len(v) for k, v in os.environ.items() if 'GEMINI' in k.upper()}
-                return {
-                    'error': f"{e}. Env vars with GEMINI: {gemini_keys}",
-                    'stats': {'email_count': len(emails)}
-                }
-            try:
-                result = client.generate_prompt_driven_json(prompt)
-            except (GeminiJSONParseError, GeminiJSONExtractionError) as e:
-                logger.error(f"Failed to parse Gemini response: {e}")
-                return {
-                    'error': f"Gemini returned invalid JSON: {e}",
-                    'stats': {'email_count': len(emails)}
-                }
-
-        recommendations = result.get('recommendations', [])
-
-        # Step 6: Assign Shortcodes (LRU Persistence)
-        msg_ids = [r.get('id') for r in recommendations if r.get('id')]
-        assignments = _assign_shortcodes(msg_ids)
+        recommendations = analyze_emails(message_ids, profile=profile, model=model)
+        if isinstance(recommendations, dict) and 'error' in recommendations: return recommendations
         
-        # Attach refs to recommendations
+        assignments = _assign_shortcodes(message_ids)
         for rec in recommendations:
             msg_id = rec.get('id')
-            if msg_id in assignments:
-                rec['ref'] = assignments[msg_id]
-            else:
-                rec['ref'] = '??'
-
-        # Step 7: Extract referenced rules
-        referenced_rule_ids = set()
-        for rec in recommendations:
-            rule_id = rec.get('rule_id')
-            if rule_id:
-                referenced_rule_ids.add(rule_id)
-
+            rec['ref'] = assignments.get(msg_id, '??')
+            
+        all_rules = load_email_rules()
+        active_rules = [r for r in all_rules if not r.get('disabled', False)]
+        referenced_rule_ids = {r.get('rule_id') for r in recommendations if r.get('rule_id')}
         rules_referenced = [r for r in active_rules if r.get('id') in referenced_rule_ids]
-
-        # Step 8: Build instructions for the agent
         instructions = _build_agent_instructions(review_status, recommendations)
-
+        
         return {
             'recommendations': recommendations,
             'rules_referenced': rules_referenced,
             'instructions': instructions,
             'stats': {
-                'email_count': len(emails),
+                'email_count': len(message_ids),
                 'recommendation_count': len(recommendations),
                 'rules_loaded': len(active_rules),
                 'rules_matched': len(rules_referenced)
             }
         }
-
     except Exception as e:
         logger.exception("Error in triage_emails")
         return {'error': str(e)}
 
+def suggest_email_action(message_id: str, profile: Optional[str] = None, model: Optional[str] = None) -> dict[str, Any]:
+    try:
+        recommendations = analyze_emails([message_id], profile=profile, model=model)
+        if isinstance(recommendations, dict) and 'error' in recommendations: return recommendations
+        if not recommendations: return {'result': 'no_recommendation'}
+        return recommendations[0]
+    except Exception as e:
+        logger.exception("Error in suggest_email_action")
+        return {'error': str(e)}
+
+def analyze_emails(message_ids: list[str], profile: Optional[str] = None, model: Optional[str] = None) -> list[dict]:
+    """
+    Unified analysis pipeline: Fetch (Batched) -> Cache -> Load Rules -> Call Gemini.
+    """
+    try:
+        from gwsa.sdk.mail.read import read_messages
+        emails = []
+        cleanup_email_cache()
+        
+        # 1. Fetch Full Content for all IDs using efficient batching
+        full_messages = read_messages(message_ids, profile=profile)
+        
+        for msg in full_messages:
+            email = {
+                'id': msg['id'],
+                'date': msg.get('date', ''),
+                'from': msg.get('from', ''),
+                'to': msg.get('to', ''),
+                'subject': msg.get('subject', ''),
+                'body': msg.get('body', {}).get('text') or msg.get('body', {}).get('html') or '',
+                'labels': msg.get('labelIds', [])
+            }
+            emails.append(email)
+            cache_email(email)
+
+        if not emails: return []
+
+        # 2. Load Rules & Context
+        all_rules = load_email_rules()
+        active_rules = [r for r in all_rules if not r.get('disabled', False)]
+        contacts_context = _format_contacts_context(_load_contacts_config())
+        
+        # 3. Build Prompt
+        prompt = load_triage_template().format(
+            rules_json=json.dumps(active_rules, indent=2),
+            emails_json=_prepare_emails_for_prompt(emails),
+            contacts_context=contacts_context
+        )
+        
+        # 4. Call Gemini (or Mock)
+        user_config = _load_user_email_config()
+        if user_config.get('use_mock_gemini', False):
+            mock_file = _get_email_cache_dir() / 'mock-triage-response.json'
+            if mock_file.exists():
+                with open(mock_file, 'r', encoding='utf-8') as f:
+                    return json.load(f).get('recommendations', [])
+            return []
+            
+        client = GeminiAPIClient(model_name=model)
+        result = client.generate_prompt_driven_json(prompt)
+        
+        # Ensure ID is attached to recommendations if Gemini missed it
+        recs = result.get('recommendations', [])
+        if len(recs) == len(emails):
+            for i, rec in enumerate(recs):
+                if not rec.get('id'): rec['id'] = emails[i]['id']
+        return recs
+    except Exception as e:
+        logger.error(f"Analysis Failed: {e}")
+        return {'error': str(e)}
 
 def _build_agent_instructions(review_status: str, recommendations: list[dict]) -> str:
-    """Build instructions for the agent based on triage results."""
-    
-    # Group by action
     grouped = {}
     for rec in recommendations:
         action = rec.get('recommended_action', 'unknown')
-        if action not in grouped:
-            grouped[action] = []
+        if action not in grouped: grouped[action] = []
         grouped[action].append(rec)
-
-    # 1. Triage Table
+        
     lines = [
         "## Triage Suggestions",
         "",
-        "**Context:** These are rule-based suggestions generated by a sub-agent for consideration.",
-        "",
-        "**Your Role:**",
-        "1. **Analyze:** Evaluate each suggestion against the Rule, Reason, and metadata.",
-        "2. **Verify:** If the summary is insufficient, call `get_cached_emails([ids])` to inspect the content.",
-        "3. **Decide:** Apply your session context. If a suggestion contradicts user intent, override it.",
-        "",
-        "| Ref | Date | From | Subject | Action | Reason |",
-        "| :--- | :--- | :--- | :--- | :--- | :--- |"
+        "**Context:** Rule-based suggestions for your review.",
+        ""
     ]
     
-    # Priority order for display
+    cmd_map = {
+        'review': 'do rev',
+        'track_as_task': 'do task',
+        'archive_now': 'do arc',
+        'archive_later': 'do later',
+        'ask_user': 'do rev' 
+    }
+
     display_order = ['review', 'track_as_task', 'ask_user', 'archive_now', 'archive_later']
     
     for action in display_order:
-        if action in grouped:
-            for rec in grouped[action]:
-                ref = rec.get('ref', '??')
-                date = rec.get('date', '')[:10]
-                sender = rec.get('from', '').split('<')[0].strip()[:20]
-                subj = rec.get('subject', '')[:40].replace('|', '-')
-                reason = rec.get('reason', '')
-                lines.append(f"| **{ref}** | {date} | {sender} | {subj} | `{action}` | {reason} |")
-    
-    # Handle any actions not in priority list
-    for action, items in grouped.items():
-        if action not in display_order:
-             for rec in items:
-                ref = rec.get('ref', '??')
-                date = rec.get('date', '')[:10]
-                sender = rec.get('from', '').split('<')[0].strip()[:20]
-                subj = rec.get('subject', '')[:40].replace('|', '-')
-                reason = rec.get('reason', '')
-                lines.append(f"| **{ref}** | {date} | {sender} | {subj} | `{action}` | {reason} |")
-
-    lines.append("")
-    lines.append("## Suggested Actions (Copy/Paste Block)")
-    lines.append("```bash")
-
-    # 2. Command Block
-    # archive_now -> do arc
-    if 'archive_now' in grouped:
-        refs = [r['ref'] for r in grouped['archive_now']]
-        lines.append(f"do arc {' '.join(refs)}")
-    
-    if 'archive_later' in grouped:
-        refs = [r['ref'] for r in grouped['archive_later']]
-        lines.append(f"do arc {' '.join(refs)}")
-        
-    # review -> do rev
-    if 'review' in grouped:
-        refs = [r['ref'] for r in grouped['review']]
-        lines.append(f"do rev {' '.join(refs)}")
-        
-    # track_as_task -> do task (requires manual input usually, but we list them)
-    if 'track_as_task' in grouped:
-        for rec in grouped['track_as_task']:
-            lines.append(f"# Task: {rec.get('subject')}")
-            lines.append(f"do task {rec['ref']}")
+        if action in grouped and grouped[action]:
+            recs = grouped[action]
+            lines.append(f"### Action: `{action}` ({len(recs)})")
             
-    # ask_user -> commented out suggestions
-    if 'ask_user' in grouped:
-        lines.append("")
-        lines.append("# Unsure / Ask User:")
-        for rec in grouped['ask_user']:
-             lines.append(f"# do [arc|rev|task] {rec['ref']}  # {rec.get('subject')}")
-
+            for rec in recs:
+                ref = rec.get('ref', '??')
+                date = rec.get('date', '')[:10]
+                sender = rec.get('from', '').split('<')[0].strip()[:30]
+                subj = rec.get('subject', '')[:60].replace('|', '-')
+                rule_id = rec.get('rule_id')
+                reason = rec.get('reason', 'No reason provided')
+                
+                # Line 1: Metadata
+                lines.append(f"| **{ref}** | {date} | {sender} | {subj}")
+                
+                # Line 2: Rule (if applicable)
+                if rule_id:
+                    lines.append(f"| *Rule* | `{action}` | `{rule_id}` | {reason}")
+                
+                # Line 3: Agent/Command
+                cmd = f"{cmd_map.get(action, 'do ???')} {ref}"
+                agent_reason = "(see above)" if rule_id else reason
+                lines.append(f"| *Agent* | `{action}` | `{cmd}` | {agent_reason}")
+                lines.append("") # Spacer
+                
+    lines.append("\n## Suggested Actions (Copy/Paste Block)\n```bash")
+    for action in display_order:
+        if action in grouped and grouped[action]:
+             cmd = cmd_map.get(action)
+             if cmd:
+                 refs = [r['ref'] for r in grouped[action]]
+                 lines.append(f"{cmd} {' '.join(refs)}")
     lines.append("```")
-    lines.append("")
-    lines.append("**Commands:** `do arc [refs]`, `do rev [refs]`, `do task [refs]`, `do show [refs]`")
     
-    if review_status == "new":
-        lines.append("Continue with `triage_emails(review_status='new')` until inbox is triaged.")
-
+    lines.append("\n**Agent Instructions:**")
+    lines.append("To execute these commands:")
+    lines.append("1. `do rev <refs>` -> Call `mark_email_in_review(message_id=...)` for each ref.")
+    lines.append("2. `do task <refs>` -> Create task, then `archive_email(message_id=...)`.")
+    lines.append("3. `do arc <refs>` -> Call `archive_email(message_id=..., reason='ad-hoc')`.")
+    lines.append("4. `do later <refs>` -> Call `mark_email_archivable(message_id=...)`.")
+    
     return "\n".join(lines)

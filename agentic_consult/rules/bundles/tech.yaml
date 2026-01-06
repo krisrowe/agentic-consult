@@ -1,0 +1,9 @@
+# Tech/Consultant Role Rules
+# Context: Engineering, Consulting, Delivery roles.
+
+rules:
+  - id: tech-delivery
+    action: review
+    condition: >
+      Email is a notification about a physical package delivery, shipment, or 
+      pickup requirement at a company office (e.g., laptop, token, equipment).
