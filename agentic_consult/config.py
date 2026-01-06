@@ -10,8 +10,13 @@ from agentic_consult.schema import validate_yaml
 logger = logging.getLogger(__name__)
 
 SETTINGS_FILENAME = "settings.json"
+APP_SLUG = "agentic-consult"
 
-def _get_settings_dir() -> Path:
+def get_default_settings_dir() -> Path:
+    """Returns the standard XDG configuration directory for the app."""
+    return Path(click.get_app_dir(APP_SLUG))
+
+def get_settings_dir() -> Path:
     """
     Returns directory where settings.json lives.
     Always XDG, unless CONSULT_CONFIG_DIR env var is set (for testing).
@@ -19,12 +24,12 @@ def _get_settings_dir() -> Path:
     env_config_dir = os.environ.get('CONSULT_CONFIG_DIR')
     if env_config_dir:
         return Path(env_config_dir)
-    return Path(click.get_app_dir('agentic-consult'))
+    return get_default_settings_dir()
 
 
 def _load_settings_json() -> dict:
     """Load settings.json from the settings directory."""
-    settings_path = _get_settings_dir() / SETTINGS_FILENAME
+    settings_path = get_settings_dir() / SETTINGS_FILENAME
     if not settings_path.exists():
         return {}
     try:
@@ -50,7 +55,7 @@ def get_consult_config_dir() -> Path:
     if settings.get('config_dir'):
         return Path(settings['config_dir']).expanduser()
 
-    return _get_settings_dir()
+    return get_settings_dir()
 
 
 def get_config_path(filename=None):
@@ -61,7 +66,7 @@ def get_config_path(filename=None):
     """
     if filename:
         return get_consult_config_dir() / filename
-    return _get_settings_dir() / SETTINGS_FILENAME
+    return get_settings_dir() / SETTINGS_FILENAME
 
 def load_main_config():
     """

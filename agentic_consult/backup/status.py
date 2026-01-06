@@ -11,6 +11,84 @@ class RepoStatus:
     local: Dict[str, Any]
     remote: Dict[str, Any]
     summary: Dict[str, Any]
+    identity: Dict[str, Any]
+
+def _resolve_identity(path: str, history_stats: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Resolves identity based on strict history matching rules:
+    - First commit matches
+    - Last N commits match (default 10)
+    - Total % matches (default 90%)
+    """
+    # Load config thresholds
+    from agentic_consult.config import load_app_config
+    app_config = load_app_config()
+    workspace_analysis = app_config.get('workspace_analysis', {})
+    required_n = workspace_analysis.get('required_last_commits_match', 10)
+    required_percent = workspace_analysis.get('required_total_match_percent', 90)
+
+    detected_email = None
+    source = "Unresolved"
+    confidence = "None" # High, Medium, Low, None
+
+    first = history_stats.get('first_commit_author')
+    last_n = history_stats.get('last_n_authors', [])
+    total_count = history_stats.get('total_commit_count', 0)
+    author_counts = history_stats.get('author_counts', {})
+    
+    # Logic:
+    # 1. Check if history is sufficient for N check
+    # If total < required_n, check all commits (must be 100% same)
+    
+    candidate = None
+    
+    if total_count > 0:
+        # Find dominant author
+        sorted_authors = sorted(author_counts.items(), key=lambda x: x[1], reverse=True)
+        dominant_email, dominant_count = sorted_authors[0]
+        percent = (dominant_count / total_count) * 100
+        
+        # Check Rules
+        # Rule A: First commit matches dominant
+        first_matches = (first == dominant_email)
+        
+        # Rule B: Last N matches dominant (or all if total < N)
+        if total_count < required_n:
+            last_n_matches = all(e == dominant_email for e in last_n)
+        else:
+            # Check only the last N entries
+            last_n_matches = all(e == dominant_email for e in last_n[:required_n])
+            
+        # Rule C: Percent threshold
+        percent_matches = percent >= required_percent
+        
+        if first_matches and last_n_matches and percent_matches:
+            detected_email = dominant_email
+            source = f"History (First + Last {len(last_n)} + {int(percent)}%)"
+            confidence = "High"
+        else:
+             # Fallback: Just report stats but don't confirm identity
+             source = f"Mixed History (Dom: {int(percent)}%)"
+    
+    # Check Git Config (Override/Supplement)
+    git_config_email = GitUtils.get_config(path, "user.email")
+    if git_config_email:
+        if not detected_email:
+            detected_email = git_config_email
+            source = "Git Config"
+            confidence = "Medium"
+        elif detected_email != git_config_email:
+            # Conflict
+            detected_email = git_config_email
+            source = "Git Config (Overrides History)"
+            confidence = "Medium"
+
+    return {
+        "email": detected_email,
+        "source": source,
+        "confidence": confidence,
+        "stats": history_stats
+    }
 
 def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
     """
@@ -24,6 +102,7 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
         summary = {
             "name": name,
             "type": "Unknown",
+            "classification": "Unknown",
             "status": "Not a git repo",
             "guidance": "Initialize git or check path.",
             "is_git": False,
@@ -33,11 +112,28 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
             path=abs_path,
             local={"status": "UNKNOWN", "stats": {}},
             remote={"status": "UNKNOWN", "stats": {}},
-            summary=summary
+            summary=summary,
+            identity={"email": None, "source": "N/A", "confidence": "None", "stats": {}}
         )
 
     has_remotes = GitUtils.has_remotes(abs_path)
+    remote_url = GitUtils.get_remote_url(abs_path) if has_remotes else None
     repo_type = "Remote" if has_remotes else "Local-Only"
+    
+    classification = "Local-Only"
+    if has_remotes and remote_url:
+        if "github.com" in remote_url:
+            classification = "Public"
+        else:
+            classification = "Private"
+
+    # Load thresholds for history stats
+    from agentic_consult.config import load_app_config
+    app_config = load_app_config()
+    required_n = app_config.get('workspace_analysis', {}).get('required_last_commits_match', 10)
+
+    history_stats = GitUtils.get_commit_history_stats(abs_path, last_n=required_n)
+    identity = _resolve_identity(abs_path, history_stats)
     
     stats = GitUtils.get_status_stats(abs_path)
     is_dirty = stats['staged'] > 0 or stats['unstaged'] > 0
@@ -69,6 +165,7 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
         remote = {
             'status': remote_enum_map.get(remote_status, 'UNKNOWN'),
             'last_fetch': last_fetch,
+            'url': remote_url,
             'stats': {
                 'unpushed': remote_info.get('unpushed', 0),
                 'unpulled': remote_info.get('unpulled', 0)
@@ -158,6 +255,7 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
     summary = {
         "name": name,
         "type": repo_type,
+        "classification": classification,
         "status": status_msg,
         "guidance": guidance,
         "is_git": True,
@@ -168,5 +266,6 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
         path=abs_path,
         local=local,
         remote=remote,
-        summary=summary
+        summary=summary,
+        identity=identity
     )

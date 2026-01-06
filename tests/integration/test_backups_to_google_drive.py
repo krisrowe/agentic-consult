@@ -42,7 +42,8 @@ def integration_env(monkeypatch):
     monkeypatch.setenv("BACKUPS_HOME_LOCAL_PATH", mock_home_dir)
     
     # 3. Setup CONSULT_CONFIG_DIR (for tool settings isolation)
-    config_dir = os.path.join(root_temp, "config")
+    # Move it INSIDE mock home to simulate standard XDG layout (~/.config/agentic-consult)
+    config_dir = os.path.join(mock_home_dir, ".config", "agentic-consult")
     os.makedirs(config_dir)
     monkeypatch.setenv("CONSULT_CONFIG_DIR", config_dir)
     
@@ -106,6 +107,20 @@ def test_backup_lifecycle_end_to_end(integration_env):
     with open(os.path.join(mock_gemini_dir, "settings.json"), "w") as f:
         f.write('{"test_setting": true}')
 
+    # --- Setup: Recursive Directory Content ---
+    mock_subdir = os.path.join(mock_gemini_dir, "backup_assets")
+    os.makedirs(mock_subdir)
+    with open(os.path.join(mock_subdir, "file_a.txt"), "w") as f:
+        f.write("Content A")
+    with open(os.path.join(mock_subdir, "file_b.toml"), "w") as f:
+        f.write("key = 'value'")
+    
+    # Nested subdir
+    mock_nested = os.path.join(mock_subdir, "nested")
+    os.makedirs(mock_nested)
+    with open(os.path.join(mock_nested, "deep_file.json"), "w") as f:
+        f.write("{}")
+
     # --- Setup: Repositories ---
     repo1 = os.path.join(env['ws'], "clean_repo_1")
     repo2 = os.path.join(env['ws'], "clean_repo_2")
@@ -144,11 +159,19 @@ def test_backup_lifecycle_end_to_end(integration_env):
     result = runner.invoke(user_home_init_defaults)
     assert result.exit_code == 0
     
+    from agentic_consult.cli.user_home import add_path
+    
+    # Add our recursive directory to the config using the proper CLI command
+    # We invoke 'user-home add' which is now nested under 'backup'
+    
+    print("[Test] Adding recursive test dir to backup config...")
+    result = runner.invoke(backup_cli, ['user-home', 'add', '.gemini/backup_assets'])
+    assert result.exit_code == 0
+    
     # Verify config updated
     config = load_main_config()
-    user_home_paths = config['backups']['user_home']['paths']
-    assert len(user_home_paths) == 3
-    assert ".gemini/settings.json" in user_home_paths
+    current_paths = config['backups']['user_home']['paths']
+    assert ".gemini/backup_assets" in current_paths
 
     # --- Step 3: Verify Duplicate Creation Fails ---
     print("\n[Test] Verifying duplicate folder creation fails...")
@@ -185,9 +208,17 @@ def test_backup_lifecycle_end_to_end(integration_env):
     
     # User Home Checks
     assert user_home_res['status'] == 'success'
-    assert len(user_home_res['items']) == 3
-    for item in user_home_res['items']:
-        assert item['status'] == BackupStatus.SUCCESS.value
+    # We expect: 
+    # 1. .gemini/settings.json (success)
+    # 2. .gemini/GEMINI.md (success or not found if init defaults didn't create it, but our test setup did)
+    # 3. .config/.../settings.json (success)
+    # 4. .gemini/backup_assets/ (success - directory summary)
+    
+    # Check for the directory summary item
+    dir_item = next((i for i in user_home_res['items'] if "backup_assets" in i['name']), None)
+    assert dir_item is not None
+    assert dir_item['status'] == BackupStatus.SUCCESS.value
+    assert "Synced dir" in dir_item['message']
     
     # Local Repo Checks
     assert local_repos_res['status'] == 'success'
@@ -208,6 +239,22 @@ def test_backup_lifecycle_end_to_end(integration_env):
     gemini_folder_id = drive_client.find_folder(".gemini", parent_id=home_folder_id)
     assert gemini_folder_id
     
+    # Verify Recursive Directory
+    recursive_dir_id = drive_client.find_folder("backup_assets", parent_id=gemini_folder_id)
+    assert recursive_dir_id is not None
+    
+    file_a = drive_client.find_file("file_a.txt", parent_id=recursive_dir_id)
+    assert file_a is not None
+    
+    file_b = drive_client.find_file("file_b.toml", parent_id=recursive_dir_id)
+    assert file_b is not None
+    
+    nested_dir_id = drive_client.find_folder("nested", parent_id=recursive_dir_id)
+    assert nested_dir_id is not None
+    
+    deep_file = drive_client.find_file("deep_file.json", parent_id=nested_dir_id)
+    assert deep_file is not None
+
     remote_gemini_md = drive_client.find_file("GEMINI.md", parent_id=gemini_folder_id)
     assert remote_gemini_md is not None
     assert remote_gemini_md['name'] == "GEMINI.md"

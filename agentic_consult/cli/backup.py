@@ -7,6 +7,7 @@ from agentic_consult.backup.orchestrator import BackupOrchestrator
 from agentic_consult.backup.exceptions import BackupError
 from agentic_consult.backup.results import BackupStatus
 from agentic_consult.cli.metadata import metadata
+from agentic_consult.cli.user_home import user_home_cli
 
 @click.group()
 def backup():
@@ -14,6 +15,7 @@ def backup():
     pass
 
 backup.add_command(metadata)
+backup.add_command(user_home_cli)
 
 @backup.command()
 @click.option('--folder-name', help="Name of the Google Drive folder to use.")

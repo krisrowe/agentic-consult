@@ -470,3 +470,21 @@ The email triage system uses a layered configuration model (System -> Bundles ->
 2.  **User Experience:** It is simpler and clearer for a user to open `email.yaml` and add `enable: ["work-*"]` than to navigate a complex CLI/tool interface for state management.
 3.  **Stability:** Simple file-based configuration is less brittle and easier to debug than state mutation logic.
 #sessionstart
+
+## Configuration & Migration Strategy
+
+### Settings Portability
+We currently use absolute paths or placeholders in `settings.json` (e.g., `$TOOL_SETTINGS_DIR`). As the tool evolves or is renamed (e.g., `agentic-consult` -> `new-tool`), these paths may become stale.
+
+### Migration Plan
+Instead of complex dynamic resolution at runtime for every path, we will implement a **Migration Strategy** for future releases:
+
+1.  **Versioning:** `settings.json` will include a `version` field (or we will check the tool version).
+2.  **Migration Command:** A `consult config migrate` (or automatic check on `init`) will handle upgrades.
+3.  **Logic:**
+    *   Detects old paths (e.g., `~/.config/agentic-consult`).
+    *   Moves/Copies data to the new location (e.g., `~/.config/new-tool`).
+    *   Rewrites `settings.json` to update paths.
+    *   Ensures backup configurations point to the new locations.
+
+This allows us to keep the runtime configuration simple and explicit while providing a safe path forward for renaming or restructuring the project.
