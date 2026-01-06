@@ -345,6 +345,9 @@ async def triage_emails(
         - `do task <refs>`  → Create a task for each, then `archive_email(message_id=id)`
         - `do arc <refs>`   → `archive_email(message_id=id, reason="ad-hoc")`
         - `do later <refs>` → `mark_email_archivable(message_id=id)`
+        - `do sum <refs>`   → `get_cached_emails(message_ids=[id])` (Summarize content)
+        - `do show <refs>`  → `get_cached_emails(message_ids=[id])` (Show full content)
+        - `do relist`       → Filter and redisplay the table with remaining items (no tool call)
     
     **Example:**
     User: "do rev A1"
