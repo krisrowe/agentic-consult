@@ -5,14 +5,21 @@
   "description": "Response format expected from Gemini email triage",
   "type": "object",
   "properties": {
-    "recommendations": {
+    "emails": {
       "type": "array",
       "items": {
         "$ref": "email_recommendation.json"
       },
       "description": "Array of email recommendations"
+    },
+    "invites": {
+      "type": "array",
+      "items": {
+        "$ref": "calendar_invite.json"
+      },
+      "description": "Array of calendar invites/scheduling requests"
     }
   },
-  "required": ["recommendations"],
+  "required": ["emails"],
   "additionalProperties": false
 }

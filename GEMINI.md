@@ -96,14 +96,24 @@ This scans for:
 consult precommit --include-ignored
 ```
 
-### Backup Operations
+### Backup operations
 
 **Backup customer data to Drive:**
 ```bash
 consult backup all
 ```
 
-### Context-Aware Gemini Query
+## MCP Tool Design & UX
+
+When implementing features or changes that involve a specific user experience (UX) at the agent touchpoint (e.g., Gemini CLI, Claude Code):
+
+1. **Lean on Tool Docstrings:** Use the tool's docstring to provide instructions to the agent on how to interpret, format, and present the tool's output to the user. This ensures consistent behavior across different client agents.
+2. **Minimal Schema Expansion:** Expand the tool's response JSON schema only when necessary for structural clarity. If the guidance can be handled via the docstring or a specific instruction within the response (like an `instructions` field), prefer that over complex schema changes.
+3. **Task-Specific Commands:** Design the agent's interaction to suggest and handle concise "DSL" style commands (e.g., `do accept A1`) for common multi-step operations.
+4. **Agent Flexibility:** Allow the MCP client agent to adapt to circumstances with creative problem solving. Do not be overly prescriptive in how it must work with the end user in presenting and acting upon responses. The goal is to orchestrate workflows, not to rigidly script every interaction.
+5. **Runtime Schema Validation:** Ensure that defined JSON schemas (`schemas/*.json`) are actively used at runtime to validate data entering or leaving the system. This prevents "interface drift" where code and documentation diverge.
+
+## Context-Aware Gemini Query
 
 **Query Gemini with file context:**
 ```bash
@@ -112,6 +122,10 @@ consult gemini "Prompt..." [PATH]... [--exclude PATTERN]
 - Supports files and directories as context paths.
 - Uses `.gitignore`-style exclusion patterns.
 - Automatically skips binary files.
+
+## Strategic Principles
+
+1. **Tool Independence:** Maintain strict independence from specific auxiliary tools or repositories. While current implementations may leverage certain interfaces (like `gwsa`), the code, configuration, commit messages, and documentation should avoid hard dependencies or specific mentions of auxiliary projects as "personal" or "proprietary." The long-term goal is a fully decoupled architecture that relies solely on generic capability requirements.
 
 ## Integration with MCP/gwsa
 

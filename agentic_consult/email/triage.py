@@ -329,30 +329,38 @@ def triage_emails(
         messages, _metadata = search_messages(query=query, max_results=limit, format="metadata", profile=profile)
         message_ids = [m['id'] for m in messages]
         if not message_ids:
-            return {'recommendations': [], 'rules_referenced': [], 'instructions': "No emails found.", 'stats': {'email_count': 0}}
+            return {'emails': [], 'invites': [], 'rules_referenced': [], 'instructions': "No emails found.", 'stats': {'email_count': 0}}
         if progress_callback: progress_callback(2, 2)
         
-        recommendations = analyze_emails(message_ids, profile=profile, model=model)
-        if isinstance(recommendations, dict) and 'error' in recommendations: return recommendations
+        result = analyze_emails(message_ids, profile=profile, model=model)
+        if 'error' in result: return result
+        
+        emails = result.get('emails', [])
+        invites = result.get('invites', [])
         
         assignments = _assign_shortcodes(message_ids)
-        for rec in recommendations:
+        for rec in emails:
             msg_id = rec.get('id')
             rec['ref'] = assignments.get(msg_id, '??')
+        for inv in invites:
+            msg_id = inv.get('id')
+            inv['ref'] = assignments.get(msg_id, '??')
             
         all_rules = load_email_rules()
         active_rules = [r for r in all_rules if not r.get('disabled', False)]
-        referenced_rule_ids = {r.get('rule_id') for r in recommendations if r.get('rule_id')}
+        referenced_rule_ids = {r.get('rule_id') for r in emails if r.get('rule_id')}
         rules_referenced = [r for r in active_rules if r.get('id') in referenced_rule_ids]
-        instructions = _build_agent_instructions(review_status, recommendations)
+        instructions = _build_agent_instructions(review_status, emails, invites)
         
         return {
-            'recommendations': recommendations,
+            'emails': emails,
+            'invites': invites,
             'rules_referenced': rules_referenced,
             'instructions': instructions,
             'stats': {
                 'email_count': len(message_ids),
-                'recommendation_count': len(recommendations),
+                'recommendation_count': len(emails),
+                'invite_count': len(invites),
                 'rules_loaded': len(active_rules),
                 'rules_matched': len(rules_referenced)
             }
@@ -363,15 +371,20 @@ def triage_emails(
 
 def suggest_email_action(message_id: str, profile: Optional[str] = None, model: Optional[str] = None) -> dict[str, Any]:
     try:
-        recommendations = analyze_emails([message_id], profile=profile, model=model)
-        if isinstance(recommendations, dict) and 'error' in recommendations: return recommendations
-        if not recommendations: return {'result': 'no_recommendation'}
-        return recommendations[0]
+        result = analyze_emails([message_id], profile=profile, model=model)
+        if 'error' in result: return result
+        
+        recs = result.get('emails', [])
+        invites = result.get('invites', [])
+        
+        if recs: return recs[0]
+        if invites: return invites[0]
+        return {'result': 'no_recommendation'}
     except Exception as e:
         logger.exception("Error in suggest_email_action")
         return {'error': str(e)}
 
-def analyze_emails(message_ids: list[str], profile: Optional[str] = None, model: Optional[str] = None) -> list[dict]:
+def analyze_emails(message_ids: list[str], profile: Optional[str] = None, model: Optional[str] = None) -> dict[str, Any]:
     """
     Unified analysis pipeline: Fetch (Batched) -> Cache -> Load Rules -> Call Gemini.
     """
@@ -422,25 +435,24 @@ def analyze_emails(message_ids: list[str], profile: Optional[str] = None, model:
             mock_file = _get_email_cache_dir() / 'mock-triage-response.json'
             if mock_file.exists():
                 with open(mock_file, 'r', encoding='utf-8') as f:
-                    return json.load(f).get('recommendations', [])
-            return []
+                    data = json.load(f)
+                    return {'emails': data.get('emails', []), 'invites': data.get('invites', [])}
+            return {'emails': [], 'invites': []}
             
         client = GeminiAPIClient(model_name=model)
         result = client.generate_prompt_driven_json(prompt)
         
-        # Ensure ID is attached to recommendations if Gemini missed it
-        recs = result.get('recommendations', [])
-        if len(recs) == len(emails):
-            for i, rec in enumerate(recs):
-                if not rec.get('id'): rec['id'] = emails[i]['id']
-        return recs
+        recs = result.get('emails', [])
+        invites = result.get('invites', [])
+        
+        return {'emails': recs, 'invites': invites}
     except Exception as e:
         logger.error(f"Analysis Failed: {e}")
         return {'error': str(e)}
 
-def _build_agent_instructions(review_status: str, recommendations: list[dict]) -> str:
+def _build_agent_instructions(review_status: str, emails: list[dict], invites: list[dict]) -> str:
     grouped = {}
-    for rec in recommendations:
+    for rec in emails:
         action = rec.get('recommended_action', 'unknown')
         if action not in grouped: grouped[action] = []
         grouped[action].append(rec)
@@ -451,6 +463,31 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
         "**Context:** Rule-based suggestions for your review.",
         ""
     ]
+    
+    # --- Invites Section ---
+    if invites:
+        lines.append(f"### 📅 Calendar Invites ({len(invites)})")
+        lines.append("_Agent: Check your calendar for these times. Show availability status (✅/❌) in the 'Avail' column._")
+        lines.append("| Ref | Avail | Status | Date | Event | Sender | Subject | VIP |")
+        lines.append("|:---|:---|:---|:---|:---|:---|:---|:---|")
+        
+        for inv in invites:
+            ref = inv.get('ref', '??')
+            avail = "❓" # Placeholder for agent to fill
+            status = inv.get('status', 'PROPOSED')
+            status_icon = "🆕" if status == 'PROPOSED' else "📌"
+            
+            raw_date = inv.get('date', '')
+            date_disp = _format_short_date(raw_date)
+            
+            event_date = str(inv.get('event_date') or 'See details')[:20]
+            sender = _format_sender(inv.get('from', ''))
+            subj = _format_subject(inv.get('subject', ''))
+            vip = inv.get('vip_status', 'EXTERNAL')
+            vip_icon = "⭐" if vip in ['VIP', 'CUSTOMER'] else "👤"
+            
+            lines.append(f"| **{ref}** | {avail} | {status_icon} | {date_disp} | {event_date} | {sender} | {subj} | {vip_icon} |")
+        lines.append("")
     
     cmd_map = {
         'review': 'do rev',
@@ -515,6 +552,12 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
             lines.append("") # Spacer
                 
     lines.append("\n## Suggested Actions (Copy/Paste Block)\n```bash")
+    
+    # Invites commands
+    if invites:
+        inv_refs = [i.get('ref') for i in invites]
+        lines.append(f"# Invites: Check calendar, then: do accept {' '.join(inv_refs)}")
+    
     for action in display_order:
         if action in grouped and grouped[action]:
              cmd = cmd_map.get(action)
@@ -532,8 +575,11 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
     lines.append("```")
     
     lines.append("\n**Agent Instructions:**")
-    lines.append("1. **Display the Table:** You MUST present the table above exactly as shown, INCLUDING the 'Rule' and 'Reason' columns. Do not simplify it.")
+    lines.append("1. **Display the Table:** You MUST present the table above exactly as shown, but FILL IN the 'Avail' column for invites.")
+    lines.append("   - Check your calendar for the 'Event' times.")
+    lines.append("   - Replace ❓ with ✅ (Free) or ❌ (Conflict).")
     lines.append("2. **Execute Commands:**")
+    lines.append("   - `do accept <refs>` -> (Agent Logic) Check calendar -> Create Event -> Reply to email -> Archive.")
     lines.append("   - `do rev <refs>` -> Call `mark_email_in_review(message_id=...)`")
     lines.append("   - `do task <refs>` -> Create task, then `archive_email(message_id=...)`")
     lines.append("   - `do arc <refs>` -> Call `archive_email(message_id=..., reason='ad-hoc')`")

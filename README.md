@@ -63,23 +63,16 @@ pipx install . --force
 - [Google Workspace Access (gwsa)](https://github.com/krisrowe/gworkspace-access) - Python dependency for email tools (installed automatically). **Requires auth setup via `gwsa profiles add`** before use.
 - [TickTick Access](https://github.com/krisrowe/ticktick-access) - For task management.
 
-### TickTick Setup
+## Agent Capability Requirements
 
-1. Install `ticktick-access` using pipx:
-   ```bash
-   pipx install ticktick-access
-   ```
+When using `agentic-consult` via an MCP-compatible AI agent (e.g., Gemini CLI, Claude Code), the agent's environment is expected to provide certain baseline capabilities as tools to orchestrate full workflows:
 
-2. Configure your TickTick client credentials:
-   ```bash
-   ticktick client set
-   ```
-   (You will need a Client ID and Secret from the [TickTick Developer Portal](https://developer.ticktick.com/)).
+- **Email Management:** Ability to search, read, and modify emails (labels/archiving) to support triage workflows.
+- **Calendar Orchestration:** Ability to list, create, and respond to calendar events to facilitate automated scheduling and availability checks during triage.
+- **Drive/File Management:** Ability to manage cloud-based files and folders for automated backups and document organization.
+- **Task Management:** Ability to create and update tasks in external systems (like TickTick) based on workflow outcomes.
 
-3. Authenticate:
-   ```bash
-   ticktick auth
-   ```
+The tool logic is designed to be **provider-agnostic**; as long as the agent has tools capable of fulfilling these high-level functions, the specific tool implementation (e.g., Google's MCP extension vs. custom `gwsa` tools) is transparent to the workflow.
 
 ## Authentication & Setup
 
