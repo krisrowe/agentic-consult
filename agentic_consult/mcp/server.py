@@ -25,13 +25,14 @@ from agentic_consult.mcp.email_processing import (
     remove_rule,
     list_rules,
     get_rule_usage_stats,
-    archive_email_with_gwsa,
+    archive_email_with_gwsa
 )
 from agentic_consult.email.triage import (
     triage_emails as sdk_triage_emails,
     get_cached_emails as sdk_get_cached_emails,
     mark_email_in_review as sdk_mark_email_in_review,
     mark_email_archivable as sdk_mark_email_archivable,
+    suggest_email_action as sdk_suggest_email_action
 )
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ async def generate_backup_metadata(path: str = ".") -> dict[str, Any]:
 @mcp.tool()
 async def analyze_files(
     prompt: str,
-    context_paths: list[str] = ["."],
+    context_paths: list[str] = [""],
     exclude: list[str] = [],
     model: str = None,
     stats: bool = False
@@ -312,22 +313,41 @@ async def triage_emails(
     1. **Start with "all" (default)** - See full inbox state, including emails
        previously marked Archivable that may now be candidates for archive_now.
 
-    2. **Process results** - For each recommendation:
+    2. **Wait for User Confirmation** - The tool returns a plan (instructions).
+       **DO NOT EXECUTE THESE ACTIONS AUTOMATICALLY.**
+       Display the plan to the user and wait for their explicit command or confirmation.
+
+    3. **Process results (After Confirmation)** - Based on user input:
        - archive_now → `archive_email()` → done
        - archive_later → `mark_email_archivable()` → stays until aged
        - review → `mark_email_in_review()` → stays for user attention
        - track_as_task → create task (include email link in notes), then `archive_email()` → done
        - ask_user → get user decision, act accordingly → done
 
-    3. **Subsequent batches** - Use `review_status="new"` to skip labeled emails
+    4. **Subsequent batches** - Use `review_status="new"` to skip labeled emails
        when fetching the next batch. Use "reviewing" to focus on emails awaiting
        user attention. These filters are for efficiency when "all" is manageable.
 
-    4. **When "all" is cluttered** - If default limit returns mostly deferred
+    5. **When "all" is cluttered** - If default limit returns mostly deferred
        emails (Reviewing/Archivable), increase `limit` or use filters to reach
        emails that can be immediately actioned.
 
-    5. **Done** - Triage complete when inbox is empty.
+    6. **Done** - Triage complete when inbox is empty.
+
+    ## DSL & Command Handling
+
+    The tool output includes a "Suggested Actions" block using a shorthand DSL.
+    If the user replies with these commands (e.g., `do rev A1 B2`), you must:
+    1.  **Resolve Refs**: Look up the `ref` (e.g., "A1") in the tool output table to find the corresponding `id` (Gmail Message ID).
+    2.  **Execute Tool**: Call the appropriate tool for the command:
+        - `do rev <refs>`   → `mark_email_in_review(message_id=id)`
+        - `do task <refs>`  → Create a task for each, then `archive_email(message_id=id)`
+        - `do arc <refs>`   → `archive_email(message_id=id, reason="ad-hoc")`
+        - `do later <refs>` → `mark_email_archivable(message_id=id)`
+    
+    **Example:**
+    User: "do rev A1"
+    Agent: Finds A1 in table -> ID "19b9..." -> Calls `mark_email_in_review(message_id="19b9...")`
 
     Args:
         review_status: Filter emails by state
@@ -640,6 +660,28 @@ async def archive_email(
         logger.exception("Error in archive_email")
         return {"error": str(e), "message_id": message_id}
 
+
+@mcp.tool()
+async def suggest_email_action(
+    message_id: str,
+    profile: str | None = None,
+    model: str | None = None
+) -> dict[str, Any]:
+    """
+    This is normally not used directly except maybe when a fresh suggestion is 
+    needed after configuring rules or other settings that affect suggestions. 
+    For the full email triage process, use `triage_emails` instead.
+
+    Args:
+        message_id: Gmail message ID
+        profile: Optional gwsa profile
+        model: Optional Gemini model override
+    
+    Returns:
+        Dict with recommended_action, rule_id, and reason.
+    """
+    import asyncio
+    return await asyncio.to_thread(sdk_suggest_email_action, message_id, profile, model)
 
 def run_server():
     """Run the MCP server with stdio transport."""

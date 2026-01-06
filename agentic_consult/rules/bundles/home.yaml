@@ -11,25 +11,31 @@
 #   3. Absolute path → as-is (e.g., "~/shared/team.yaml")
 
 rules:
-  - id: marketing-promo
+  - id: home-marketing-promo
     action: archive
     condition: >
       Email is clearly promotional/marketing: sales, discounts, coupons,
       "limited time offer", newsletters with no actionable content
 
-  - id: social-notification
+  - id: home-social-notification
     action: archive
     condition: >
       Email is a social media notification (likes, comments, follows, friend requests)
       with no actionable content beyond "click to view"
 
-  - id: shipping-delivered
+  - id: home-shipping-delivered
     action: archive
     condition: >
       Email confirms a package was delivered successfully with no issues reported
 
-  - id: routine-confirmation
+  - id: home-routine-confirmation
     action: archive
     condition: >
       Email is a routine confirmation of a user-initiated action (subscription confirmed,
       settings updated, preferences saved) with no issues or action needed
+
+# DEFAULT STATE: DISABLED
+# To enable these rules, add "home-*" to the 'enable' list in your 
+# user configuration file (e.g. config://email.yaml).
+disable:
+  - "home-*"
