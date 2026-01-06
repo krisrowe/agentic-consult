@@ -468,9 +468,21 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
             lines.append("| Ref | Date | From | Subject | Rule | Reason |")
             lines.append("|:---|:---|:---|:---|:---|:---|")
             
+            month_map = {
+                "01": "JA", "02": "FE", "03": "MR", "04": "AP",
+                "05": "MY", "06": "JN", "07": "JL", "08": "AU",
+                "09": "SE", "10": "OC", "11": "NV", "12": "DE"
+            }
             for rec in recs:
                 ref = rec.get('ref', '??')
-                date = rec.get('date', '')[5:10] # MM-DD
+                raw_date = rec.get('date', '')
+                if len(raw_date) >= 10:
+                    mm = raw_date[5:7]
+                    dd = raw_date[8:10]
+                    date = f"{dd}{month_map.get(mm, '??')}"
+                else:
+                    date = "??"
+                
                 sender = rec.get('from', '').split('<')[0].strip()[:15]
                 subj = rec.get('subject', '')[:30].replace('|', '-')
                 rule_id = rec.get('rule_id', '-')
