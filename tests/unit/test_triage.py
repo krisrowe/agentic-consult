@@ -27,10 +27,15 @@ def test_end_to_end():
         config_dir.mkdir()
 
         cache_home = tmp_path / "cache"
+        # The code uses get_cache_dir() / "emails"
+        # get_cache_dir() uses XDG_CACHE_HOME / "agentic-consult"
         cache_dir = cache_home / "agentic-consult" / "emails"
         cache_dir.mkdir(parents=True)
 
-        # email.yaml with mock flags and test rules
+        # Fake emails - these need to be in the CACHE dir as individual json files
+        # for get_cached_emails to find them, OR we use the mock_emails logic
+        # but the test calls get_cached_emails at the end.
+
         email_config = {
             "use_mock_emails": True,
             "use_mock_gemini": True,
@@ -102,7 +107,11 @@ def test_end_to_end():
             os.environ["CONSULT_CONFIG_DIR"] = str(config_dir)
             os.environ["XDG_CACHE_HOME"] = str(cache_home)
 
-            from agentic_consult.email.triage import triage_emails, get_cached_emails
+            from agentic_consult.email.triage import triage_emails, get_cached_emails, cache_email
+
+            # Cache the mock emails so they can be retrieved
+            for email in mock_emails:
+                cache_email(email)
 
             # Run full triage
             result = triage_emails(review_status="all", limit=10)

@@ -65,7 +65,9 @@ Respond with valid JSON only. No markdown, no explanation outside the JSON.
 ## Guidelines
 
 - Include ALL emails in your response
-- Keep reasons concise (1 sentence)
-- The `reason` field should explain WHY this specific email matched the rule - cite specific content from the email (e.g., "landlord indicates rent is 5 days late", "payment of $142.50 declined on 1/3")
+- Keep reasons extremely concise (max 10-12 words).
+- Start directly with the core event (e.g., 'Updates ticket status', 'Requests access').
+- DO NOT start with "The email", "Email is", or "This message".
+- The `reason` field should explain WHY this matched the rule - cite specific content.
 - This helps the client agent decide whether to load the full email or act on the summary alone
 - Do not invent rules - only apply the rules provided
