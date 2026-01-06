@@ -538,6 +538,9 @@ def _build_agent_instructions(review_status: str, recommendations: list[dict]) -
     lines.append("   - `do task <refs>` -> Create task, then `archive_email(message_id=...)`")
     lines.append("   - `do arc <refs>` -> Call `archive_email(message_id=..., reason='ad-hoc')`")
     lines.append("   - `do later <refs>` -> Call `mark_email_archivable(message_id=...)`")
+    lines.append("   - `do sum <refs>` -> Call `get_cached_emails(message_ids=[...])` and summarize")
+    lines.append("   - `do show <refs>` -> Call `get_cached_emails(message_ids=[...])` and display full content")
+    lines.append("   - `do relist` -> Redisplay table with only unprocessed items from this batch")
     lines.append("3. **Loop:** After executing actions, check if inbox is empty. If not, call `triage_emails(review_status='new')` to fetch the next batch.")
     
     return "\n".join(lines)
