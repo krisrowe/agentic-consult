@@ -53,3 +53,8 @@ precommit:
     - newsletter@example.com
     - user@example.com
     - bank@example.com
+
+# Workspace Analysis Configuration
+workspace_analysis:
+  required_last_commits_match: 10
+  required_total_match_percent: 90

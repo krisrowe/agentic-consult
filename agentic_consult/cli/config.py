@@ -2,16 +2,62 @@ import click
 import sys
 import json
 import yaml
+import os
 
 from agentic_consult.customers import get_active_customers_root
-from agentic_consult.config import load_main_config, save_main_config, get_config_path
-from .user_home import user_home_cli
+from agentic_consult.config import load_main_config, save_main_config, get_config_path, get_default_settings_dir
+from .user_home import user_home_cli, get_default_user_home_config
 
 
 @click.group()
 def config():
     """Manage global configuration."""
     pass
+
+@config.command(name='init')
+def config_init():
+    """Initialize configuration with default settings (Idempotent)."""
+    current_data = load_main_config()
+    path = get_config_path()
+    
+    defaults = {
+        "backups": {
+            "user_home": get_default_user_home_config()
+        }
+    }
+    
+    changes = []
+    
+    def deep_merge(target, source, prefix=""):
+        for key, value in source.items():
+            full_key = f"{prefix}.{key}" if prefix else key
+            
+            if key not in target:
+                target[key] = value
+                changes.append(f"Added setting '{full_key}' with value: {value}")
+            elif isinstance(value, dict) and isinstance(target[key], dict):
+                deep_merge(target[key], value, full_key)
+            elif key == "paths" and isinstance(value, list) and isinstance(target[key], list):
+                # Special handling for paths list: Append missing items
+                for item in value:
+                    if item not in target[key]:
+                        target[key].append(item)
+                        changes.append(f"Added item '{item}' to list '{full_key}'")
+    
+    deep_merge(current_data, defaults)
+    
+    if not path.exists():
+        changes.insert(0, f"Created new settings file at {path}")
+        save_main_config(current_data)
+        click.echo(f"Initialized configuration at {path}")
+    elif changes:
+        save_main_config(current_data)
+        click.echo(f"Updated configuration at {path}")
+    else:
+        click.echo(f"Configuration at {path} is already up to date.")
+        
+    for change in changes:
+        click.echo(f"- {change}")
 
 @config.command(name='show')
 def config_show():
@@ -76,5 +122,3 @@ def config_set(key, value):
     
     path = save_main_config(data)
     click.echo(f"Updated {real_key} in {path}")
-
-config.add_command(user_home_cli)
