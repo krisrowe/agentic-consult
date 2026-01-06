@@ -76,7 +76,7 @@ def test_end_to_end():
 
         # Fake Gemini response
         mock_response = {
-            "recommendations": [
+            "emails": [
                 {
                     "id": "msg-001",
                     "date": "2026-01-04",
@@ -118,9 +118,9 @@ def test_end_to_end():
 
             # Verify
             assert "error" not in result, f"Error: {result.get('error')}"
-            assert len(result["recommendations"]) == 2
+            assert len(result["emails"]) == 2
 
-            recs = {r["id"]: r for r in result["recommendations"]}
+            recs = {r["id"]: r for r in result["emails"]}
             assert recs["msg-001"]["recommended_action"] == "archive"
             assert recs["msg-002"]["recommended_action"] == "review"
 

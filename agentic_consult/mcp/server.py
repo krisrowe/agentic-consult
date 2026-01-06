@@ -335,6 +335,17 @@ async def triage_emails(
 
     6. **Done** - Triage complete when inbox is empty.
 
+    ## Calendar Invites Handling
+
+    The tool separates Calendar Invites into a distinct `invites` list in the response.
+    
+    *   **Availability Check:** The Agent MUST iterate through the `invites` list and use
+        **available calendar tools** to check user availability for the proposed times.
+    *   **Presentation:** The Agent MUST update the display table (filling in the `Avail` column placeholders)
+        to show availability status (e.g., ✅/❌).
+    *   **Action Handling:** Facilitate the user's ability to accept these invites using
+        **available tools** and then reply/archive the email.
+
     ## DSL & Command Handling
 
     The tool output includes a "Suggested Actions" block using a shorthand DSL.

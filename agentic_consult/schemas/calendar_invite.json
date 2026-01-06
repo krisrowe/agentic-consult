@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "calendar_invite.json",
+  "title": "CalendarInvite",
+  "description": "A calendar invite detected in email triage",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Gmail message ID"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Email date (YYYY-MM-DD)"
+    },
+    "from": {
+      "type": "string",
+      "description": "Sender email address"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Email subject line"
+    },
+    "event_date": {
+      "type": ["string", "null"],
+      "description": "Proposed or confirmed event date/time (e.g. 'Jan 9, 4-5pm ET')"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PROPOSED", "CONFIRMED", "CANCELED", "UNKNOWN"],
+      "description": "Status of the event: PROPOSED (new invite/suggestion), CONFIRMED (already booked/agreed)"
+    },
+    "attendee_status": {
+      "type": ["string", "null"],
+      "enum": ["needsAction", "accepted", "tentative", "declined", "unknown"],
+      "description": "User's response status if detectable from email context (usually 'needsAction' for new invites)"
+    },
+    "vip_status": {
+        "type": "string",
+        "enum": ["VIP", "CUSTOMER", "INTERNAL", "EXTERNAL"],
+        "description": "Category of the sender based on contacts context"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Brief context about the meeting"
+    }
+  },
+  "required": ["id", "date", "from", "subject", "status", "vip_status", "reason"],
+  "additionalProperties": false
+}

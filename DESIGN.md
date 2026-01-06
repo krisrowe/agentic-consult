@@ -116,6 +116,24 @@ To maintain the "Executive Assistant" capability without excessive cost (approx.
     *   *Trigger:* Explicit user request (`--deep`) or complex multi-domain reasoning tasks.
     *   *Role:* The "Senior Analyst" brought in only for high-stakes problem solving.
 
+### I. Prompt Engineering & Context Strategy
+
+We adopt a **Hybrid Strategy** for instructing agents on tool usage, balancing reliability against token cost.
+
+1.  **Docstrings (The Contract):**
+    *   **Role:** Define the *capability* and the *expected behavior* permanently in the system prompt.
+    *   **Content:** "This tool returns invites... Agent MUST check availability...".
+    *   **Why:** Ensures the agent understands the tool's purpose *before* calling it. Essential for correct tool selection and planning.
+
+2.  **Runtime Responses (The Trigger):**
+    *   **Role:** Provide immediate **contextual triggers** and reminders in the ephemeral conversation history.
+    *   **Content:** "`_Agent: Check your calendar..._`" or specific DSL command blocks (`do accept...`).
+    *   **Why:** Prevents "attention decay" in long sessions. Acts as a checklist the agent sees *right now* when the data arrives.
+
+**Evolution Path:**
+*   **Current State:** We use both. The redundant runtime instructions ensure 100% reliability with current models (Gemini 2.0 Flash/Pro).
+*   **Future State:** As models improve at adhering to complex schemas without prompts, we can slim down the runtime response to pure JSON and rely solely on the docstring contract.
+
 ## 2. State Management Schema (`workflow_state.json`)
 
 ```json

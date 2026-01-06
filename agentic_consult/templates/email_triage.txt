@@ -42,6 +42,13 @@ Determine the `audience` field based on the User Identity provided in the Contex
 3. **GROUP**: User is on the 'To' line with others, OR on the 'Cc' line.
 4. **BROADCAST**: User is NOT on 'To' or 'Cc' lines (e.g., mailing list).
 
+### Calendar Invites
+
+Separate any emails that are Calendar Invites or specific scheduling requests into the `invites` list instead of `emails`.
+- **Status:** 'PROPOSED' (new invite/suggestion), 'CONFIRMED' (accepted/booked), 'CANCELED'.
+- **VIP Status:** Determine if sender is 'VIP' (Manager/Lead), 'CUSTOMER' (domain match), 'INTERNAL' (same domain as user), or 'EXTERNAL'.
+- **Note:** Do not include these in the `emails` list.
+
 ### Actions
 
 - **track_as_task** - Email requires follow-up action
@@ -56,7 +63,7 @@ Respond with valid JSON only. No markdown, no explanation outside the JSON.
 
 ```json
 {{
-  "recommendations": [
+  "emails": [
     {{
       "id": "message_id_here",
       "date": "YYYY-MM-DD",
@@ -67,13 +74,26 @@ Respond with valid JSON only. No markdown, no explanation outside the JSON.
       "audience": "DIRECT|GROUP|MENTION|BROADCAST",
       "reason": "Brief explanation (1 sentence)"
     }}
+  ],
+  "invites": [
+    {{
+      "id": "message_id_here",
+      "date": "YYYY-MM-DD",
+      "from": "sender@example.com",
+      "subject": "Meeting Subject",
+      "event_date": "Jan 9, 4-5pm ET",
+      "status": "PROPOSED|CONFIRMED|CANCELED",
+      "attendee_status": "needsAction|accepted|declined",
+      "vip_status": "VIP|CUSTOMER|INTERNAL|EXTERNAL",
+      "reason": "Discuss Project X"
+    }}
   ]
 }}
 ```
 
 ## Guidelines
 
-- Include ALL emails in your response
+- Include ALL emails in your response (either in `emails` or `invites`, but NOT both)
 - Keep reasons extremely concise (max 10-12 words).
 - Start directly with the core event (e.g., 'Updates ticket status', 'Requests access').
 - DO NOT start with "The email", "Email is", or "This message".
