@@ -9,9 +9,10 @@ import json
 import logging
 import os
 import re
+import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Literal, Optional, Union
 
 import yaml
 
@@ -320,6 +321,7 @@ def triage_emails(
     limit: int = 5,
     profile: Optional[str] = None,
     model: Optional[str] = None,
+    width: Literal["small", "medium", "large"] = "medium",
     progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict[str, Any]:
     try:
@@ -350,7 +352,7 @@ def triage_emails(
         active_rules = [r for r in all_rules if not r.get('disabled', False)]
         referenced_rule_ids = {r.get('rule_id') for r in emails if r.get('rule_id')}
         rules_referenced = [r for r in active_rules if r.get('id') in referenced_rule_ids]
-        instructions = _build_agent_instructions(review_status, emails, invites)
+        instructions = _build_agent_instructions(review_status, emails, invites, width=width)
         
         return {
             'emails': emails,
@@ -450,7 +452,54 @@ def analyze_emails(message_ids: list[str], profile: Optional[str] = None, model:
         logger.error(f"Analysis Failed: {e}")
         return {'error': str(e)}
 
-def _build_agent_instructions(review_status: str, emails: list[dict], invites: list[dict]) -> str:
+def _truncate(text: str, width: int) -> str:
+    """Truncate text to width, appending '..' if truncated."""
+    if len(text) <= width:
+        return text
+    return text[:width-2] + ".."
+
+def _build_agent_instructions(
+    review_status: str, 
+    emails: list[dict], 
+    invites: list[dict],
+    width: Literal["small", "medium", "large"] = "medium"
+) -> str:
+    # 1. Resolve widths from config
+    config = _load_app_email_config()
+    width_map = config.get("triage_table_widths", {"small": 80, "medium": 120, "large": 160})
+    total_width = width_map.get(width, 120)
+    
+    # 2. Define fixed column widths (including padding/separators)
+    # Ref: 4 chars (e.g., "**A1**")
+    # Icon: 2 chars
+    # Date: 6 chars
+    # Separators: 3 per column approx, plus leading/trailing pipes
+    # Approx fixed overhead: 
+    # | Ref | Icon | Date | ...
+    # | 6   | 4    | 8    |
+    w_ref = 6
+    w_icon = 4
+    w_date = 8
+    
+    # Remaining width for variable columns: From, Subject, Rule, Reason
+    # Overhead for separators: 4 cols * 3 chars (" | ") + trailing " |" = 15 chars roughly
+    # We'll subtract a safety margin
+    fixed_usage = w_ref + w_icon + w_date + 15 
+    remaining = max(10, total_width - fixed_usage)
+    
+    # 3. Ratio distribution
+    # From: 15%, Subject: 30%, Rule: 15%, Reason: 40%
+    w_from = int(remaining * 0.15)
+    w_subj = int(remaining * 0.30)
+    w_rule = int(remaining * 0.15)
+    w_reason = int(remaining * 0.40)
+    
+    # Ensure minimums
+    w_from = max(8, w_from)
+    w_subj = max(15, w_subj)
+    w_rule = max(8, w_rule)
+    w_reason = max(15, w_reason)
+
     grouped = {}
     for rec in emails:
         action = rec.get('recommended_action', 'unknown')
@@ -460,7 +509,7 @@ def _build_agent_instructions(review_status: str, emails: list[dict], invites: l
     lines = [
         "## Triage Suggestions",
         "",
-        "**Context:** Rule-based suggestions for your review.",
+        f"**Context:** Rule-based suggestions for your review. (Table width: {width}/{total_width})",
         ""
     ]
     
@@ -468,6 +517,7 @@ def _build_agent_instructions(review_status: str, emails: list[dict], invites: l
     if invites:
         lines.append(f"### 📅 Calendar Invites ({len(invites)})")
         lines.append("_Agent: Check your calendar for these times. Show availability status (✅/❌) in the 'Avail' column._")
+        # Invites table format is different, keeping simple fixed for now or could apply similar logic
         lines.append("| Ref | Avail | Status | Date | Event | Sender | Subject | VIP |")
         lines.append("|:---|:---|:---|:---|:---|:---|:---|:---|")
         
@@ -503,6 +553,9 @@ def _build_agent_instructions(review_status: str, emails: list[dict], invites: l
         if action in grouped and grouped[action]:
             recs = grouped[action]
             lines.append(f"### Action: `{action}` ({len(recs)})")
+            
+            # Header
+            # Using manual spacing in header to hint at widths is hard in MD, just standard MD table
             lines.append("| Ref | | Date | From | Subject | Rule | Reason |")
             lines.append("|:---|:---|:---|:---|:---|:---|:---|")
             
@@ -537,18 +590,21 @@ def _build_agent_instructions(review_status: str, emails: list[dict], invites: l
                 else:
                     date = "??"
                 
-                sender = str(rec.get('from') or '').split('<')[0].strip()[:12]
-                subj = str(rec.get('subject') or '')[:20].replace('|', '-').replace('\n', ' ')
+                # Truncate fields based on calculated widths
+                raw_sender = str(rec.get('from') or '').split('<')[0].strip()
+                sender = _truncate(raw_sender, w_from)
+                
+                raw_subj = str(rec.get('subject') or '').replace('|', '-').replace('\n', ' ')
+                subj = _truncate(raw_subj, w_subj)
                 
                 rule_id = str(rec.get('rule_id') or '-')
-                # Strip 3-4 char prefixes (like sys-, tech-, work-)
-                rule_id_disp = re.sub(r'^[a-z]{3,4}-', '', rule_id)
+                raw_rule = re.sub(r'^[a-z]{3,4}-', '', rule_id)
+                rule_disp = _truncate(raw_rule, w_rule)
                 
-                if len(rule_id_disp) > 11: rule_id_disp = rule_id_disp[:11]
+                raw_reason = rec.get('reason', 'No reason provided').replace('\n', ' ')
+                reason = _truncate(raw_reason, w_reason)
                 
-                reason = rec.get('reason', 'No reason provided')[:35].replace('\n', ' ')
-                
-                lines.append(f"| **{ref}** | {icon} | {date} | {sender} | {subj} | `{rule_id_disp}` | {reason} |")
+                lines.append(f"| **{ref}** | {icon} | {date} | {sender} | {subj} | `{rule_disp}` | {reason} |")
             lines.append("") # Spacer
                 
     lines.append("\n## Suggested Actions (Copy/Paste Block)\n```bash")
@@ -590,3 +646,27 @@ def _build_agent_instructions(review_status: str, emails: list[dict], invites: l
     lines.append("3. **Loop:** After executing actions, check if inbox is empty. If not, call `triage_emails(review_status='new')` to fetch the next batch.")
     
     return "\n".join(lines)
+
+# Missing helpers from original file that I need to keep/restore
+def _format_short_date(raw_date: str) -> str:
+    month_map = {
+        "01": "JA", "02": "FE", "03": "MR", "04": "AP",
+        "05": "MY", "06": "JN", "07": "JL", "08": "AU",
+        "09": "SE", "10": "OC", "11": "NV", "12": "DE"
+    }
+    if len(raw_date) >= 10:
+        try:
+            dt = datetime.strptime(raw_date[:10], '%Y-%m-%d')
+            day_code = ["M", "T", "W", "R", "F", "S", "U"][dt.weekday()]
+            mm = raw_date[5:7]
+            dd = raw_date[8:10]
+            return f"{day_code} {dd}{month_map.get(mm, '??')}"
+        except Exception:
+            return "??"
+    return "??"
+
+def _format_sender(sender: str) -> str:
+    return str(sender).split('<')[0].strip()[:12]
+
+def _format_subject(subject: str) -> str:
+    return str(subject)[:20].replace('|', '-').replace('\n', ' ')

@@ -273,12 +273,21 @@ def get_process_email_instructions() -> str:
 
 def add_rule(
     rule_id: str,
-    rule_type: str,
+    action: str = "review",
+    rule_type: Optional[str] = None,
     match_from: Optional[str] = None,
     match_subject: Optional[str] = None,
     instructions: Optional[str] = None
 ) -> dict:
     """Add a new rule to user config."""
+    # Backwards compatibility for rule_type
+    if rule_type:
+        if not action or action == "review": # Only override default
+            if rule_type == "auto_archive":
+                action = "archive"
+            elif rule_type == "custom":
+                action = "review"
+
     user_config_path = get_email_config_path()
     user_rules = []
     
@@ -295,7 +304,7 @@ def add_rule(
 
     new_rule = {
         'id': rule_id,
-        'type': rule_type,
+        'action': action,
         'match': {}
     }
 
