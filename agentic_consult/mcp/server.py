@@ -3,7 +3,7 @@ import sys
 import json
 import logging
 import tempfile
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 from dataclasses import asdict
 
 from mcp.server.fastmcp import FastMCP, Context
@@ -299,6 +299,7 @@ async def triage_emails(
     limit: int = 20,
     profile: Optional[str] = None,
     model: Optional[str] = None,
+    width: Optional[Union[int, str]] = None,
     ctx: Context = None
 ) -> dict[str, Any]:
     """
@@ -372,6 +373,10 @@ async def triage_emails(
         limit: Maximum emails to fetch (default 20, max recommended for context)
         profile: Optional gwsa profile name (omit for default)
         model: Optional Gemini model override (default from app.yaml)
+        width: Optional table width hint ("small", "medium", "large") OR integer (total chars). 
+               Defaults to "medium" (120). 
+               HINT: When using terminal width, pass a value slightly less (e.g., -10) than 
+               the detected width to account for margins and agentic indentation.
 
     Returns:
         Dictionary with:
@@ -412,6 +417,7 @@ async def triage_emails(
             limit=limit,
             profile=profile,
             model=model,
+            width=width,
             progress_callback=progress_callback
         )
     except Exception as e:
@@ -556,7 +562,8 @@ async def list_email_rules(
 @mcp.tool()
 async def add_email_rule(
     rule_id: str,
-    rule_type: str,
+    action: str = "review",
+    rule_type: Optional[str] = None,
     match_from: Optional[str] = None,
     match_subject: Optional[str] = None,
     instructions: Optional[str] = None
@@ -566,10 +573,11 @@ async def add_email_rule(
 
     Args:
         rule_id: Unique identifier for the rule (e.g., 'usps-digest', 'airbnb-payouts')
-        rule_type: Either 'auto_archive' or 'custom'
+        action: Action to take: 'archive', 'review', 'track_as_task'. Defaults to 'review'.
+        rule_type: DEPRECATED (use action). Either 'auto_archive' or 'custom'.
         match_from: Email sender pattern to match (partial match)
         match_subject: Subject line pattern to match (partial match)
-        instructions: Required for 'custom' type - what to do with matching emails
+        instructions: Required if context is needed - what to do with matching emails
 
     Returns:
         The created rule, or an error message.
@@ -577,6 +585,7 @@ async def add_email_rule(
     try:
         rule = add_rule(
             rule_id=rule_id,
+            action=action,
             rule_type=rule_type,
             match_from=match_from,
             match_subject=match_subject,

@@ -26,6 +26,11 @@ email:
   cache:
     email_max_age_days: 30          # Emails older than this + 1 week cache age get cleaned
     cleanup_file_age_days: 7        # Files must be this old before cleanup considers them
+  # Triage table width configuration (total characters)
+  triage_table_widths:
+    small: 80
+    medium: 120
+    large: 160
 
 # Analyze Tool Configuration
 analyze:

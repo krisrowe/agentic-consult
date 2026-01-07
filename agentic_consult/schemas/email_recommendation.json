@@ -36,11 +36,16 @@
       "enum": ["DIRECT", "GROUP", "MENTION", "BROADCAST"],
       "description": "Audience type: DIRECT (user is sole To), GROUP (To with others or CC), MENTION (user named in body), BROADCAST (not in To/CC)"
     },
+    "sender_class": {
+      "type": "string",
+      "enum": ["HUMAN", "SYSTEM", "NEWS", "SOCIAL", "MARKETING"],
+      "description": "Sender classification: HUMAN (person-to-person), SYSTEM (automated/bot), NEWS (newsletter), SOCIAL (social media/chat), MARKETING (promotional)"
+    },
     "reason": {
       "type": "string",
       "description": "Human-readable explanation for the recommendation"
     }
   },
-  "required": ["id", "date", "from", "subject", "recommended_action", "audience", "reason"],
+  "required": ["id", "date", "from", "subject", "recommended_action", "audience", "sender_class", "reason"],
   "additionalProperties": false
 }

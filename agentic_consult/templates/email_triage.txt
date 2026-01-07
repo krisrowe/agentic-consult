@@ -42,6 +42,15 @@ Determine the `audience` field based on the User Identity provided in the Contex
 3. **GROUP**: User is on the 'To' line with others, OR on the 'Cc' line.
 4. **BROADCAST**: User is NOT on 'To' or 'Cc' lines (e.g., mailing list).
 
+### Sender Classification
+
+Determine the `sender_class` field:
+1. **HUMAN**: Person-to-person communication (e.g., from a colleague or customer).
+2. **SYSTEM**: Automated notifications from tools (e.g., Buganizer, GitHub, Jira, CI/CD, Alertmanager).
+3. **NEWS**: Newsletters, industry updates, or general organizational announcements.
+4. **SOCIAL**: Chat forwarding (e.g. Chat fwd), social media notifications, or non-work-related social content.
+5. **MARKETING**: Promotional emails, advertisements, or product pitches.
+
 ### Calendar Invites
 
 Separate any emails that are Calendar Invites or specific scheduling requests into the `invites` list instead of `emails`.
@@ -72,6 +81,7 @@ Respond with valid JSON only. No markdown, no explanation outside the JSON.
       "recommended_action": "archive_now|archive_later|track_as_task|review|ask_user",
       "rule_id": "matching-rule-id-or-null",
       "audience": "DIRECT|GROUP|MENTION|BROADCAST",
+      "sender_class": "HUMAN|SYSTEM|NEWS|SOCIAL|MARKETING",
       "reason": "Brief explanation (1 sentence)"
     }}
   ],
