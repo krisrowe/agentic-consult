@@ -5,6 +5,18 @@ from pathlib import Path
 from agentic_consult.gemini import GeminiAPIClient
 from agentic_consult.config import get_model_help_text
 
+def resolve_context_path(scope: str) -> Path:
+    """Resolves the path to the GEMINI.md file based on scope."""
+    if scope == "project":
+        target_path = Path.cwd() / ".gemini" / "GEMINI.md"
+        # Fallback for some project structures
+        if not target_path.exists():
+            target_path = Path.cwd() / "GEMINI.md"
+    else: # user
+        target_path = Path.home() / ".config" / "agentic-consult" / "GEMINI.md"
+        
+    return target_path
+
 @click.group()
 def context():
     """Manage Gemini context files (GEMINI.md)."""
@@ -15,6 +27,55 @@ def context():
 @click.option(
     "--scope", 
     type=click.Choice(["project", "user"]),
+    default="project",
+    help="Scope of the context file to analyze."
+)
+@click.option("--model", "-m", help=f"Override the Gemini model. {get_model_help_text()}")
+def analyze(prompt, scope, model):
+    """
+    Analyze the GEMINI.md context file using an LLM.
+
+    Reads the existing GEMINI.md (based on scope) and answers your question
+    about its content. Does NOT modify the file.
+    """
+    target_path = resolve_context_path(scope)
+
+    if not target_path.exists():
+        click.echo(f"Error: Context file not found at {target_path}", err=True)
+        sys.exit(1)
+
+    try:
+        content = target_path.read_text(encoding="utf-8")
+    except Exception as e:
+        click.echo(f"Error reading {target_path}: {e}", err=True)
+        sys.exit(1)
+
+    analysis_instruction = (
+        "You are an expert technical writer and configuration manager.\n"
+        "Your task is to answer the user's question based on the provided Context File.\n"
+        "\n"
+        "--- CONTEXT FILE CONTENT ---\n"
+        f"{content}\n"
+        "--- END CONTEXT FILE CONTENT ---\n"
+        "\n"
+        f"USER QUESTION: {prompt}"
+    )
+
+    try:
+        # click.echo(f"Consulting Gemini to analyze {target_path}...", err=True)
+        client = GeminiAPIClient(model_name=model)
+        result = client.generate_content(analysis_instruction)
+        click.echo(result["text"])
+    except Exception as e:
+        click.echo(f"Error calling Gemini: {e}", err=True)
+        sys.exit(1)
+
+
+@context.command()
+@click.argument("prompt")
+@click.option(
+    "--scope", 
+    type=click.Choice(["project", "user"]), 
     default="project",
     help="Scope of the context file to revise."
 )
@@ -27,16 +88,7 @@ def revise(prompt, scope, model):
     with your revision prompt, and overwrites the file with the result.
     A backup (.bak) is created before overwriting.
     """
-    
-    # 1. Resolve Path
-    if scope == "project":
-        target_path = Path.cwd() / ".gemini" / "GEMINI.md"
-        # Fallback for some project structures
-        if not target_path.exists():
-            target_path = Path.cwd() / "GEMINI.md"
-            
-    else: # user
-        target_path = Path.home() / ".config" / "agentic-consult" / "GEMINI.md"
+    target_path = resolve_context_path(scope)
 
     if not target_path.exists():
         click.echo(f"Error: Context file not found at {target_path}", err=True)
