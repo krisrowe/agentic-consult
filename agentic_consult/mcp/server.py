@@ -642,9 +642,10 @@ async def workspace_status(
     - If 'scan' is True, it also checks immediate subdirectories.
 
     Reports on:
-    - Path and Classification (e.g., 'Internal', 'Public').
-    - Status (e.g., 'Clean', 'Dirty', 'Ahead').
-    - Identity (Git user email and confidence level).
+    - Path: Absolute location.
+    - Classification: 'Public' (GitHub), 'Internal' (Company), 'Local-Only'.
+    - Status: 'Clean', 'Dirty', 'Ahead', 'Behind'.
+    - Identity: Git user email and confidence.
 
     Args:
         paths: Optional list of specific paths to check.
