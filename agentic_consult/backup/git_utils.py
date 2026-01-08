@@ -205,9 +205,14 @@ class GitUtils:
         
         owner_repo = f"{parts[-2]}/{parts[-1]}"
         
+        # Load config for cache duration
+        from agentic_consult.config import load_app_config
+        app_config = load_app_config()
+        cache_duration = app_config.get('workspace_analysis', {}).get('github_visibility_cache_duration', '2h')
+
         try:
-            # Use gh api with 24h cache for efficiency
-            cmd = ["gh", "api", f"repos/{owner_repo}", "--cache", "24h", "-q", ".visibility"]
+            # Use gh api with configurable cache
+            cmd = ["gh", "api", f"repos/{owner_repo}", "--cache", cache_duration, "-q", ".visibility"]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
             if result.returncode == 0:
                 val = result.stdout.strip().lower()
