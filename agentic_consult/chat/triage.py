@@ -39,7 +39,8 @@ def get_chat_mentions(limit: int = 20) -> Dict[str, Any]:
     result = sdk_get_chat_mentions(
         limit=limit,
         implicit_mention_threshold=chat_config.get('implicit_mention_threshold', 3),
-        tiers=chat_config.get('tiers')
+        tiers=chat_config.get('tiers'),
+        unanswered_only=True
     )
     
     return {
