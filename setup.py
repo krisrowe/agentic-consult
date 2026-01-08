@@ -16,6 +16,7 @@ setup(
         "mcp>=1.0.0",
         "pathspec",
         "gwsa @ git+https://github.com/krisrowe/gworkspace-access.git",
+        "rich",
     ],
     extras_require={
         "dev": [

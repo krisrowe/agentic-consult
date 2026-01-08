@@ -652,6 +652,10 @@ async def workspace_status(
 
     Returns:
         Dictionary containing a list of workspace status objects under the 'workspaces' key.
+        
+        The returned data is structured for programmatic access. When presenting this 
+        to the user, a summary table showing Path, Classification, Status, Stats, 
+        and Identity is highly recommended for readability.
     """
     try:
         results = get_workspace_status(paths=paths, scan=scan)

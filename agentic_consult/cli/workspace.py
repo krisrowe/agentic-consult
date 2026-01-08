@@ -3,6 +3,8 @@ import json
 import os
 import sys
 from pathlib import Path
+from rich.console import Console
+from rich.table import Table
 from agentic_consult.sdk.workspace import get_workspace_status, find_workspace_root
 
 @click.command(name="workspace")
@@ -41,16 +43,20 @@ def workspace(paths, format, scan):
         else:
             workspace_repos.append(r)
 
+    console = Console()
+
     def print_table(items, title=None):
         if not items:
             return
         
-        if title:
-            click.echo(f"\n{title}:")
+        table = Table(title=title, box=None, padding=(0, 2))
+        table.add_column("Path", style="cyan", no_wrap=True)
+        table.add_column("Class", style="magenta")
+        table.add_column("Status", style="green")
+        table.add_column("Stats", style="yellow")
+        table.add_column("Identity", style="blue")
+        table.add_column("Confidence")
 
-        headers = ["Path", "Class", "Status", "Stats", "Identity", "Confidence"]
-        rows = []
-        
         for r in items:
             s = r['summary']
             i = r['identity']
@@ -82,24 +88,10 @@ def workspace(paths, format, scan):
             
             stats_str = " ".join(stats_parts) if stats_parts else "-"
             
-            rows.append([path_display, classification, status_str, stats_str, identity_email, confidence])
-
-        # Calculate column widths
-        col_widths = [len(h) for h in headers]
-        for row in rows:
-            for idx, item in enumerate(row):
-                col_widths[idx] = max(col_widths[idx], len(str(item)))
+            table.add_row(path_display, classification, status_str, stats_str, identity_email, confidence)
         
-        # Add padding
-        col_widths = [w + 2 for w in col_widths]
-        
-        # Print Table
-        header_row = "".join(h.ljust(w) for h, w in zip(headers, col_widths))
-        click.echo(header_row)
-        click.echo("-" * len(header_row))
-        
-        for row in rows:
-            click.echo("".join(str(item).ljust(w) for item, w in zip(row, col_widths)))
+        console.print(table)
+        console.print() # Add spacing
 
     if current_repo:
         print_table([current_repo], "Current Repository")
