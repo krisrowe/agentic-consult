@@ -643,7 +643,7 @@ async def workspace_status(
 
     Reports on:
     - Path: Absolute location.
-    - Classification: 'Public' (GitHub), 'Internal' (Company), 'Local-Only'.
+    - Classification: 'GitHub', 'Remote', 'Local-Only'.
     - Status: 'Clean', 'Dirty', 'Ahead', 'Behind'.
     - Identity: Git user email and confidence.
 
