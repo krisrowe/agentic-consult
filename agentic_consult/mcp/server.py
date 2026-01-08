@@ -20,6 +20,7 @@ from agentic_consult.backup.status import assess_repo_status
 from agentic_consult.backup.orchestrator import BackupOrchestrator
 from agentic_consult.backup.metadata_manager import BackupMetadataManager
 from agentic_consult.sdk.workspace import get_workspace_status
+from agentic_consult.sdk.context import analyze_context as sdk_analyze_context
 from agentic_consult.mcp.email_processing import (
     get_process_email_instructions,
     add_rule,
@@ -657,6 +658,36 @@ async def workspace_status(
         return {"workspaces": results}
     except Exception as e:
         logger.exception("Error in workspace_status")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def analyze_context(
+    prompt: str,
+    scope: str = "project",
+    model: str = None
+) -> dict[str, Any]:
+    """
+    Analyzes the GEMINI.md context file using an LLM to answer questions about it.
+
+    This tool is READ-ONLY. To modify the context file, the user must use the
+    CLI command: `consult context revise <prompt>`.
+
+    Args:
+        prompt: The question or instruction for analyzing the context (e.g., "Summarize the triage rules").
+        scope: "project" (default, looks in .gemini/GEMINI.md) or "user" (looks in ~/.config/agentic-consult/GEMINI.md).
+        model: Optional Gemini model override.
+
+    Returns:
+        Dictionary with the 'response' text from Gemini.
+    """
+    try:
+        result = sdk_analyze_context(scope, prompt, model)
+        return {"response": result}
+    except FileNotFoundError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        logger.exception("Error in analyze_context")
         return {"error": str(e)}
 
 
