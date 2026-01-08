@@ -814,7 +814,7 @@ async def get_chat_mentions(limit: int = 20) -> dict[str, Any]:
         limit: Maximum number of active spaces to analyze (default 20).
 
     Returns:
-        Dict with 'mentions' list and scan stats.
+        Dict with 'mentions' list, 'source' metadata, and logical API stats.
     """
     try:
         return sdk_get_chat_mentions(limit=limit)

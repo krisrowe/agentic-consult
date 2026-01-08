@@ -12,6 +12,7 @@ from .user_home import user_home_cli
 from .workspace import workspace
 from .restore import restore
 from .context import context
+from .chat import chat
 
 @click.group()
 def main():
@@ -30,6 +31,7 @@ main.add_command(gemini)
 main.add_command(user_home_cli)
 main.add_command(workspace)
 main.add_command(context)
+main.add_command(chat)
 
 if __name__ == "__main__":
     main()
