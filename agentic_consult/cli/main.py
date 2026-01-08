@@ -10,6 +10,7 @@ from .tasks import tasks
 from .gemini import gemini
 from .user_home import user_home_cli
 from .workspace import workspace
+from .restore import restore
 
 @click.group()
 def main():
@@ -19,6 +20,7 @@ def main():
 main.add_command(config)
 main.add_command(customers)
 main.add_command(backup)
+main.add_command(restore)
 main.add_command(precommit)
 main.add_command(issues)
 main.add_command(models)
