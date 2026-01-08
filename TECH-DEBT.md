@@ -99,3 +99,7 @@ The current config/data separation is messy and the lines are blurring:
   - [Issue #953 - report_progress not working on streamable-http](https://github.com/modelcontextprotocol/python-sdk/issues/953)
 - **Priority**: Low - nice-to-have UX improvement, blocked on gwsa changes and client support verification.
 
+## 11. Architectural Alignment
+*   **Gemini Command Location:** The `consult gemini` and new `consult context` commands are generic AI utilities. Should these live in `agentic-consult` (the specific tool) or be moved to `gemini-common-config` (aicfg) or a dedicated `gemini-client`?
+    *   *Risk:* Circular dependencies if `aicfg` needs AI client logic.
+    *   *Vision:* If "Gemini in everything" is the goal, `aicfg` might need to become AI-aware.
