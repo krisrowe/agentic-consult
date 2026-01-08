@@ -111,9 +111,20 @@ def get_chat_mentions(limit: int = 20) -> Dict[str, Any]:
     
     for item in candidates[:limit]:
         space = item['space']
-        members = item['members']
+        # Re-calculate lookback for this specific space to filter messages
+        # (We did this in filtering, but didn't store the exact days value)
+        members_count = item['members']
         space_name = space['name']
         display_name = space.get('displayName')
+        
+        lookback_days = 1
+        for tier in tiers:
+            limit_members = tier['max_members']
+            if limit_members is None or members_count <= limit_members:
+                lookback_days = tier['lookback_days']
+                break
+        
+        cutoff = now - timedelta(days=lookback_days)
         
         # If DM and no display name, resolve other member
         if not display_name or display_name == "Unknown":
@@ -128,11 +139,11 @@ def get_chat_mentions(limit: int = 20) -> Dict[str, Any]:
                 if other_names:
                     display_name = ", ".join(other_names)
                 else:
-                    display_name = f"Group ({members} members)"
+                    display_name = f"Group ({members_count} members)"
             except Exception:
                 display_name = "Unknown Space"
 
-        is_implicit = members <= implicit_threshold
+        is_implicit = members_count <= implicit_threshold
         
         try:
             fetch_limit = 1 if is_implicit else 20
@@ -146,13 +157,14 @@ def get_chat_mentions(limit: int = 20) -> Dict[str, Any]:
             if not messages:
                 continue
             
-            # Check for "Handled" status (I spoke recently)
-            # Since messages are newest-first, if I encounter my own message
-            # BEFORE I encounter a mention/activity, I have likely handled it.
-            
             i_have_responded = False
             
             for msg in messages:
+                # Enforce time window
+                msg_time = parse_api_time(msg.get('createTime'))
+                if msg_time < cutoff:
+                    continue
+
                 sender_id = msg.get('sender', {}).get('name')
                 
                 if sender_id == my_id:
