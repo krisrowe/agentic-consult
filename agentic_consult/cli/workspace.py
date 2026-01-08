@@ -65,8 +65,8 @@ def workspace(paths, format, scan):
     table.add_column("Class", style="magenta")
     table.add_column("Status", style="green")
     table.add_column("Stats", style="yellow")
-    table.add_column("Identity", style="blue")
-    table.add_column("Confidence")
+    table.add_column("Git Identity", style="blue")
+    table.add_column("Identity Clear")
 
     for r in all_repos:
         s = r['summary']
