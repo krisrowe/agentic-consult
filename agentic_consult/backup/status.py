@@ -123,9 +123,9 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
     classification = "Local-Only"
     if has_remotes and remote_url:
         if "github.com" in remote_url:
-            classification = "Public"
+            classification = "GitHub"
         else:
-            classification = "Private"
+            classification = "Remote"
 
     # Load thresholds for history stats
     from agentic_consult.config import load_app_config
