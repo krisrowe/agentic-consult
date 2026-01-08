@@ -646,6 +646,7 @@ async def workspace_status(
     - Classification: 'Public Remote', 'Private Remote', 'Other Remote', 'Local Only'.
     - Status: 'Clean', 'Dirty', 'Ahead', 'Behind'.
     - Identity: Git user email and confidence.
+    - Perfect: Boolean flag indicating clean and fully synced state.
 
     Args:
         paths: Optional list of specific paths to check.
@@ -654,9 +655,12 @@ async def workspace_status(
     Returns:
         Dictionary containing a list of workspace status objects under the 'workspaces' key.
         
-        The returned data is structured for programmatic access. When presenting this 
-        to the user, a summary table showing Path, Classification, Status, Stats, 
-        and Identity is highly recommended for readability.
+        The returned data is structured for programmatic access. Each repository includes
+        an 'is_perfect' boolean (summarizing clean local state and fully synced remote/backup).
+        When presenting this to the user, a summary table showing Path, Classification,
+        Status, Stats, and Identity is recommended. Since 'is_perfect' is a summary flag,
+        it is suggested to display it concisely (e.g. using a simple icon like ✅) rather
+        than a dedicated large text field.
     """
     try:
         results = get_workspace_status(paths=paths, scan=scan)

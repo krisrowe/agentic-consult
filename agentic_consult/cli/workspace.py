@@ -28,7 +28,7 @@ def workspace(paths, format, scan):
     - Path: Repository location.
     - Class: Visibility (Public Remote, Private Remote, Other Remote, Local Only).
     - Status: Sync state (Clean, Dirty, Ahead, Behind).
-    - Stats: S (Staged), M (Modified), U (Untracked), ↑ (Unpushed).
+    - Stats: S (Staged), M (Modified), U (Untracked), ↑ (Unpushed). Perfect state shown as ✅.
     - Git Identity: Committer email (based on history/config).
     - Identity Clear: Confidence level that the identity is correct/consistent.
     """
@@ -116,7 +116,15 @@ def workspace(paths, format, scan):
         if untracked: stats_parts.append(f"U:{untracked}")
         if unpushed: stats_parts.append(f"↑{unpushed}")
         
-        stats_str = " ".join(stats_parts) if stats_parts else "-"
+        stats_str = " ".join(stats_parts)
+        
+        # Check for "Perfect" state
+        is_perfect = s.get('is_perfect', False)
+
+        if is_perfect and not stats_str:
+            stats_str = "✅"
+        elif not stats_str:
+            stats_str = "-"
         
         table.add_row(
             path_display, 
