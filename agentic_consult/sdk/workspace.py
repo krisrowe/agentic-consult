@@ -83,6 +83,9 @@ def resolve_workspace_paths(explicit_paths=None) -> list[Path]:
         except Exception:
             pass
             
+    # Always include the detected root (CWD or git root)
+    found_paths.add(root)
+
     if found_paths:
         return sorted(list(found_paths))
         
