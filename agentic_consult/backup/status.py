@@ -262,6 +262,14 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
             guidance = f"Error checking status: {str(e)}"
             remote = {"status": "ERROR", "stats": {"error": str(e)}}
 
+    # Calculate Perfect State
+    is_perfect = False
+    if not is_dirty:
+        if repo_type == "Remote":
+            is_perfect = (remote.get('status') == 'SYNCED') # Mapped from 'clean'
+        else: # Local-Only
+            is_perfect = (remote.get('status') == 'SYNCED')
+
     summary = {
         "name": name,
         "type": repo_type,
@@ -269,7 +277,8 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
         "status": status_msg,
         "guidance": guidance,
         "is_git": True,
-        "backup_needed": backup_needed
+        "backup_needed": backup_needed,
+        "is_perfect": is_perfect
     }
 
     return RepoStatus(
