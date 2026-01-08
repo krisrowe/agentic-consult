@@ -48,7 +48,7 @@ def workspace(paths, format, scan):
         if title:
             click.echo(f"\n{title}:")
 
-        headers = ["Path", "Class", "Status", "Identity", "Confidence"]
+        headers = ["Path", "Class", "Status", "Stats", "Identity", "Confidence"]
         rows = []
         
         for r in items:
@@ -65,7 +65,24 @@ def workspace(paths, format, scan):
             identity_email = i.get('email') or "?"
             confidence = i.get('confidence', 'None')
             
-            rows.append([path_display, classification, status_str, identity_email, confidence])
+            # Format Stats
+            local_stats = r.get('local', {}).get('stats', {})
+            remote_stats = r.get('remote', {}).get('stats', {})
+            
+            staged = local_stats.get('staged', 0)
+            unstaged = local_stats.get('unstaged', 0)
+            untracked = local_stats.get('untracked', 0)
+            unpushed = remote_stats.get('unpushed', 0)
+            
+            stats_parts = []
+            if staged: stats_parts.append(f"S:{staged}")
+            if unstaged: stats_parts.append(f"M:{unstaged}")
+            if untracked: stats_parts.append(f"U:{untracked}")
+            if unpushed: stats_parts.append(f"↑{unpushed}")
+            
+            stats_str = " ".join(stats_parts) if stats_parts else "-"
+            
+            rows.append([path_display, classification, status_str, stats_str, identity_email, confidence])
 
         # Calculate column widths
         col_widths = [len(h) for h in headers]
