@@ -64,3 +64,4 @@ precommit:
 workspace_analysis:
   required_last_commits_match: 10
   required_total_match_percent: 90
+  github_visibility_cache_duration: 2h
