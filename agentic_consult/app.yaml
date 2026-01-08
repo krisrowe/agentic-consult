@@ -69,6 +69,9 @@ workspace_analysis:
 # Chat Triage Configuration
 chat:
   triage:
+    # Disable chat scanning for accounts matching this regex (e.g., personal Gmail)
+    disabled_email_pattern: ".+@gmail\\.com"
+
     # Any space with <= this members is treated as a "Direct Message" context
     # where all unread messages are considered "mentions"
     implicit_mention_threshold: 3
