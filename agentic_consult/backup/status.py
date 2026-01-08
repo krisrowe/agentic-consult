@@ -120,12 +120,18 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
     remote_url = GitUtils.get_remote_url(abs_path) if has_remotes else None
     repo_type = "Remote" if has_remotes else "Local-Only"
     
-    classification = "Local-Only"
+    classification = "Local Only"
     if has_remotes and remote_url:
         if "github.com" in remote_url:
-            classification = "GitHub"
+            visibility = GitUtils.get_github_visibility(remote_url)
+            if visibility == "public":
+                classification = "Public Remote"
+            elif visibility in ["private", "internal"]:
+                classification = "Private Remote"
+            else:
+                classification = "GitHub Remote"
         else:
-            classification = "Remote"
+            classification = "Other Remote"
 
     # Load thresholds for history stats
     from agentic_consult.config import load_app_config

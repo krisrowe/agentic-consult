@@ -107,7 +107,7 @@ def get_workspace_status(paths: list[str] = None, scan: bool = True) -> List[Dic
         List of dictionaries containing repository status details. Each dict includes:
         - path: Absolute path to the repository.
         - summary: Dict with high-level status:
-            - classification: 'GitHub' (github.com), 'Remote' (other remotes), 'Local-Only'.
+            - classification: 'Public Remote' (GitHub Public), 'Private Remote' (GitHub Private), 'Other Remote' (Non-GitHub), 'Local Only'.
             - status: 'Clean', 'Dirty' (uncommitted), 'Ahead' (unpushed), 'Behind' (unpulled), 'Sync Error'.
             - guidance: Actionable advice (e.g., "Push to remote").
         - identity: Dict with 'email', 'confidence', 'source'.

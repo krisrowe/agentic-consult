@@ -58,6 +58,7 @@ precommit:
     - newsletter@example.com
     - user@example.com
     - bank@example.com
+    - git@github.com
 
 # Workspace Analysis Configuration
 workspace_analysis:
