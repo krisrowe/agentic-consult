@@ -19,6 +19,7 @@ from agentic_consult.gemini import GeminiAPIClient
 from agentic_consult.backup.status import assess_repo_status
 from agentic_consult.backup.orchestrator import BackupOrchestrator
 from agentic_consult.backup.metadata_manager import BackupMetadataManager
+from agentic_consult.sdk.workspace import get_workspace_status
 from agentic_consult.mcp.email_processing import (
     get_process_email_instructions,
     add_rule,
@@ -618,6 +619,44 @@ async def remove_email_rule(rule_id: str) -> dict[str, Any]:
             return {"success": False, "message": f"Rule '{rule_id}' not found"}
     except Exception as e:
         logger.exception("Error in remove_email_rule")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def workspace_status(
+    paths: list[str] = None,
+    scan: bool = True
+) -> dict[str, Any]:
+    """
+    Analyzes workspace status, identity, and git state.
+
+    Identifies folders in scope for the current workspace by checking:
+    1. Explicitly provided paths.
+    2. Folders defined in settings (workspace.folders).
+    3. Included context directories.
+    4. The current working directory and its parents (finding the git root).
+
+    For each identified folder, it checks:
+    - If it is a git repository.
+    - If 'scan' is True, it also checks immediate subdirectories.
+
+    Reports on:
+    - Path and Classification (e.g., 'Internal', 'Public').
+    - Status (e.g., 'Clean', 'Dirty', 'Ahead').
+    - Identity (Git user email and confidence level).
+
+    Args:
+        paths: Optional list of specific paths to check.
+        scan: Whether to scan subdirectories for git repos (default: True).
+
+    Returns:
+        Dictionary containing a list of workspace status objects under the 'workspaces' key.
+    """
+    try:
+        results = get_workspace_status(paths=paths, scan=scan)
+        return {"workspaces": results}
+    except Exception as e:
+        logger.exception("Error in workspace_status")
         return {"error": str(e)}
 
 
