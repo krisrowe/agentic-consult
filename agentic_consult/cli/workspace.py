@@ -2,7 +2,8 @@ import click
 import json
 import os
 import sys
-from agentic_consult.sdk.workspace import get_workspace_status
+from pathlib import Path
+from agentic_consult.sdk.workspace import get_workspace_status, find_workspace_root
 
 @click.command(name="workspace")
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
@@ -22,16 +23,35 @@ def workspace(paths, format, scan):
 
     if format == "json":
         click.echo(json.dumps(results, indent=2))
-    else:
-        if not results:
-            click.echo("No git repositories found in workspace.")
+        return
+
+    if not results:
+        click.echo("No git repositories found in workspace.")
+        return
+
+    # Identify current root
+    current_root = find_workspace_root(Path.cwd())
+    
+    current_repo = None
+    workspace_repos = []
+    
+    for r in results:
+        if Path(r['path']).resolve() == current_root.resolve():
+            current_repo = r
+        else:
+            workspace_repos.append(r)
+
+    def print_table(items, title=None):
+        if not items:
             return
+        
+        if title:
+            click.echo(f"\n{title}:")
 
         headers = ["Path", "Class", "Status", "Identity", "Confidence"]
         rows = []
         
-        for r in results:
-            # r is a dict now
+        for r in items:
             s = r['summary']
             i = r['identity']
             
@@ -63,3 +83,9 @@ def workspace(paths, format, scan):
         
         for row in rows:
             click.echo("".join(str(item).ljust(w) for item, w in zip(row, col_widths)))
+
+    if current_repo:
+        print_table([current_repo], "Current Repository")
+    
+    if workspace_repos:
+        print_table(workspace_repos, "Workspace Repositories")
