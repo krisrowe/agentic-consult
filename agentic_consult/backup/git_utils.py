@@ -183,6 +183,41 @@ class GitUtils:
         except Exception: pass
 
     @staticmethod
+    def get_github_visibility(repo_url: str) -> Optional[str]:
+        """
+        Attempts to determine if a GitHub repo is public or private.
+        Uses 'gh' CLI with aggressive caching.
+        """
+        if "github.com" not in repo_url:
+            return None
+        
+        # Extract owner/repo from common formats:
+        # git@github.com:owner/repo.git
+        # https://github.com/owner/repo.git
+        # git://github.com/owner/repo.git
+        clean_url = repo_url.replace("git@github.com:", "").replace("https://github.com/", "").replace("git://github.com/", "")
+        if clean_url.endswith(".git"):
+            clean_url = clean_url[:-4]
+            
+        parts = clean_url.split("/")
+        if len(parts) < 2:
+            return None
+        
+        owner_repo = f"{parts[-2]}/{parts[-1]}"
+        
+        try:
+            # Use gh api with 24h cache for efficiency
+            cmd = ["gh", "api", f"repos/{owner_repo}", "--cache", "24h", "-q", ".visibility"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                val = result.stdout.strip().lower()
+                if val in ['public', 'private', 'internal']:
+                    return val
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
     def get_remote_status(repo_path: str) -> Dict[str, Any]:
         """Returns dict with status ('ahead', 'behind', 'diverged', 'clean', 'unknown') and counts."""
         result_data = {'status': 'unknown', 'unpushed': 0, 'unpulled': 0}

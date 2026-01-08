@@ -26,7 +26,7 @@ def workspace(paths, format, scan):
     
     Columns:
     - Path: Repository location.
-    - Class: Visibility (GitHub, Remote, Local-Only).
+    - Class: Visibility (Public Remote, Private Remote, Other Remote, Local Only).
     - Status: Sync state (Clean, Dirty, Ahead, Behind).
     - Stats: S (Staged), M (Modified), U (Untracked), ↑ (Unpushed).
     - Git Identity: Committer email (based on history/config).
