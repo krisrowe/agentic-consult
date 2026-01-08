@@ -69,6 +69,12 @@ workspace_analysis:
 # Chat Triage Configuration
 chat:
   triage:
+    # Default number of spaces to scan
+    limit: 10
+    
+    # Global limit on total messages scanned across all spaces
+    message_limit: 100
+
     # Disable chat scanning for accounts matching this regex (e.g., personal Gmail)
     disabled_email_pattern: ".+@gmail\\.com"
 
