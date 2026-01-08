@@ -19,6 +19,7 @@ import yaml
 from agentic_consult.config import load_app_config, get_consult_config_dir
 from agentic_consult.gemini import GeminiAPIClient, GeminiJSONParseError, GeminiJSONExtractionError
 from agentic_consult.mcp.email_processing import load_email_rules, get_cache_dir
+from agentic_consult.chat.triage import get_chat_mentions
 
 logger = logging.getLogger(__name__)
 
@@ -325,13 +326,28 @@ def triage_emails(
     progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict[str, Any]:
     try:
+        # 1. Fetch Chat Mentions/DMs
+        chat_results = get_chat_mentions()
+        chat_mentions = chat_results.get('mentions', [])
+
+        # 2. Fetch Emails
         query = _build_gmail_query(review_status)
         if progress_callback: progress_callback(1, 2)
         from gwsa.sdk.mail.search import search_messages
         messages, _metadata = search_messages(query=query, max_results=limit, format="metadata", profile=profile)
         message_ids = [m['id'] for m in messages]
+        
         if not message_ids:
-            return {'emails': [], 'invites': [], 'rules_referenced': [], 'instructions': "No emails found.", 'stats': {'email_count': 0}}
+            instructions = _build_agent_instructions(review_status, [], [], width=width, chat_mentions=chat_mentions)
+            return {
+                'emails': [], 
+                'invites': [], 
+                'chat_mentions': chat_mentions,
+                'rules_referenced': [], 
+                'instructions': instructions, 
+                'stats': {'email_count': 0, 'chat_count': len(chat_mentions)}
+            }
+        
         if progress_callback: progress_callback(2, 2)
         
         result = analyze_emails(message_ids, profile=profile, model=model)
@@ -340,7 +356,18 @@ def triage_emails(
         emails = result.get('emails', [])
         invites = result.get('invites', [])
         
-        assignments = _assign_shortcodes(message_ids)
+        # Assign Refs to all items
+        chat_ids = [m.get('thread_name') or m.get('space_id') for m in chat_mentions]
+        email_ids = [e.get('id') for e in emails]
+        invite_ids = [i.get('id') for i in invites]
+        
+        all_ids = chat_ids + email_ids + invite_ids
+        assignments = _assign_shortcodes(all_ids)
+        
+        for m in chat_mentions:
+            mid = m.get('thread_name') or m.get('space_id')
+            m['ref'] = assignments.get(mid, '??')
+            
         for rec in emails:
             msg_id = rec.get('id')
             rec['ref'] = assignments.get(msg_id, '??')
@@ -352,17 +379,21 @@ def triage_emails(
         active_rules = [r for r in all_rules if not r.get('disabled', False)]
         referenced_rule_ids = {r.get('rule_id') for r in emails if r.get('rule_id')}
         rules_referenced = [r for r in active_rules if r.get('id') in referenced_rule_ids]
-        instructions = _build_agent_instructions(review_status, emails, invites, width=width)
+        
+        # Prepend chat info to instructions
+        instructions = _build_agent_instructions(review_status, emails, invites, width=width, chat_mentions=chat_mentions)
         
         return {
             'emails': emails,
             'invites': invites,
+            'chat_mentions': chat_mentions,
             'rules_referenced': rules_referenced,
             'instructions': instructions,
             'stats': {
                 'email_count': len(message_ids),
                 'recommendation_count': len(emails),
                 'invite_count': len(invites),
+                'chat_count': len(chat_mentions),
                 'rules_loaded': len(active_rules),
                 'rules_matched': len(rules_referenced)
             }
@@ -462,43 +493,26 @@ def _build_agent_instructions(
     review_status: str, 
     emails: list[dict], 
     invites: list[dict],
-    width: Literal["small", "medium", "large"] = "medium"
+    width: Literal["small", "medium", "large"] = "medium",
+    chat_mentions: list[dict] = []
 ) -> str:
     # 1. Resolve widths from config
     config = _load_app_email_config()
     width_map = config.get("triage_table_widths", {"small": 80, "medium": 120, "large": 160})
     total_width = width_map.get(width, 120)
     
-    # 2. Define fixed column widths (including padding/separators)
-    # Ref: 4 chars (e.g., "**A1**")
-    # Icon: 2 chars
-    # Date: 6 chars
-    # Separators: 3 per column approx, plus leading/trailing pipes
-    # Approx fixed overhead: 
-    # | Ref | Icon | Date | ...
-    # | 6   | 4    | 8    |
+    # ... (Ratio distribution logic same) ...
     w_ref = 6
     w_icon = 4
     w_date = 8
     
-    # Remaining width for variable columns: From, Subject, Rule, Reason
-    # Overhead for separators: 4 cols * 3 chars (" | ") + trailing " |" = 15 chars roughly
-    # We'll subtract a safety margin
     fixed_usage = w_ref + w_icon + w_date + 15 
     remaining = max(10, total_width - fixed_usage)
     
-    # 3. Ratio distribution
-    # From: 15%, Subject: 30%, Rule: 15%, Reason: 40%
-    w_from = int(remaining * 0.15)
-    w_subj = int(remaining * 0.30)
-    w_rule = int(remaining * 0.15)
-    w_reason = int(remaining * 0.40)
-    
-    # Ensure minimums
-    w_from = max(8, w_from)
-    w_subj = max(15, w_subj)
-    w_rule = max(8, w_rule)
-    w_reason = max(15, w_reason)
+    w_from = max(8, int(remaining * 0.15))
+    w_subj = max(15, int(remaining * 0.30))
+    w_rule = max(8, int(remaining * 0.15))
+    w_reason = max(15, int(remaining * 0.40))
 
     grouped = {}
     for rec in emails:
@@ -512,6 +526,27 @@ def _build_agent_instructions(
         f"**Context:** Rule-based suggestions for your review. (Table width: {width}/{total_width})",
         ""
     ]
+
+    # --- Chat Section ---
+    if chat_mentions:
+        lines.append("### 💬 Google Chat Mentions & Unread DMs")
+        lines.append("| Ref | Type | Space | Date | From | Message Preview | Reason |")
+        lines.append("|:---|:---|:---|:---|:---|:---|:---|")
+        
+        for m in chat_mentions:
+            ref = m.get('ref', '??')
+            m_type = m.get('type', 'Chat')
+            space = _truncate(m.get('space', 'Unknown'), 20)
+            
+            raw_time = m.get('time', '')
+            date_disp = _format_short_date(raw_time) if raw_time else "??"
+            
+            sender = _truncate(m.get('sender', 'Unknown'), 15)
+            text = _truncate(m.get('text', '').replace('\n', ' '), 40)
+            reason = m.get('reason', 'Mentioned')
+            
+            lines.append(f"| **{ref}** | {m_type} | {space} | {date_disp} | {sender} | {text} | {reason} |")
+        lines.append("")
     
     # --- Invites Section ---
     if invites:
