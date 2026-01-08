@@ -230,8 +230,12 @@ def assess_repo_status(path: str, dry_run: bool = False) -> RepoStatus:
                         }
                         
                         if is_synced:
-                            status_msg = "Backed Up"
-                            guidance = "No action needed."
+                            if is_dirty:
+                                status_msg = "Backed Up (Dirty)"
+                                guidance = "Commit changes to include in next backup."
+                            else:
+                                status_msg = "Backed Up"
+                                guidance = "No action needed."
                         else:
                             backup_needed = True
                             if is_dirty:
