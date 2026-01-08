@@ -23,6 +23,14 @@ def workspace(paths, format, scan):
     
     Output distinguishes the current repository (👉) from other workspace
     repositories.
+    
+    Columns:
+    - Path: Repository location.
+    - Class: Visibility (Public, Internal, Local-Only).
+    - Status: Sync state (Clean, Dirty, Ahead, Behind).
+    - Stats: S (Staged), M (Modified), U (Untracked), ↑ (Unpushed).
+    - Git Identity: Committer email (based on history/config).
+    - Identity Clear: Confidence level that the identity is correct/consistent.
     """
     results = get_workspace_status(paths=list(paths) if paths else None, scan=scan)
 
