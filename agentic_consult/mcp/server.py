@@ -36,6 +36,7 @@ from agentic_consult.email.triage import (
     mark_email_archivable as sdk_mark_email_archivable,
     suggest_email_action as sdk_suggest_email_action
 )
+from agentic_consult.chat.triage import get_chat_mentions as sdk_get_chat_mentions
 import fnmatch
 
 logger = logging.getLogger(__name__)
@@ -775,26 +776,52 @@ async def archive_email(
 
 
 @mcp.tool()
-async def suggest_email_action(
-    message_id: str,
-    profile: str | None = None,
-    model: str | None = None
-) -> dict[str, Any]:
+async def get_recent_group_chats(limit: int = 10) -> dict[str, Any]:
     """
-    This is normally not used directly except maybe when a fresh suggestion is 
-    needed after configuring rules or other settings that affect suggestions. 
-    For the full email triage process, use `triage_emails` instead.
+    Get the most recent Group Chats.
+
+    This is more convenient than filtering all spaces. It returns a sorted list
+    of the most recent group chats.
 
     Args:
-        message_id: Gmail message ID
-        profile: Optional gwsa profile
-        model: Optional Gemini model override
-    
+        limit: The maximum number of recent group chats to return.
+
     Returns:
-        Dict with recommended_action, rule_id, and reason.
+        A dictionary containing a list of the most recent group chat spaces.
     """
-    import asyncio
-    return await asyncio.to_thread(sdk_suggest_email_action, message_id, profile, model)
+    try:
+        from gwsa.sdk.chat import get_recent_chats
+        chats = get_recent_chats(chat_type='GROUP_CHAT', limit=limit)
+        return {"group_chats": chats}
+    except Exception as e:
+        logger.error(f"Error getting recent group chats: {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def get_chat_mentions(limit: int = 20) -> dict[str, Any]:
+    """
+    Scans Google Chat for actionable mentions and unread DMs.
+    
+    This tool intelligently finds "important" conversations by:
+    1. Identifying active spaces based on configured tiers (Size vs Recency).
+    2. Treating small DMs (<= 3 people) as "Implicit Mentions" if the last message is not from you.
+    3. Scanning larger groups for "Explicit Mentions" (@You).
+    
+    This is highly efficient compared to brute-force searching.
+
+    Args:
+        limit: Maximum number of active spaces to analyze (default 20).
+
+    Returns:
+        Dict with 'mentions' list and scan stats.
+    """
+    try:
+        return sdk_get_chat_mentions(limit=limit)
+    except Exception as e:
+        logger.exception("Error in get_chat_mentions")
+        return {"error": str(e)}
+
 
 def run_server():
     """Run the MCP server with stdio transport."""

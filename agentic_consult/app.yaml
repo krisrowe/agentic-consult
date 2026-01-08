@@ -65,3 +65,21 @@ workspace_analysis:
   required_last_commits_match: 10
   required_total_match_percent: 90
   github_visibility_cache_duration: 2h
+
+# Chat Triage Configuration
+chat:
+  triage:
+    # Any space with <= this members is treated as a "Direct Message" context
+    # where all unread messages are considered "mentions"
+    implicit_mention_threshold: 3
+    
+    # Scanning Tiers: How far back to check based on space size
+    tiers:
+      - max_members: 2
+        lookback_days: 14  # DMs: Check 2 weeks
+      - max_members: 10
+        lookback_days: 5   # Small Groups: Check 5 days
+      - max_members: 50
+        lookback_days: 2   # Medium Groups: Check 2 days
+      - max_members: null  # Everything else (Large)
+        lookback_days: 1   # Large Rooms: Check 1 day (or 0 to skip)
