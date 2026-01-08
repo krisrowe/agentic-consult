@@ -1,9 +1,11 @@
 import logging
+import re
 from typing import List, Dict, Any
 from datetime import datetime, timedelta, timezone
 from agentic_consult.config import load_app_config
 from gwsa.sdk.chat import get_chat_service
 from gwsa.sdk.people import get_me, get_person_name
+from gwsa.sdk.profiles import get_active_profile
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,23 @@ def get_chat_mentions(limit: int = 20) -> Dict[str, Any]:
     config = load_app_config()
     chat_config = config.get('chat', {}).get('triage', {})
     
+    # 0. Check Disable Pattern
+    disabled_pattern = chat_config.get('disabled_email_pattern')
+    if disabled_pattern:
+        try:
+            profile = get_active_profile()
+            email = profile.get('email', '')
+            if re.match(disabled_pattern, email):
+                logger.info(f"Chat triage disabled for profile {email}")
+                return {
+                    "mentions": [],
+                    "scanned_spaces": 0,
+                    "total_active_spaces": 0,
+                    "disabled_reason": f"Profile matches {disabled_pattern}"
+                }
+        except Exception as e:
+            logger.warning(f"Failed to check profile for chat disable: {e}")
+
     implicit_threshold = chat_config.get('implicit_mention_threshold', 3)
     tiers = chat_config.get('tiers', [])
     tiers.sort(key=lambda x: float('inf') if x['max_members'] is None else x['max_members'])
@@ -126,24 +145,33 @@ def get_chat_mentions(limit: int = 20) -> Dict[str, Any]:
             messages = msgs_res.get('messages', [])
             if not messages:
                 continue
-                
-            latest = messages[0]
-            sender_id = latest.get('sender', {}).get('name')
             
-            if is_implicit:
-                if sender_id != my_id:
-                    results.append({
-                        "type": "DM" if members == 2 else "Small Group",
-                        "space": display_name,
-                        "space_id": space_name,
-                        "thread_name": latest.get('thread', {}).get('name'),
-                        "time": latest.get('createTime'),
-                        "sender": latest.get('sender', {}).get('displayName') or "Unknown",
-                        "text": latest.get('text', '')[:100],
-                        "reason": "Unreplied message"
-                    })
-            else:
-                for msg in messages:
+            # Check for "Handled" status (I spoke recently)
+            # Since messages are newest-first, if I encounter my own message
+            # BEFORE I encounter a mention/activity, I have likely handled it.
+            
+            i_have_responded = False
+            
+            for msg in messages:
+                sender_id = msg.get('sender', {}).get('name')
+                
+                if sender_id == my_id:
+                    i_have_responded = True
+                    continue # Skip checking this message, I sent it
+                
+                # Check for actionable item
+                found_item = None
+                
+                if is_implicit:
+                    # Implicit: Any message not from me is actionable...
+                    # UNLESS I have already responded to something newer.
+                    if not i_have_responded:
+                        found_item = {
+                            "type": "DM" if members == 2 else "Small Group",
+                            "reason": "Unreplied message"
+                        }
+                else:
+                    # Explicit: Check for @Mention
                     mentioned = False
                     if 'annotations' in msg:
                         for ann in msg['annotations']:
@@ -151,22 +179,27 @@ def get_chat_mentions(limit: int = 20) -> Dict[str, Any]:
                                 if ann.get('userMention', {}).get('user', {}).get('name') == my_id:
                                     mentioned = True
                                     break
-                    
                     if not mentioned and my_display_name and f"@{my_display_name}" in msg.get('text', ''):
                         mentioned = True
                         
-                    if mentioned:
-                        results.append({
+                    if mentioned and not i_have_responded:
+                        found_item = {
                             "type": "Mention",
-                            "space": display_name,
-                            "space_id": space_name,
-                            "thread_name": msg.get('thread', {}).get('name'),
-                            "time": msg.get('createTime'),
-                            "sender": msg.get('sender', {}).get('displayName') or "Unknown",
-                            "text": msg.get('text', '')[:100],
                             "reason": "Explicit mention"
-                        })
-                        break 
+                        }
+                
+                if found_item:
+                    results.append({
+                        "type": found_item['type'],
+                        "space": display_name,
+                        "space_id": space_name,
+                        "thread_name": msg.get('thread', {}).get('name'),
+                        "time": msg.get('createTime'),
+                        "sender": msg.get('sender', {}).get('displayName') or "Unknown",
+                        "text": msg.get('text', '')[:100],
+                        "reason": found_item['reason']
+                    })
+                    break # Only report the latest actionable item per space
 
         except Exception as e:
             logger.warning(f"Failed to scan space {space_name}: {e}")
