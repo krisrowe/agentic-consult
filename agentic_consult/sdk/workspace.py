@@ -96,6 +96,7 @@ def get_workspace_status(paths: list[str] = None, scan: bool = True) -> List[Dic
     Analyzes workspace status, identity, and git state.
 
     Identifies git repositories within the resolved workspace paths.
+    Always includes the current workspace root (git repo or CWD) in the check.
     If 'scan' is True, also checks immediate subdirectories of any non-repo path.
     
     Args:
@@ -103,7 +104,12 @@ def get_workspace_status(paths: list[str] = None, scan: bool = True) -> List[Dic
         scan: Whether to scan subdirectories for git repos.
         
     Returns:
-        List of dictionaries containing repository status details.
+        List of dictionaries containing repository status details. Each dict includes:
+        - path: Absolute path to the repository.
+        - summary: Dict with 'name', 'type', 'status', 'classification', 'guidance'.
+        - identity: Dict with 'email', 'confidence', 'source'.
+        - local: Dict with 'status' and 'stats' (staged, unstaged, etc.).
+        - remote: Dict with 'status' and 'stats' (unpushed, unpulled).
     """
     resolved_paths = resolve_workspace_paths(paths)
     repos_to_check = []

@@ -20,6 +20,9 @@ def workspace(paths, format, scan):
     1. .gemini/settings.json
     2. .claude/settings.json
     3. Current git repository root or CWD
+    
+    Output distinguishes the current repository (👉) from other workspace
+    repositories.
     """
     results = get_workspace_status(paths=list(paths) if paths else None, scan=scan)
 
