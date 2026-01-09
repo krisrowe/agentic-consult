@@ -341,14 +341,13 @@ async def triage_emails(
 
     ## Google Chat Handling
 
-    The tool also scans for **Google Chat Mentions & Unread DMs**. These are presented in a
-    dedicated section "💬 Google Chat Mentions & Unread DMs" at the top of the triage table.
+    The tool also scans for **Google Chat Recent Mentions and DMs**.
     
-    *   **Action Handling:** These items are informational/alerting. You cannot currently reply
-        via this tool. If a mention requires action, the user should be directed to check Google Chat.
-        Use `do rev <refs>` to mark them as reviewed (if we implement chat state tracking later),
-        but for now they serve as a "Head's Up".
-
+    *   **Scope:** Scans active DMs and Spaces based on recency tiers.
+    *   **Filtering:** Items are included if they contain an explicit mention (@You) or are in a
+        small group (DM), AND you have **not responded** later in the thread **nor reacted** (emoji) to the message.
+    *   **Presentation:** These are presented in a dedicated section at the top of the triage table.
+    
     ## Calendar Invites Handling
 
     The tool separates Calendar Invites into a distinct `invites` list in the response.
@@ -809,7 +808,11 @@ async def get_recent_group_chats(limit: int = 10) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def get_chat_mentions(limit: int = 20) -> dict[str, Any]:
+async def get_chat_mentions(
+    limit: int = 20,
+    message_limit: int = 100,
+    unanswered_only: bool = False
+) -> dict[str, Any]:
     """
     Scans Google Chat for actionable mentions and unread DMs.
     
@@ -822,15 +825,20 @@ async def get_chat_mentions(limit: int = 20) -> dict[str, Any]:
 
     Args:
         limit: Maximum number of active spaces to analyze (default 20).
+        message_limit: Global limit on total messages scanned (default 100).
+        unanswered_only: If True, filters out mentions you have already responded or reacted to (default False).
 
     Returns:
         Dict with 'mentions' list, 'source' metadata, and logical API stats.
     """
     try:
-        return sdk_get_chat_mentions(limit=limit)
-    except Exception as e:
-        logger.exception("Error in get_chat_mentions")
-        return {"error": str(e)}
+        return sdk_get_chat_mentions(
+            limit=limit, 
+            message_limit=message_limit, 
+            unanswered_only=unanswered_only,
+            verbose=True
+        )
+
 
 
 def run_server():

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 def get_chat_mentions(
     limit: Optional[int] = None, 
-    unanswered_only: bool = True,
+    unanswered_only: bool = False,
     tiers: Optional[List[Dict[str, Any]]] = None,
     message_limit: Optional[int] = None,
     verbose: bool = False
