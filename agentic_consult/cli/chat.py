@@ -88,11 +88,27 @@ def list_mentions(scan_spaces_limit, unanswered_only, format, days_back, scan_me
             
             click.echo(f"\nFound {len(mentions)} mentions (scanned {stats.get('scanned_count', '?')} spaces):")
             
+            from datetime import datetime
+            
             for m in mentions:
                 sender = m.get('sender', 'Unknown')
                 text = m.get('text', '')
                 space_name = m.get('space', 'Unknown Space')
-                msg_time = m.get('time', 'Unknown Time')
+                
+                # Format Time
+                msg_time = m.get('time')
+                if msg_time:
+                    try:
+                        # Parse ISO format (handling Z or +00:00)
+                        msg_time = msg_time.replace('Z', '+00:00')
+                        dt = datetime.fromisoformat(msg_time)
+                        # Convert to local time if possible, or keep UTC
+                        # Format: Thu 01/08 10:23 PM
+                        msg_time = dt.astimezone().strftime("%a %m/%d %I:%M %p")
+                    except ValueError:
+                        msg_time = str(msg_time)[:20]
+                else:
+                    msg_time = "Unknown"
                 
                 # Truncate text for table
                 if len(text) > 100:
