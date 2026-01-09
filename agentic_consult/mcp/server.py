@@ -339,6 +339,16 @@ async def triage_emails(
 
     6. **Done** - Triage complete when inbox is empty.
 
+    ## Google Chat Handling
+
+    The tool also scans for **Google Chat Mentions & Unread DMs**. These are presented in a
+    dedicated section "💬 Google Chat Mentions & Unread DMs" at the top of the triage table.
+    
+    *   **Action Handling:** These items are informational/alerting. You cannot currently reply
+        via this tool. If a mention requires action, the user should be directed to check Google Chat.
+        Use `do rev <refs>` to mark them as reviewed (if we implement chat state tracking later),
+        but for now they serve as a "Head's Up".
+
     ## Calendar Invites Handling
 
     The tool separates Calendar Invites into a distinct `invites` list in the response.
