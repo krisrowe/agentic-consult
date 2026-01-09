@@ -529,7 +529,7 @@ def _build_agent_instructions(
 
     # --- Chat Section ---
     if chat_mentions:
-        lines.append("### 💬 Google Chat Mentions & Unread DMs")
+        lines.append("### 💬 Google Chat Recent Mentions & DMs")
         lines.append("| Ref | Type | Space | Date | From | Message Preview | Reason |")
         lines.append("|:---|:---|:---|:---|:---|:---|:---|")
         
