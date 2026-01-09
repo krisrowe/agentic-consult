@@ -76,13 +76,31 @@ def list_mentions(scan_spaces_limit, unanswered_only, format, days_back, scan_me
         if not mentions:
             click.echo("No mentions found.")
         else:
+            from rich.console import Console
+            from rich.table import Table
+            console = Console()
+            
+            table = Table(show_header=True, header_style="bold green")
+            table.add_column("Space", style="cyan")
+            table.add_column("Sender", style="yellow")
+            table.add_column("Time", style="dim")
+            table.add_column("Message")
+            
             click.echo(f"\nFound {len(mentions)} mentions (scanned {stats.get('scanned_count', '?')} spaces):")
+            
             for m in mentions:
                 sender = m.get('sender', 'Unknown')
                 text = m.get('text', '')
                 space_name = m.get('space', 'Unknown Space')
                 msg_time = m.get('time', 'Unknown Time')
-                click.echo(f"  - [{space_name}] {sender} at {msg_time}: {text[:100]}")
+                
+                # Truncate text for table
+                if len(text) > 100:
+                    text = text[:97] + "..."
+                    
+                table.add_row(space_name, sender, msg_time, text)
+            
+            console.print(table)
         
         # Verbose metadata reporting
         if verbose:
