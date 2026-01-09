@@ -18,7 +18,7 @@ def mentions():
 
 @mentions.command(name='list')
 @click.option('--scan-spaces-limit', default=None, type=int, help='Maximum number of active spaces to scan (default: 20).')
-@click.option('--unanswered-only/--all', default=True, help='Show only unanswered mentions.')
+@click.option('--unanswered-only', is_flag=True, default=False, help='Show only unanswered mentions.')
 @click.option('--format', default='text', type=click.Choice(['text', 'json'], case_sensitive=False), help='Output format.')
 @click.option('--days-back', multiple=True, help='Scan rules in format "NU:ND" (e.g. "25u:1d"). NU=Max Users, ND=Days Back.')
 @click.option('--scan-messages-limit', default=None, type=int, help='Global limit on total messages scanned across all spaces.')
@@ -81,6 +81,7 @@ def list_mentions(scan_spaces_limit, unanswered_only, format, days_back, scan_me
             console = Console()
             
             table = Table(show_header=True, header_style="bold green")
+            table.add_column("Status", justify="center", style="bold")
             table.add_column("Space", style="cyan")
             table.add_column("Sender", style="yellow")
             table.add_column("Time", style="dim")
@@ -94,11 +95,15 @@ def list_mentions(scan_spaces_limit, unanswered_only, format, days_back, scan_me
                 space_name = m.get('space', 'Unknown Space')
                 msg_time = m.get('time', 'Unknown Time')
                 
+                # Determine Status Icon
+                is_answered = m.get('answered', False)
+                status_icon = "✅" if is_answered else "⭕"
+                
                 # Truncate text for table
                 if len(text) > 100:
                     text = text[:97] + "..."
                     
-                table.add_row(space_name, sender, msg_time, text)
+                table.add_row(status_icon, space_name, sender, msg_time, text)
             
             console.print(table)
         
