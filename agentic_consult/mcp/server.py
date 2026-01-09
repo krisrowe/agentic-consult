@@ -838,6 +838,9 @@ async def get_chat_mentions(
             unanswered_only=unanswered_only,
             verbose=True
         )
+    except Exception as e:
+        logger.exception("Error in get_chat_mentions")
+        return {"error": str(e)}
 
 
 
