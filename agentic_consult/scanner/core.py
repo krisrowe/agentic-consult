@@ -9,13 +9,14 @@ from agentic_consult.customers import get_active_customers_root, _parse_customer
 from agentic_consult.scanner import scan_target, get_staged_files, get_disk_files, check_git_identity
 from agentic_consult.config import load_app_config
 
-def run_scan(path=".", include_ignored=False) -> Dict[str, Any]:
+def run_scan(path=".", include_ignored=False, author_check_fresh_only=False) -> Dict[str, Any]:
     """
     Runs a pre-commit scan for sensitive data in the specified path.
     
     Args:
         path: The directory or file path to scan.
         include_ignored: Whether to scan files ignored by git.
+        author_check_fresh_only: Whether to focus only on recent/unpushed history.
 
     Returns:
         A dictionary containing the scan results, including a list of all
@@ -51,9 +52,9 @@ def run_scan(path=".", include_ignored=False) -> Dict[str, Any]:
                         pass
 
     # Load allowed emails from internal config
-    allowed_emails = []
     app_config = load_app_config()
     allowed_emails = app_config.get('precommit', {}).get('allowed_emails', [])
+    fresh_days = app_config.get('precommit', {}).get('fresh_threshold_days', 3)
             
     local_user = os.environ.get("USER") or os.environ.get("USERNAME")
     if local_user:
@@ -84,7 +85,7 @@ def run_scan(path=".", include_ignored=False) -> Dict[str, Any]:
             results[cat].append(issue_str)
 
     # Git Identity Check
-    identity_issues = check_git_identity(path)
+    identity_issues = check_git_identity(path, only_fresh=only_fresh, fresh_days=fresh_days)
     if identity_issues:
         results['git_identity'].extend(identity_issues)
 

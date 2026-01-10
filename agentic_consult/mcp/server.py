@@ -1017,6 +1017,46 @@ async def register_customer(
         logger.exception(f"Error in register_customer for {slug}")
         return {"error": str(e)}
 
+
+@mcp.tool()
+async def get_fake_email_addresses(
+    filter_pattern: Optional[str] = None,
+    limit: Optional[int] = None
+) -> dict[str, Any]:
+    """
+    Returns a list of safe, whitelisted fake email addresses for use in versioned files.
+
+    ## CRITICAL USAGE MANDATE
+    Whenever you need to use a placeholder or fake email address in any versioned file
+    (e.g., unit tests, documentation, examples, code comments, or configuration files),
+    you MUST select an address from this returned list.
+
+    ## WHY THIS IS REQUIRED
+    The 'consult precommit' and 'devws precommit' security scanners strictly enforce 
+    PII protection. Using any email address NOT found in this whitelisted list will
+    cause the pre-commit checks to FAIL and block your ability to commit or push code.
+
+    ## BEST EXAMPLES FIRST
+    Results are returned in prioritized order (best/most universal examples at the top).
+
+    Args:
+        filter_pattern: Optional wildcard pattern (e.g., '*@example.com') to filter results.
+        limit: Optional maximum number of addresses to return.
+    """
+    try:
+        from agentic_consult.sdk.security import get_allowed_emails
+        
+        emails = get_allowed_emails(filter_pattern=filter_pattern, limit=limit)
+        
+        return {
+            "emails": emails,
+            "count": len(emails),
+            "usage_instruction": "USE THESE ADDRESSES ONLY. Non-whitelisted emails will trigger pre-commit failures."
+        }
+    except Exception as e:
+        logger.exception("Error in get_fake_email_addresses")
+        return {"error": str(e)}
+
 def run_server():
     """Run the MCP server with stdio transport."""
     mcp.run()
