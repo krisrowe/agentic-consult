@@ -1,5 +1,11 @@
 # AI Agent Guide - Agentic Consult
 
+## Design Governance & Architectural Integrity
+**CRITICAL:** Before proposing or implementing refactoring, new features, or architectural changes, you **MUST** review **[DESIGN.md](DESIGN.md)**.
+*   **Authority:** `DESIGN.md` is the source of truth for the system's blueprints, schemas, and data flows.
+*   **Compliance:** Do not deviate from the patterns defined therein without explicit user approval.
+*   **Evolution:** If a change is needed that contradicts `DESIGN.md`, you must propose updating the design document first.
+
 ## Mission: The Executive Assistant
 
 **"I want this thing to be an executive assistant that knows everything that everyone wants from me and can help propose priorities but ultimately works with me and under me but helps me not forget or lose track of things nor spend many brain cycles on cross referencing and all that and gets me to decision making and action as quickly and efficiently as possible with the right information at the right times."**
@@ -26,6 +32,10 @@ For a deeper understanding of the project's direction and technical implementati
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)**: The "Why." Captures the foundational theory (Cognitive Perception Architecture), the Hub-and-Spoke pattern, and strategic trade-offs (e.g., Context Caching vs. Vector RAG).
 - **[DESIGN.md](DESIGN.md)**: The "How." Concrete implementation blueprints, component details, JSON schemas, and the step-by-step transition plan for the codebase.
+
+**Usage Note:**
+*   **Periodic Review:** Agents and contributors should review `DESIGN.md` periodically during active development to ensure alignment with the latest patterns (e.g., Customer Cloud Integration).
+*   **Deviation Protocol:** If you find a need to deviate from `DESIGN.md`, do not proceed silently. Discuss the rationale with the user and obtain approval to either (a) deviate as a documented exception or (b) update `DESIGN.md` to reflect the new direction.
 
 ---
 

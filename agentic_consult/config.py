@@ -137,11 +137,21 @@ def get_backups_google_drive_folder_id() -> str:
 
 def load_app_config() -> dict:
     """
-    INTERNAL ONLY: Loads core system configuration from the package root.
-    This file is part of the application source and MUST NOT be provided
-    or overridden by clients or users in the CWD.
+    Loads core system configuration.
+    Priority:
+    1. User override in config directory (app.yaml).
+    2. Default from package root.
     """
-    # Force loading from package directory only
+    # 1. Check User Config Directory
+    user_path = get_config_path("app.yaml")
+    if user_path.exists():
+        try:
+            with open(user_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.warning(f"Failed to load user app.yaml from {user_path}: {e}")
+
+    # 2. Fallback to Package Default
     path = Path(__file__).parent / "app.yaml"
     
     if path.exists():

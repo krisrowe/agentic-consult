@@ -488,3 +488,54 @@ Instead of complex dynamic resolution at runtime for every path, we will impleme
     *   Ensures backup configurations point to the new locations.
 
 This allows us to keep the runtime configuration simple and explicit while providing a safe path forward for renaming or restructuring the project.
+
+## 11. Customer Cloud Integration
+
+This section defines the pattern for linking local customer contexts with Google Drive folders.
+
+### State Management
+*   **Local Authority:** The `customer.yaml` (or a lightweight `.cloud` file) in the customer's directory is the source of truth for the `drive_folder_id`.
+*   **Verification:** The ID in the local config is treated as a *cached* value. It is not authoritative until validated against the Drive API.
+
+### Tool Behaviors
+
+#### `get_customer_info`
+*   **Always Returns Local Path:** If a customer is registered locally, this tool *always* returns the local path, even if cloud sync is broken.
+*   **Structured Response:** Returns a structured object separating local and cloud concerns.
+    ```json
+    {
+      "name": "Acme Corp.",
+      "slug": "acme",
+      "local": {
+        "path": "/path/to/customers/acme",
+        "notes_path": "/path/to/customers/acme/notes"
+      },
+      "cloud": {
+        "status": "initialized",
+        "google_drive_folder_id": "...",
+        "guidance": null
+      }
+    }
+    ```
+*   **Cloud Statuses:**
+    *   `"initialized"`: The ID is present in the local config. This does NOT guarantee the folder exists or is accessible (must be validated by client).
+    *   `"missing"`: No ID is configured. Guidance provides instructions to run `register_customer`.
+
+#### `register_customer` (Repair Mode)
+*   **Idempotency:** This tool is safe to run repeatedly.
+*   **Logic:**
+    1.  **Discovery:** Lists subfolders in the configured "Customers" Cloud Root (from `config.yaml`).
+    2.  **Matching:** Matches folders against the provided `slug`.
+    3.  **Conflict Resolution:**
+        *   **0 Matches:** Creates a new folder.
+        *   **1 Match:** Uses the existing ID (Self-healing).
+        *   **>1 Match:** Returns an error requiring manual intervention.
+    4.  **Persistence:** Updates the local config (`customer.yaml` or `.cloud`) with the confirmed ID.
+
+### UX Pattern
+The Agent should interpret a missing cloud ID in `get_customer_info` not as a fatal error, but as a prompt to offer a repair action via `register_customer`.
+
+### Sync Strategy
+*   **No Automated Sync:** There is no background process to mirror the local `customers/` directory to Google Drive.
+*   **Agent Discretion:** The agent determines whether to store content locally (e.g., lightweight notes, configs) or in the Cloud Folder (e.g., heavy artifacts, screenshots, shared docs) based on user intent and content type.
+*   **Evolution:** This "dual-homed" approach allows usage patterns to emerge organically before enforcing a strict sync protocol.

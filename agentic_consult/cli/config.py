@@ -59,6 +59,24 @@ def config_init():
     for change in changes:
         click.echo(f"- {change}")
 
+    # Initialize app.yaml (User Override)
+    import shutil
+    from agentic_consult.config import get_config_path
+    from pathlib import Path
+    import agentic_consult.config as config_pkg
+
+    user_app_yaml = get_config_path("app.yaml")
+    pkg_app_yaml = Path(config_pkg.__file__).parent / "app.yaml"
+
+    if not user_app_yaml.exists() and pkg_app_yaml.exists():
+        try:
+            shutil.copy2(pkg_app_yaml, user_app_yaml)
+            click.echo(f"Initialized default app.yaml at {user_app_yaml}")
+        except Exception as e:
+            click.echo(f"Failed to copy default app.yaml: {e}", err=True)
+    elif user_app_yaml.exists():
+        click.echo(f"app.yaml already exists at {user_app_yaml}")
+
 @config.command(name='show')
 def config_show():
     """Show current configuration."""
