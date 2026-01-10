@@ -147,7 +147,9 @@ def load_app_config() -> dict:
     if user_path.exists():
         try:
             with open(user_path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f) or {}
+                data = yaml.safe_load(f) or {}
+                validate_yaml(data, "app_schema.json")
+                return data
         except Exception as e:
             logger.warning(f"Failed to load user app.yaml from {user_path}: {e}")
 
@@ -157,9 +159,11 @@ def load_app_config() -> dict:
     if path.exists():
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f) or {}
-        except Exception:
-            pass
+                data = yaml.safe_load(f) or {}
+                validate_yaml(data, "app_schema.json")
+                return data
+        except Exception as e:
+            logger.error(f"Failed to load package app.yaml: {e}")
                 
     return {}
 
