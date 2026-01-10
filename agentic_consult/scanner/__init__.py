@@ -156,39 +156,78 @@ def scan_target(path, patterns, staged=False, allowed_emails=None):
     return findings
 
 
-def check_git_identity(path=".", expected_email="kris.rowe@rowelink.com", only_fresh=False, fresh_days=3):
+def check_git_identity(path="."):
     """
-    Checks the git log for any commits that don't match the expected email.
-    If only_fresh=True, only checks unpushed commits or commits within fresh_days.
-    Default (strict) checks the entire history.
+    Ensures that for every repository, the committer identity is either 
+    perfectly consistent with the entire history or explicitly declared 
+    via a local configuration.
     """
+    from agentic_consult.config import load_main_config
     path = Path(path)
     try:
-        emails = []
-        if only_fresh:
-            # 1. Try checking unpushed commits
-            try:
-                cmd = ['git', 'log', '@{u}..HEAD', '--format=%ae']
-                result = subprocess.run(cmd, cwd=path, capture_output=True, text=True, check=True)
-                emails.extend(result.stdout.splitlines())
-            except subprocess.CalledProcessError:
-                pass # No upstream, fall back to time-based
-            
-            # 2. Also check anything within the fresh threshold
-            cmd = ['git', 'log', f'--since={fresh_days} days ago', '--format=%ae']
-            result = subprocess.run(cmd, cwd=path, capture_output=True, text=True, check=True)
-            emails.extend(result.stdout.splitlines())
-            emails = list(set(emails)) # De-duplicate
-        else:
-            # Strict mode: check EVERYTHING
-            cmd = ['git', 'log', '--format=%ae']
-            result = subprocess.run(cmd, cwd=path, capture_output=True, text=True, check=True)
-            emails = result.stdout.splitlines()
+        # 1. Data Retrieval: Impending Email
+        res = subprocess.run(['git', 'var', 'GIT_AUTHOR_IDENT'], cwd=path, capture_output=True, text=True)
+        if res.returncode != 0:
+            return [] # Not a git repo or can't determine ident
         
-        invalid_emails = [email for email in emails if email != expected_email]
-        if invalid_emails:
-            mode_msg = " (Snapshot: Unpushed/Recent)" if only_fresh else " (History: Full)"
-            return [f"Found invalid git committer email(s){mode_msg}: {', '.join(set(invalid_emails))}. Expected: {expected_email}"]
+        match = re.search(r'<(.*)>', res.stdout)
+        if not match:
+             return []
+        impending_email = match.group(1).strip()
+
+        # 1. Data Retrieval: Local Email
+        local_check = subprocess.run(
+            ['git', 'config', '--local', '--get', 'user.email'], 
+            cwd=path, capture_output=True, text=True
+        )
+        has_local_config = (local_check.returncode == 0)
+        local_email = local_check.stdout.strip() if has_local_config else None
+
+        # 2. Execution Flow: Local Configuration is Present
+        if has_local_config:
+            # Requirement: All unpushed commits must match Local Email
+            try:
+                # Get unpushed commits: HEAD but not upstream
+                res = subprocess.run(['git', 'log', '@{u}..HEAD', '--format=%ae'], cwd=path, capture_output=True, text=True)
+                if res.returncode == 0:
+                    unpushed_emails = set(e.strip() for e in res.stdout.splitlines() if e.strip())
+                    mismatches = unpushed_emails - {local_email}
+                    if mismatches:
+                        return [f"Identity Mismatch! Unpushed work is inconsistent with configured local identity '{local_email}': {mismatches}"]
+            except subprocess.CalledProcessError:
+                pass # Likely no upstream, skip unpushed check
+            
+            # If everything matches or check skipped
+            return []
+
+        # 2. Execution Flow: Local Configuration is Missing
+        # Requirement: Every commit in entire history must match Impending Email
+        res = subprocess.run(['git', 'log', '--format=%ae'], cwd=path, capture_output=True, text=True)
+        if res.returncode == 0:
+            history_emails = set(e.strip() for e in res.stdout.splitlines() if e.strip())
+            
+            # Pass if pristine (empty or all same as impending)
+            if not history_emails or history_emails == {impending_email}:
+                return []
+            
+            # Conflict detected. Check Safety Valve (Override).
+            settings = load_main_config()
+            is_optional = settings.get('precommit', {}).get('git_local_user_identity_optional', False)
+            
+            if is_optional:
+                return [] # Bypass enforcement
+                
+            # Fail with guidance
+            return [
+                f"Identity Mismatch! Repo history is inconsistent with impending identity '{impending_email}': {history_emails}.",
+                f"To resolve this, choose one:",
+                f"  1. Set Local Identity:   git config user.email {impending_email}",
+                f"  2. Disable Enforcement:  consult config set precommit.git_local_user_identity_optional true"
+            ]
+            
         return []
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return [] # Not a git repo or no commits
+
+    except Exception as e:
+        logger.debug(f"Identity check failed: {e}")
+        return []
+
