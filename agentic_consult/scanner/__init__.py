@@ -185,19 +185,30 @@ def check_git_identity(path="."):
 
         # 2. Execution Flow: Local Configuration is Present
         if has_local_config:
-            # Requirement: All unpushed commits must match Local Email
+            # Requirement 0: Impending Identity must match Local Config (Env var overrides?)
+            if impending_email != local_email:
+                return [f"Identity Mismatch! Impending commit identity '{impending_email}' differs from configured local identity '{local_email}'."]
+
+            # Requirement 1: All unpushed commits must match Local Email
+            unpushed_emails = set()
             try:
-                # Get unpushed commits: HEAD but not upstream
-                res = subprocess.run(['git', 'log', '@{u}..HEAD', '--format=%ae'], cwd=path, capture_output=True, text=True)
-                if res.returncode == 0:
-                    unpushed_emails = set(e.strip() for e in res.stdout.splitlines() if e.strip())
-                    mismatches = unpushed_emails - {local_email}
-                    if mismatches:
-                        return [f"Identity Mismatch! Unpushed work is inconsistent with configured local identity '{local_email}': {mismatches}"]
+                # Try getting unpushed commits (HEAD vs Upstream)
+                res = subprocess.run(['git', 'log', '@{u}..HEAD', '--format=%ae'], cwd=path, capture_output=True, text=True, check=True)
+                unpushed_emails.update(e.strip() for e in res.stdout.splitlines() if e.strip())
             except subprocess.CalledProcessError:
-                pass # Likely no upstream, skip unpushed check
+                # No upstream configured? Treat ALL commits as unpushed/local work to be verified
+                # This ensures we catch issues in local-only repos or fresh branches
+                try:
+                    res = subprocess.run(['git', 'log', '--format=%ae'], cwd=path, capture_output=True, text=True, check=True)
+                    unpushed_emails.update(e.strip() for e in res.stdout.splitlines() if e.strip())
+                except subprocess.CalledProcessError:
+                     pass # Empty repo
+
+            if unpushed_emails:
+                mismatches = unpushed_emails - {local_email}
+                if mismatches:
+                    return [f"Identity Mismatch! Unpushed work is inconsistent with configured local identity '{local_email}': {mismatches}"]
             
-            # If everything matches or check skipped
             return []
 
         # 2. Execution Flow: Local Configuration is Missing
