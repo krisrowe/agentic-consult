@@ -145,25 +145,19 @@ def load_app_config() -> dict:
     # 1. Check User Config Directory
     user_path = get_config_path("app.yaml")
     if user_path.exists():
-        try:
-            with open(user_path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-                validate_yaml(data, "app_schema.json")
-                return data
-        except Exception as e:
-            logger.warning(f"Failed to load user app.yaml from {user_path}: {e}")
+        with open(user_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+            validate_yaml(data, "app_schema.json")
+            return data
 
     # 2. Fallback to Package Default
     path = Path(__file__).parent / "app.yaml"
     
     if path.exists():
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-                validate_yaml(data, "app_schema.json")
-                return data
-        except Exception as e:
-            logger.error(f"Failed to load package app.yaml: {e}")
+        with open(path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+            validate_yaml(data, "app_schema.json")
+            return data
                 
     return {}
 
