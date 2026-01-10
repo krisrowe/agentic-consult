@@ -2,13 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Application Configuration Schema",
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "gemini": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "debug": { "type": "boolean" },
         "models": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "default": { "type": "string" },
             "available": {
@@ -22,6 +25,7 @@
     },
     "email": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "read_archived_email": { "type": "boolean" },
         "max_emails": { "type": "integer" },
@@ -32,6 +36,7 @@
         "archivable_label": { "type": "string" },
         "cache": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "email_max_age_days": { "type": "integer" },
             "cleanup_file_age_days": { "type": "integer" }
@@ -39,6 +44,7 @@
         },
         "triage_table_widths": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "small": { "type": "integer" },
             "medium": { "type": "integer" },
@@ -49,6 +55,7 @@
     },
     "analyze": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "max_file_count": { "type": "integer" },
         "max_total_content_bytes": { "type": "integer" }
@@ -57,6 +64,7 @@
     "use_mock_gemini": { "type": "boolean" },
     "tasks": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "provider": { "type": "string" },
         "cloud_sync": { "type": "boolean" },
@@ -65,9 +73,12 @@
     },
     "precommit": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "fresh_threshold_days": { "type": "integer" },
         "strict_history_limit": { "type": "integer" },
+        "check_git_identity": { "type": "boolean" },
+        "git_local_user_identity_optional": { "type": "boolean" },
         "allowed_emails": {
           "type": "array",
           "items": { "type": "string" }
@@ -76,6 +87,7 @@
     },
     "workspace_analysis": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "required_last_commits_match": { "type": "integer" },
         "required_total_match_percent": { "type": "integer" },
@@ -84,9 +96,11 @@
     },
     "chat": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "triage": {
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "limit": { "type": "integer" },
             "message_limit": { "type": "integer" },
@@ -96,6 +110,7 @@
               "type": "array",
               "items": {
                 "type": "object",
+                "additionalProperties": false,
                 "properties": {
                   "max_members": { "type": ["integer", "null"] },
                   "lookback_days": { "type": "integer" }
