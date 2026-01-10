@@ -1037,7 +1037,15 @@ async def get_fake_email_addresses(
     cause the pre-commit checks to FAIL and block your ability to commit or push code.
 
     ## BEST EXAMPLES FIRST
-    Results are returned in prioritized order (best/most universal examples at the top).
+    Results are returned in prioritized order:
+    1. **Universal Placeholders**: (e.g., user@example.com) - Use these for almost everything.
+    2. **Legitimately Distinct Examples**: (e.g., worker@company.com) - Use these ONLY when 
+       specific semantic meaning is required (e.g., distinguishing home vs work accounts) 
+       that standard placeholders cannot convey.
+
+    ## ADDITION POLICY
+    Do not request adding new emails to the whitelist unless they are 'Legitimately Distinct'.
+    Lazy variations or duplicates of existing placeholders will be rejected.
 
     Args:
         filter_pattern: Optional wildcard pattern (e.g., '*@example.com') to filter results.

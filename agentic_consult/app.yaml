@@ -54,20 +54,25 @@ precommit:
   strict_history_limit: 10
   allowed_emails:
     # --- BEST / UNIVERSAL EXAMPLES (Keep at top) ---
+    # Use these for generic placeholders in tests/docs.
     - user@example.com
     - test@example.com
-    - git@github.com
-    
-    # --- ACCEPTABLE ALTERNATIVES ---
     - sender@example.com
-    - newsletter@example.com
-    - test@testcorp.com
     - test@fake.com
-    - bank@example.com
-    
-    # --- LEGACY / SPECIFIC WHITELIST (New additions go above here) ---
-    - boss@gemini-test.com
-    - pm@gemini-test.com
+    - test@testcorp.com
+
+    # --- LEGITIMATELY DISTINCT EXAMPLES ---
+    # Only add emails here if they convey specific SEMANTIC meaning in documentation
+    # that standard placeholders cannot (e.g., "home vs work", "SaaS provider").
+    # Do not add random variations just to satisfy the scanner.
+    - user@gmail.com        # "Home/Personal" context
+    - worker@company.com    # "Work/Enterprise" context
+    - user@your-domain.com  # "Custom Domain/Workspace" context
+    - boss@gemini-test.com  # Triage testing (VIP)
+    - pm@gemini-test.com    # Triage testing (Team)
+    - newsletter@example.com # Triage testing (Routine)
+    - bank@example.com      # Triage testing (Finance)
+    - git@github.com
 
 # Workspace Analysis Configuration
 workspace_analysis:
