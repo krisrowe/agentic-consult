@@ -1,11 +1,11 @@
 # Implementation Design: Cognitive Perception System
 
 ## 0. Current Implementation Status
-*As of Dec 2025*
+*As of Jan 2026*
 
 | Component | Status | Notes |
 | :--- | :--- | :--- |
-| **Data Retrievers** | 🚧 Partial | `consult refresh` exists but logic is coupled. Needs extraction to standalone scripts. |
+| **Data Retrievers** | ✅ Implemented | Modularized into `agentic_consult.tasks` with provider pattern. |
 | **Context Pipeline** | 🚧 Partial | `consult gemini` and `analyze_files` tool provide ad-hoc context bundling. |
 | **Reasoning Engine** | ✅ Implemented | `consult gemini` (CLI) and `analyze_files` (MCP) are the entry points. |
 | **State Management** | 🚧 Partial | `emails_processed.txt` and delta archiving implemented. |
@@ -17,22 +17,16 @@ This document provides the concrete implementation blueprint for the **Cognitive
 ## 1. System Components
 
 ### A. Data Retrievers (The "Limbs")
-Scripts that synchronize remote data to local JSON caches. These should be exposed as **both** CLI commands (for manual/cron use) and **MCP Tools** (so the Agent can trigger a refresh autonomously).
+Synchronize remote data to local JSON caches. Implemented via the `agentic_consult.tasks` module using a Factory/Provider pattern.
 
-1.  **Task Sync Tool** (`scripts/sync_tasks.py`):
+1.  **Task Sync** (`agentic_consult.tasks.providers.ticktick`):
     *   **Responsibility**: Wraps `ticktick-access` to download all tasks from the designated work project/list.
-    *   **Output**: `~/.local/share/agentic-consult/cache/tasks.json`
-    *   **Mode**: CLI (`consult sync tasks`) and MCP Tool (`sync_tasks`).
+    *   **Output**: Cached locally for context generation.
 
-2.  **Email Sync Tool** (`scripts/sync_emails.py`):
+2.  **Email Sync** (`agentic_consult.tasks.providers.email`):
     *   **Responsibility**: Fetches recent emails and ensures thread completeness.
-    *   **Logic**:
-        1.  Fetch all messages sent/received in the last `N` days (config: `app.yaml`).
-        2.  Extract unique `threadId`s.
-        3.  **Thread Completion**: Fetch *all* messages for those threads (even if older than `N` days) to ensure conversation continuity.
-        4.  **Deduplication**: Skip messages already present in the local cache.
-    *   **Output**: `~/.local/share/agentic-consult/cache/emails.json`
-    *   **Mode**: CLI (`consult sync emails`) and MCP Tool (`sync_emails`).
+    *   **Logic**: Fetch recent, complete threads, deduplicate.
+    *   **Output**: Cached locally.
 
 ### B. Context Ingestion Pipeline (The "Memory Maker")
 **Script**: `agentic_consult/context.py`
@@ -169,40 +163,6 @@ Our design maps to several established AI and software patterns:
 2.  **Reasoning Engine**: Aligns with the **"Agentic Tool-Use"** and **"Cognitive Architecture"** patterns (e.g., as seen in LlamaIndex or OpenAI Assistant API). We encapsulate the *thinking* about a domain within the tool itself.
 3.  **Working Memory (Delta)**: Based on the **Memory-Augmented Neural Network** theory (and implementations like MemGPT). We distinguish between "Long-term" (Cache) and "Short-term/Working" (Prompt Delta) storage.
 4.  **Hub-and-Spoke**: A traditional **Enterprise Service Bus (ESB)** or **Orchestrator** pattern applied to autonomous agents.
-
-## 5. Transition Plan: Concrete Implementation Steps
-
-To reach the target state, the following refactoring and development steps are required:
-
-### Step 1: Logic Decoupling (Retrievers)
--   Extract email fetching logic from `agentic_consult/refresh.py`.
--   Move to a new package: `agentic_consult/retrievers/`.
--   Implement `scripts/sync_emails.py` as a standalone command-line entry point.
--   **Register** `sync_tasks` and `sync_emails` as tools in `agentic_consult/mcp/server.py`.
-
-### Step 2: State Management Infrastructure
--   Implement `agentic_consult/processing_state.py` to manage `workflow_state.json`.
--   This module will provide atomic read/update operations for the `context_cache` metadata.
-
-### Step 3: The Ingestion Pipeline
--   Develop `agentic_consult/pipeline/` package.
--   Implement `update_context_cache.py`:
-    -   Logic to read `emails.json` and `tasks.json`.
-    -   Formatting logic to convert JSON records into optimized prompt text.
-    -   API integration with `google-genai` for cache creation.
-
-### Step 4: The Reasoning Engine (MCP Tool)
--   Implement `agentic_consult/engine/` package.
--   Create the `analyze` tool logic:
-    -   Logic to compute deltas based on timestamps in `workflow_state.json`.
-    -   Prompt engineering for the "Chief of Staff" persona.
--   Register the tool in `agentic_consult/mcp/server.py`.
-
-### Step 5: CLI Re-composition
--   Refactor `agentic_consult/cli/refresh.py` into a **Coordinator**.
-    -   Remove embedded logic.
-    -   Implement orchestration: Call `retrievers` -> Call `pipeline` -> Update State.
--   Add `consult analyze` command as the entry point for the Reasoning Engine.
 
 ## 6. Optimization: Cost-Aware Planning
 
