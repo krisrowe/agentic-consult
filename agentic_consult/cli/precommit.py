@@ -27,12 +27,13 @@ def print_check_result(name: str, issues: List[str], verbose: bool):
 
 @click.command()
 @click.option('--include-ignored', is_flag=True, help="Scan ignored files too.")
+@click.option('--author-check-fresh-only', is_flag=True, help="Only scan unpushed or recent commits for identity.")
 @click.option('--verbose', '-v', is_flag=True, help="Show detailed status of all checks.")
 @click.argument('path', default='.', type=click.Path(exists=True))
-def precommit(include_ignored, verbose, path):
+def precommit(include_ignored, author_check_fresh_only, verbose, path):
     """Scans files for sensitive data."""
     
-    scan_results = run_scan(path=path, include_ignored=include_ignored)
+    scan_results = run_scan(path=path, include_ignored=include_ignored, author_check_fresh_only=author_check_fresh_only)
     
     findings = scan_results['findings']
     customers_checked = scan_results['customers_checked']

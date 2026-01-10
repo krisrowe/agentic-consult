@@ -48,17 +48,26 @@ tasks:
 
 # Pre-commit Scanner Configuration
 precommit:
+  # Focus only on unpushed/recent work (avoids blocking on old history)
+  fresh_threshold_days: 3
+  # Limit for strict history scanning
+  strict_history_limit: 10
   allowed_emails:
-    - boss@gemini-test.com
-    - pm@gemini-test.com
-    - test@testcorp.com
-    - test@fake.com
+    # --- BEST / UNIVERSAL EXAMPLES (Keep at top) ---
+    - user@example.com
     - test@example.com
+    - git@github.com
+    
+    # --- ACCEPTABLE ALTERNATIVES ---
     - sender@example.com
     - newsletter@example.com
-    - user@example.com
+    - test@testcorp.com
+    - test@fake.com
     - bank@example.com
-    - git@github.com
+    
+    # --- LEGACY / SPECIFIC WHITELIST (New additions go above here) ---
+    - boss@gemini-test.com
+    - pm@gemini-test.com
 
 # Workspace Analysis Configuration
 workspace_analysis:

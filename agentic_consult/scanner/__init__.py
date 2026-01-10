@@ -156,21 +156,39 @@ def scan_target(path, patterns, staged=False, allowed_emails=None):
     return findings
 
 
-def check_git_identity(path=".", expected_email="kris.rowe" + "@" + "rowelink.com"):
+def check_git_identity(path=".", expected_email="kris.rowe@rowelink.com", only_fresh=False, fresh_days=3):
     """
     Checks the git log for any commits that don't match the expected email.
-    Only checks the local branch (commits not yet pushed or all local commits if no remote).
+    If only_fresh=True, only checks unpushed commits or commits within fresh_days.
+    Default (strict) checks the entire history.
     """
     path = Path(path)
     try:
-        # Get the email of the last 10 commits
-        cmd = ['git', 'log', '-n', '10', '--format=%ae']
-        result = subprocess.run(cmd, cwd=path, capture_output=True, text=True, check=True)
-        emails = result.stdout.splitlines()
+        emails = []
+        if only_fresh:
+            # 1. Try checking unpushed commits
+            try:
+                cmd = ['git', 'log', '@{u}..HEAD', '--format=%ae']
+                result = subprocess.run(cmd, cwd=path, capture_output=True, text=True, check=True)
+                emails.extend(result.stdout.splitlines())
+            except subprocess.CalledProcessError:
+                pass # No upstream, fall back to time-based
+            
+            # 2. Also check anything within the fresh threshold
+            cmd = ['git', 'log', f'--since={fresh_days} days ago', '--format=%ae']
+            result = subprocess.run(cmd, cwd=path, capture_output=True, text=True, check=True)
+            emails.extend(result.stdout.splitlines())
+            emails = list(set(emails)) # De-duplicate
+        else:
+            # Strict mode: check EVERYTHING
+            cmd = ['git', 'log', '--format=%ae']
+            result = subprocess.run(cmd, cwd=path, capture_output=True, text=True, check=True)
+            emails = result.stdout.splitlines()
         
         invalid_emails = [email for email in emails if email != expected_email]
         if invalid_emails:
-            return [f"Found invalid git committer email(s): {', '.join(set(invalid_emails))}. Expected: {expected_email}"]
+            mode_msg = " (Snapshot: Unpushed/Recent)" if only_fresh else " (History: Full)"
+            return [f"Found invalid git committer email(s){mode_msg}: {', '.join(set(invalid_emails))}. Expected: {expected_email}"]
         return []
     except (subprocess.CalledProcessError, FileNotFoundError):
         return [] # Not a git repo or no commits
