@@ -3,7 +3,7 @@
 install:
 	@command -v pipx >/dev/null 2>&1 || (echo "pipx not found; please install pipx or run 'make venv'"; exit 1)
 	@echo "Installing editable package into pipx-managed env 'agentic-consult' (dev extras)"
-	@pipx runpip agentic-consult pip install -e '.[dev]' 2>/dev/null || pipx install --editable . 2>/dev/null || (echo "pipx install failed; try 'make venv' instead"; exit 1)
+	@pipx runpip agentic-consult pip install -e '.[dev]' 2>/dev/null || pipx install -e . --force --pip-args "--index-url https://pypi.org/simple" 2>/dev/null || (echo "pipx install failed; try 'make venv' instead"; exit 1)
 	@echo "Done. You can run tests with: pipx run agentic-consult pytest -q"
 
 clean:
