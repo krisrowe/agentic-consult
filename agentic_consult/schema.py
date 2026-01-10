@@ -6,20 +6,14 @@ from pathlib import Path
 def validate_yaml(yaml_data, schema_name):
     """
     Validates a python dict (from yaml) against a named schema resource.
-    schema_name should be 'customer_schema.json' or 'config_schema.json'.
+    schema_name should be 'customer_schema.json', 'config_schema.json', or 'app_schema.json'.
     """
-    # Load schema from tests/schemas relative to package root? 
-    # Or embed them in the package?
-    # For now, let's look in tests/schemas if running from source, 
-    # but ideally these should be package data if we want runtime validation in installed mode.
-    
-    # Try finding schema relative to this file
-    base = Path(__file__).resolve().parents[1]
-    schema_path = base / 'tests' / 'schemas' / schema_name
+    # Try finding schema relative to this file in the schemas/ subdirectory
+    base = Path(__file__).resolve().parent
+    schema_path = base / 'schemas' / schema_name
     
     if not schema_path.exists():
-        # Fallback for installed package: look in agentic_consult/schemas (if we moved them)
-        # or just fail gracefully for now
+        logger.warning(f"Schema not found: {schema_path}")
         return # Cannot validate if schema not found
         
     with open(schema_path, 'r') as f:

@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Application Configuration Schema",
+  "type": "object",
+  "properties": {
+    "gemini": {
+      "type": "object",
+      "properties": {
+        "debug": { "type": "boolean" },
+        "models": {
+          "type": "object",
+          "properties": {
+            "default": { "type": "string" },
+            "available": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["default", "available"]
+        }
+      }
+    },
+    "email": {
+      "type": "object",
+      "properties": {
+        "read_archived_email": { "type": "boolean" },
+        "max_emails": { "type": "integer" },
+        "max_prompt_content_chars": { "type": "integer" },
+        "max_email_chars": { "type": "integer" },
+        "archive_log_retention_days": { "type": "integer" },
+        "review_label": { "type": "string" },
+        "archivable_label": { "type": "string" },
+        "cache": {
+          "type": "object",
+          "properties": {
+            "email_max_age_days": { "type": "integer" },
+            "cleanup_file_age_days": { "type": "integer" }
+          }
+        },
+        "triage_table_widths": {
+          "type": "object",
+          "properties": {
+            "small": { "type": "integer" },
+            "medium": { "type": "integer" },
+            "large": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "analyze": {
+      "type": "object",
+      "properties": {
+        "max_file_count": { "type": "integer" },
+        "max_total_content_bytes": { "type": "integer" }
+      }
+    },
+    "use_mock_gemini": { "type": "boolean" },
+    "tasks": {
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string" },
+        "cloud_sync": { "type": "boolean" },
+        "default_project": { "type": "string" }
+      }
+    },
+    "precommit": {
+      "type": "object",
+      "properties": {
+        "fresh_threshold_days": { "type": "integer" },
+        "strict_history_limit": { "type": "integer" },
+        "allowed_emails": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "workspace_analysis": {
+      "type": "object",
+      "properties": {
+        "required_last_commits_match": { "type": "integer" },
+        "required_total_match_percent": { "type": "integer" },
+        "github_visibility_cache_duration": { "type": "string" }
+      }
+    },
+    "chat": {
+      "type": "object",
+      "properties": {
+        "triage": {
+          "type": "object",
+          "properties": {
+            "limit": { "type": "integer" },
+            "message_limit": { "type": "integer" },
+            "disabled_email_pattern": { "type": "string" },
+            "implicit_mention_threshold": { "type": "integer" },
+            "tiers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "max_members": { "type": ["integer", "null"] },
+                  "lookback_days": { "type": "integer" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
