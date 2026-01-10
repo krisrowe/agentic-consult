@@ -535,7 +535,34 @@ This section defines the pattern for linking local customer contexts with Google
 ### UX Pattern
 The Agent should interpret a missing cloud ID in `get_customer_info` not as a fatal error, but as a prompt to offer a repair action via `register_customer`.
 
-### Sync Strategy
-*   **No Automated Sync:** There is no background process to mirror the local `customers/` directory to Google Drive.
-*   **Agent Discretion:** The agent determines whether to store content locally (e.g., lightweight notes, configs) or in the Cloud Folder (e.g., heavy artifacts, screenshots, shared docs) based on user intent and content type.
-*   **Evolution:** This "dual-homed" approach allows usage patterns to emerge organically before enforcing a strict sync protocol.
+## 12. Strict Git Identity Enforcement Logic
+
+This logic ensures that for every repository, the committer identity is either perfectly consistent with the entire history or explicitly declared via a local configuration.
+
+### 1. Data Retrieval
+*   **Impending Email:** Resolved from `git var GIT_AUTHOR_IDENT`. This represents the identity Git will use for the next commit.
+*   **Local Email:** Resolved from `git config --local --get user.email`. This represents a deliberate identity declaration for the specific repository.
+
+### 2. Execution Flow
+
+#### **Scenario: Local Configuration is Present**
+An explicit local configuration indicates intentional identity management for the repository.
+*   **Requirement:** All **unpushed commits** (`git log @{u}..HEAD`) must match the `Local Email`.
+*   **Failure:** Returns an error if unpushed work is inconsistent with the configured local identity.
+*   **Success:** Returns success if all unpushed work matches.
+
+#### **Scenario: Local Configuration is Missing**
+In the absence of a local declaration, the tool enforces 100% historical consistency.
+*   **Requirement:** Every commit in the **entire repository history** (`git log --format=%ae`) must match the `Impending Email`.
+*   **Default Behavior:** Enforcement is **ENABLED by default**. The `settings.json` file and the specific setting need not exist for enforcement to apply.
+*   **Pass:** The repository is pristine (single-user history matching the current environment).
+*   **Conflict:** Any scenario where the impending commit author and every existing commit author in the repository history are not all identical.
+    *   **Check Override:** Verify if `precommit.git_local_user_identity_optional` is set to `true` in `settings.json`.
+    *   **Final Decision:**
+        *   If `true`: **PASS** (Enforcement is disabled for the machine).
+        *   If `false` (Default/Missing): **FAIL** with guidance.
+
+### 3. Failure Guidance
+When a conflict is detected in the "Missing Local Configuration" scenario, the following options are presented:
+1.  **Set Local Identity:** `git config user.email <impending_email>`
+2.  **Disable Enforcement:** `consult config set precommit.git_local_user_identity_optional true`
