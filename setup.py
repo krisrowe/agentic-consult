@@ -16,6 +16,7 @@ setup(
         "mcp>=1.0.0",
         "pathspec",
         "gwsa @ git+https://github.com/krisrowe/gworkspace-access.git",
+        "email-archive @ git+https://github.com/krisrowe/gmail-extractor.git#subdirectory=email-archive",
         "rich",
     ],
     extras_require={

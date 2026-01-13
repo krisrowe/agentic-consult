@@ -22,7 +22,8 @@ from pathlib import Path
 import yaml
 
 from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config, load_main_config
-from gwsa.sdk.mail.label import remove_label as gwsa_remove_label
+from gwsa.sdk.mail.label import remove_label as gwsa_remove_label, add_label as gwsa_add_label
+from email_archive import EmailStore
 
 logger = logging.getLogger(__name__)
 # Default to INFO if not set elsewhere
@@ -448,10 +449,49 @@ def archive_email_with_gwsa(
     subject: str,
     profile: Optional[str] = None
 ) -> dict[str, Any]:
-    """Archive an email using gwsa SDK and log the action."""
+    """Archive an email and persist 'triage.json' sidecar."""
     try:
+        # 1. Action (Cloud)
         gwsa_remove_label(message_id, "INBOX", profile=profile)
+        
+        # 2. Persist State (Local Sidecar)
+        store = EmailStore()
+        store.save_sidecar(message_id, "triage.json", {
+            "action": "archived",
+            "rule_id": rule_id,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+        # 3. Log (Legacy compatibility)
         log_archived_email(rule_id, message_id, from_addr, subject)
+        
         return {"success": True, "message_id": message_id, "rule_id": rule_id, "archived": True}
     except Exception as e:
         return {"success": False, "message_id": message_id, "error": str(e)}
+
+def mark_email_in_review_with_gwsa(
+    message_id: str,
+    reverse: bool = False,
+    profile: Optional[str] = None
+) -> dict[str, Any]:
+    """Apply/Remove Review label and persist 'triage.json' sidecar."""
+    config = load_app_config().get("email", {})
+    label = config.get('review_label', 'Reviewing')
+    try:
+        # 1. Action (Cloud)
+        if reverse:
+            gwsa_remove_label(message_id, label, profile=profile)
+        else:
+            gwsa_add_label(message_id, label, profile=profile)
+        
+        # 2. Persist State (Local Sidecar)
+        if not reverse:
+            store = EmailStore()
+            store.save_sidecar(message_id, "triage.json", {
+                "action": "reviewing",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+        return {'success': True, 'message_id': message_id, 'action': 'removed' if reverse else 'applied'}
+    except Exception as e:
+        return {'success': False, 'message_id': message_id, 'error': str(e)}

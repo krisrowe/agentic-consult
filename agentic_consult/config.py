@@ -81,6 +81,14 @@ def load_main_config():
     except (json.JSONDecodeError, IOError):
         return {}
 
+def set_app_config_value(key: str, value: any):
+    """
+    Updates a single value in settings.json.
+    """
+    data = load_main_config()
+    data[key] = value
+    save_main_config(data)
+
 def save_main_config(data):
     """
     Saves settings to settings.json.

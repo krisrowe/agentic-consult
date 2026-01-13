@@ -27,7 +27,8 @@ from agentic_consult.mcp.email_processing import (
     remove_rule,
     list_rules,
     get_rule_usage_stats,
-    archive_email_with_gwsa
+    archive_email_with_gwsa,
+    mark_email_in_review_with_gwsa
 )
 from agentic_consult.email.triage import (
     triage_emails as sdk_triage_emails,
@@ -306,27 +307,26 @@ async def triage_emails(
     ctx: Context = None
 ) -> dict[str, Any]:
     """
-    Triage inbox emails using Gemini-powered analysis.
+    Triage inbox emails using pre-computed background analysis.
 
-    Fetches emails, caches them locally, and uses Gemini to analyze each email
-    against configured rules (system + user). Returns structured recommendations.
+    Reads results from 'analysis.json' sidecars produced by the background analyzer service.
+    Excludes emails already marked with a 'triage.json' sidecar.
 
     ## Workflow
 
-    Terminal state = archived (out of inbox). Goal is inbox zero.
+    Terminal state = triaged (archived or in review). Goal is to clear the pending queue.
 
-    1. **Start with "all" (default)** - See full inbox state, including emails
-       previously marked Archivable that may now be candidates for archive_now.
+    1. **Start with "all" (default)** - See full pending triage state.
 
     2. **Wait for User Confirmation** - The tool returns a plan (instructions).
        **DO NOT EXECUTE THESE ACTIONS AUTOMATICALLY.**
        Display the plan to the user and wait for their explicit command or confirmation.
 
     3. **Process results (After Confirmation)** - Based on user input:
-       - archive_now → `archive_email()` → done
+       - archive_now → `archive_email()` → done (creates triage.json)
        - archive_later → `mark_email_archivable()` → stays until aged
-       - review → `mark_email_in_review()` → stays for user attention
-       - track_as_task → create task (include email link in notes), then `archive_email()` → done
+       - review → `mark_email_in_review()` → stays for user attention (creates triage.json)
+       - track_as_task → create task, then `archive_email()` → done (creates triage.json)
        - ask_user → get user decision, act accordingly → done
 
     4. **Subsequent batches** - Use `review_status="new"` to skip labeled emails
@@ -474,8 +474,9 @@ async def mark_email_in_review(
 ) -> dict[str, Any]:
     """
     Apply or remove the Reviewing label from an email.
+    Also persists 'triage.json' sidecar locally to exclude from future scans.
 
-    Use this for emails with recommended_action="review" from process_email.
+    Use this for emails with recommended_action="review" from triage_emails.
     The Reviewing label keeps emails in inbox but marks them for later attention.
 
     Args:
@@ -487,7 +488,7 @@ async def mark_email_in_review(
         Success status with label action taken.
     """
     try:
-        return sdk_mark_email_in_review(
+        return mark_email_in_review_with_gwsa(
             message_id=message_id,
             reverse=reverse,
             profile=profile
@@ -720,19 +721,19 @@ async def archive_email(
     profile: Optional[str] = None
 ) -> dict[str, Any]:
     """
-    Archive an email and log it for tracking and recovery.
+    Archive an email and persist 'triage.json' sidecar locally.
 
     **IMPORTANT:** This tool is intended ONLY for use within the email processing
-    workflow triggered by `process_email`. For archiving emails in other contexts,
-    use the gwsa `remove_email_label` tool directly with label_name="INBOX".
+    workflow triggered by `triage_emails`.
 
-    This tool serves two purposes:
+    This tool serves three purposes:
 
-    1. **Archive emails** - Removes the INBOX label via gwsa SDK, moving the
-       email out of inbox while preserving it in Gmail (not deleted).
+    1. **Archive emails** - Removes the INBOX label via gwsa SDK.
 
-    2. **Track usage** - Logs each archived email to a cache file with
-       reason, rule_id (if applicable), message_id, sender, and subject. This enables:
+    2. **Persist State** - Saves a 'triage.json' sidecar via EmailStore so the
+       email is excluded from future 'triage_emails' results.
+
+    3. **Track usage** - Logs each archived email for rule efficiency reporting.
 
        - **Rule efficiency**: The `list_email_rules` tool uses these logs to
          report use_count and last_used for each rule. Rules with zero usage

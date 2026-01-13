@@ -89,6 +89,9 @@ precommit-verbose:
 	@echo "Running pre-commit checks via CLI"
 	@export PYTHONPATH=${PYTHONPATH}:. && .venv/bin/python -m agentic_consult precommit
 
+run-analyzer:
+	@. .venv/bin/activate && PYTHONPATH=. python3 -m agentic_consult.email.analyzer
+
 
 
 .PHONY: help refresh preview ensure-exec

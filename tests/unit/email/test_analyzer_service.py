@@ -1,0 +1,120 @@
+import pytest
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
+from email_archive import EmailStore
+from agentic_consult.email.analyzer import EmailAnalyzer
+
+# --- Test Infrastructure ---
+
+class DummyProvider:
+    """Predictable provider for unit tests."""
+    def analyze(self, email, prompt):
+        return {
+            "id": email["id"],
+            "recommended_action": "review",
+            "reason": f"Dummy processed: {email['subject']}",
+            "audience": "DIRECT"
+        }
+
+@pytest.fixture
+def test_env(tmp_path, monkeypatch):
+    """Sets up an isolated data and config directory."""
+    data_dir = tmp_path / "data"
+    config_dir = tmp_path / "config"
+    data_dir.mkdir()
+    config_dir.mkdir()
+    monkeypatch.setenv("EMAIL_ARCHIVE_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("CONSULT_CONFIG_DIR", str(config_dir))
+    store = EmailStore(data_dir)
+    # Fixed reference date for deterministic testing
+    ref_date = datetime(2026, 1, 12, 12, 0, 0)
+    return store, data_dir, ref_date
+
+# --- Targeted Proofs ---
+
+def test_previously_analyzed_are_skipped(test_env):
+    """Proof: Emails with existing .analysis.json sidecars are ignored."""
+    store, _, ref_date = test_env
+    msg_id = "already_done"
+    store.save(msg_id, ref_date, {"Subject": "Done", "From": "user@example.com"}, {})
+    # Manually create sidecar
+    store.save_sidecar(msg_id, "analysis.json", {"status": "pre-existing"})
+    
+    analyzer = EmailAnalyzer(store, provider=DummyProvider())
+    result = analyzer.process_queue(lookback_days=1, reference_date=ref_date)
+    
+    assert result["processed"] == 0
+    assert result.get("status") == "idle"
+
+def test_older_messages_skipped(test_env):
+    """Proof: Emails older than the lookback window are ignored."""
+    store, data_dir, ref_date = test_env
+    old_id = "ancient_history"
+    # 30 days before ref_date
+    store.save(old_id, ref_date - timedelta(days=30), {"Subject": "Old", "From": "user@example.com"}, {})
+    
+    analyzer = EmailAnalyzer(store, provider=DummyProvider())
+    result = analyzer.process_queue(lookback_days=7, reference_date=ref_date)
+    
+    assert result["processed"] == 0
+    # Verification: check no analysis sidecar was created
+    sidecars = list(data_dir.glob("*.analysis.json"))
+    assert len(sidecars) == 0
+
+def test_message_processing_limit(test_env):
+    """Proof: The analyzer honors the batch 'limit' argument."""
+    store, _, ref_date = test_env
+    for i in range(5):
+        store.save(f"msg_{i}", ref_date, {"Subject": f"Batch {i}", "From": "user@example.com"}, {})
+    
+    analyzer = EmailAnalyzer(store, provider=DummyProvider())
+    result = analyzer.process_queue(limit=3, reference_date=ref_date)
+    
+    assert result["processed"] == 3
+
+def test_ran_out_of_messages(test_env):
+    """Proof: Returns idle status when no pending messages exist."""
+    store, _, ref_date = test_env
+    analyzer = EmailAnalyzer(store, provider=DummyProvider())
+    result = analyzer.process_queue(reference_date=ref_date)
+    
+    assert result["processed"] == 0
+    assert result["status"] == "idle"
+
+# --- Integration / Multi-Cycle ---
+
+def test_all_via_multiple_cycles(test_env):
+    """
+    Exhaustive proof: Verifies the entire state machine over multiple runs.
+    Scenario: 10 emails spanning 10 days. 5 day window. Limit 3.
+    """
+    store, data_dir, ref_date = test_env
+    # Prepping 10 emails (0 to 9 days old relative to ref_date)
+    for i in range(10):
+        date = ref_date - timedelta(days=i)
+        store.save(f"m{i}", date, {"Subject": f"Email {i}", "From": "user@example.com"}, {})
+
+    analyzer = EmailAnalyzer(store, provider=DummyProvider())
+
+    # Window: 5 days lookback from ref_date (Jan 12).
+    # Since we anchor to START OF DAY (00:00:00), 5 days lookback from Jan 12 is Jan 7 00:00:00.
+    # m0 (Jan 12), m1 (11), m2 (10), m3 (9), m4 (8), m5 (7) are all >= Jan 7 00:00:00.
+    # Total 6 emails visible.
+
+    # Cycle 1: 3 of 6 visible are processed
+    r1 = analyzer.process_queue(lookback_days=5, limit=3, reference_date=ref_date)
+    assert r1["processed"] == 3
+
+    # Cycle 2: Remaining 3 of 6 are processed
+    r2 = analyzer.process_queue(lookback_days=5, limit=3, reference_date=ref_date)
+    assert r2["processed"] == 3
+
+    # Cycle 3: Queue exhausted
+    r3 = analyzer.process_queue(lookback_days=5, limit=3, reference_date=ref_date)
+    assert r3["processed"] == 0
+    assert r3["status"] == "idle"
+
+    # Leak Check: Exactly 6 total sidecars should exist
+    sidecars = list(data_dir.glob("*.analysis.json"))
+    assert len(sidecars) == 6
