@@ -325,38 +325,49 @@ def triage_emails(
     width: Literal["small", "medium", "large"] = "medium",
     progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict[str, Any]:
+    """
+    Unified triage discovery: HAS analysis.json AND NO triage.json.
+    """
     try:
-        # 1. Fetch Chat Mentions/DMs
+        # 1. Fetch Chat Mentions
         chat_results = get_chat_mentions()
         chat_mentions = chat_results.get('mentions', [])
 
-        # 2. Fetch Emails
-        query = _build_gmail_query(review_status)
-        if progress_callback: progress_callback(1, 2)
-        from gwsa.sdk.mail.search import search_messages
-        messages, _metadata = search_messages(query=query, max_results=limit, format="metadata", profile=profile)
-        message_ids = [m['id'] for m in messages]
+        # 2. Discover Ready-to-Triage Emails via SDK
+        from email_archive import EmailStore
+        store = EmailStore()
         
-        if not message_ids:
-            instructions = _build_agent_instructions(review_status, [], [], width=width, chat_mentions=chat_mentions)
-            return {
-                'emails': [], 
-                'invites': [], 
-                'chat_mentions': chat_mentions,
-                'rules_referenced': [], 
-                'instructions': instructions, 
-                'stats': {'email_count': 0, 'chat_count': len(chat_mentions)}
-            }
+        # Newest first, only those not yet triaged
+        # Since is generous (14 days)
+        since = datetime.utcnow() - timedelta(days=14)
+        candidates = store.list(since=since, sidecar_missing="triage.json", newest_first=True)
         
-        if progress_callback: progress_callback(2, 2)
+        emails = []
+        invites = []
         
-        result = analyze_emails(message_ids, profile=profile, model=model)
-        if 'error' in result: return result
-        
-        emails = result.get('emails', [])
-        invites = result.get('invites', [])
-        
-        # Assign Refs to all items
+        for item in candidates:
+            if len(emails) + len(invites) >= limit: break
+            
+            # Must HAVE an analysis sidecar to be shown here
+            analysis = store.get_sidecar(item['id'], "analysis.json")
+            if not analysis: continue
+            
+            # Load raw headers for display
+            raw = store.get(item['id'])
+            if not raw: continue
+            
+            # Merge for frontend
+            entry = {**analysis, "id": item['id'], "date": item['date'].isoformat()}
+            entry["from"] = raw.get("from", "")
+            entry["subject"] = raw.get("subject", "")
+            
+            # Split into categories (Same as original logic)
+            if entry.get("status") or "event_date" in entry:
+                invites.append(entry)
+            else:
+                emails.append(entry)
+
+        # 3. Assign Refs (Same as original logic)
         chat_ids = [m.get('thread_name') or m.get('space_id') for m in chat_mentions]
         email_ids = [e.get('id') for e in emails]
         invite_ids = [i.get('id') for i in invites]
@@ -369,33 +380,22 @@ def triage_emails(
             m['ref'] = assignments.get(mid, '??')
             
         for rec in emails:
-            msg_id = rec.get('id')
-            rec['ref'] = assignments.get(msg_id, '??')
+            rec['ref'] = assignments.get(rec.get('id'), '??')
         for inv in invites:
-            msg_id = inv.get('id')
-            inv['ref'] = assignments.get(msg_id, '??')
+            inv['ref'] = assignments.get(inv.get('id'), '??')
             
-        all_rules = load_email_rules()
-        active_rules = [r for r in all_rules if not r.get('disabled', False)]
-        referenced_rule_ids = {r.get('rule_id') for r in emails if r.get('rule_id')}
-        rules_referenced = [r for r in active_rules if r.get('id') in referenced_rule_ids]
-        
-        # Prepend chat info to instructions
+        # 4. Instructions
         instructions = _build_agent_instructions(review_status, emails, invites, width=width, chat_mentions=chat_mentions)
         
         return {
             'emails': emails,
             'invites': invites,
             'chat_mentions': chat_mentions,
-            'rules_referenced': rules_referenced,
             'instructions': instructions,
             'stats': {
-                'email_count': len(message_ids),
-                'recommendation_count': len(emails),
+                'email_count': len(emails),
                 'invite_count': len(invites),
-                'chat_count': len(chat_mentions),
-                'rules_loaded': len(active_rules),
-                'rules_matched': len(rules_referenced)
+                'chat_count': len(chat_mentions)
             }
         }
     except Exception as e:

@@ -13,6 +13,8 @@ from .workspace import workspace
 from .restore import restore
 from .context import context
 from .chat import chat
+from .services import services
+from .cloud import cloud
 
 @click.group()
 def main():
@@ -32,6 +34,8 @@ main.add_command(user_home_cli)
 main.add_command(workspace)
 main.add_command(context)
 main.add_command(chat)
+main.add_command(services)
+main.add_command(cloud)
 
 if __name__ == "__main__":
     main()
