@@ -143,6 +143,31 @@ def get_backups_google_drive_folder_id() -> str:
         return backups_config.get('google_drive_folder_id')
     return None
 
+def initialize_app_config() -> tuple[bool, str]:
+    """
+    Initializes the user's app.yaml by copying the default from the package.
+    Returns (success, message).
+    """
+    import shutil
+    import agentic_consult.config as config_pkg
+    
+    user_app_yaml = get_config_path("app.yaml")
+    pkg_app_yaml = Path(config_pkg.__file__).parent / "app.yaml"
+
+    if user_app_yaml.exists():
+        return False, f"app.yaml already exists at {user_app_yaml}"
+
+    if not pkg_app_yaml.exists():
+        return False, "Default package app.yaml not found."
+
+    try:
+        # Ensure parent directory exists (e.g. tool-config/)
+        user_app_yaml.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(pkg_app_yaml, user_app_yaml)
+        return True, f"Initialized default app.yaml at {user_app_yaml}"
+    except Exception as e:
+        return False, f"Failed to copy default app.yaml: {e}"
+
 def load_app_config() -> dict:
     """
     Loads core system configuration.

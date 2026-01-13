@@ -5,7 +5,7 @@
 
 | Component | Status | Notes |
 | :--- | :--- | :--- |
-| **Data Retrievers** | ✅ Implemented | Modularized into `agentic_consult.tasks` with provider pattern. |
+| **Data Retrievers** | ❌ Missing | Systematic `sync_tasks` and `sync_emails` scripts are not implemented. |
 | **Context Pipeline** | 🚧 Partial | `consult gemini` and `analyze_files` tool provide ad-hoc context bundling. |
 | **Reasoning Engine** | ✅ Implemented | `consult gemini` (CLI) and `analyze_files` (MCP) are the entry points. |
 | **State Management** | 🚧 Partial | `emails_processed.txt` and delta archiving implemented. |
@@ -17,16 +17,24 @@ This document provides the concrete implementation blueprint for the **Cognitive
 ## 1. System Components
 
 ### A. Data Retrievers (The "Limbs")
-Synchronize remote data to local JSON caches. Implemented via the `agentic_consult.tasks` module using a Factory/Provider pattern.
+Scripts that synchronize remote data to local JSON caches for **systematic preservation and search**.
+*   *Current State:* `triage_emails` caches fetched emails ad-hoc for the duration of a triage session, but does not build a persistent, searchable "Super-Context" database.
+*   *Planned State:* Standalone scripts exposed as CLI commands and MCP Tools.
 
-1.  **Task Sync** (`agentic_consult.tasks.providers.ticktick`):
+1.  **Task Sync Tool** (Planned):
     *   **Responsibility**: Wraps `ticktick-access` to download all tasks from the designated work project/list.
-    *   **Output**: Cached locally for context generation.
+    *   **Output**: `~/.local/share/agentic-consult/cache/tasks.json`
+    *   **Mode**: CLI (`consult tasks sync`) and MCP Tool (`sync_tasks`).
 
-2.  **Email Sync** (`agentic_consult.tasks.providers.email`):
+2.  **Email Sync Tool** (Planned):
     *   **Responsibility**: Fetches recent emails and ensures thread completeness.
-    *   **Logic**: Fetch recent, complete threads, deduplicate.
-    *   **Output**: Cached locally.
+    *   **Logic**:
+        1.  Fetch all messages sent/received in the last `N` days (config: `app.yaml`).
+        2.  Extract unique `threadId`s.
+        3.  **Thread Completion**: Fetch *all* messages for those threads (even if older than `N` days) to ensure conversation continuity.
+        4.  **Deduplication**: Skip messages already present in the local cache.
+    *   **Output**: `~/.local/share/agentic-consult/cache/emails.json`
+    *   **Mode**: CLI (`consult email sync`) and MCP Tool (`sync_emails`).
 
 ### B. Context Ingestion Pipeline (The "Memory Maker")
 **Script**: `agentic_consult/context.py`
