@@ -350,18 +350,18 @@ consult cloud scheduler run fetcher
 
 ### Optional: Project Labeling for Auto-Discovery
 
-If you manage multiple GCP projects, you can label them to avoid passing `--project` every time:
+Label your project so our tools can find it later without you remembering the project ID:
 
 ```bash
 # Label your project (one-time setup)
 gcloud projects update my-consult-project \
   --update-labels=agentic-consult=default
 
-# Now init auto-discovers the project
+# Now init auto-discovers the project among all your GCP projects
 consult cloud config init  # finds project via label
 ```
 
-This is optional - `--project` works fine for single-project setups.
+This is optional - `--project` always works if you remember the ID.
 
 ## Development
 
