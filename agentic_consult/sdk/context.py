@@ -1,6 +1,7 @@
 import shutil
 from pathlib import Path
 from agentic_consult.gemini import GeminiAPIClient
+from agentic_consult.paths import get_settings_dir
 
 def resolve_context_path(scope: str) -> Path:
     """Resolves the path to the GEMINI.md file based on scope."""
@@ -10,8 +11,8 @@ def resolve_context_path(scope: str) -> Path:
         if not target_path.exists():
             target_path = Path.cwd() / "GEMINI.md"
     else: # user
-        target_path = Path.home() / ".config" / "agentic-consult" / "GEMINI.md"
-        
+        target_path = get_settings_dir() / "GEMINI.md"
+
     return target_path
 
 def analyze_context(scope: str, prompt: str, model: str = None) -> str:

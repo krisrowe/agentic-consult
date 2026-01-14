@@ -1,9 +1,13 @@
+"""Tests for email analyzer service.
+
+NOTE: conftest.py auto-sets CONSULT_CONFIG_DIR for every test.
+"""
 import pytest
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from email_archive import EmailStore
 from agentic_consult.email.analyzer import EmailAnalyzer
+
 
 # --- Test Infrastructure ---
 
@@ -17,19 +21,17 @@ class DummyProvider:
             "audience": "DIRECT"
         }
 
+
 @pytest.fixture
-def test_env(tmp_path, monkeypatch):
-    """Sets up an isolated data and config directory."""
+def test_env(tmp_path):
+    """Sets up an isolated data directory. Config dir is handled by conftest."""
     data_dir = tmp_path / "data"
-    config_dir = tmp_path / "config"
     data_dir.mkdir()
-    config_dir.mkdir()
-    monkeypatch.setenv("EMAIL_ARCHIVE_DATA_DIR", str(data_dir))
-    monkeypatch.setenv("CONSULT_CONFIG_DIR", str(config_dir))
     store = EmailStore(data_dir)
     # Fixed reference date for deterministic testing
     ref_date = datetime(2026, 1, 12, 12, 0, 0)
     return store, data_dir, ref_date
+
 
 # --- Targeted Proofs ---
 
@@ -40,12 +42,13 @@ def test_previously_analyzed_are_skipped(test_env):
     store.save(msg_id, ref_date, {"Subject": "Done", "From": "user@example.com"}, {})
     # Manually create sidecar
     store.save_sidecar(msg_id, "analysis.json", {"status": "pre-existing"})
-    
+
     analyzer = EmailAnalyzer(store, provider=DummyProvider())
     result = analyzer.process_queue(lookback_days=1, reference_date=ref_date)
-    
+
     assert result["processed"] == 0
     assert result.get("status") == "idle"
+
 
 def test_older_messages_skipped(test_env):
     """Proof: Emails older than the lookback window are ignored."""
@@ -53,34 +56,37 @@ def test_older_messages_skipped(test_env):
     old_id = "ancient_history"
     # 30 days before ref_date
     store.save(old_id, ref_date - timedelta(days=30), {"Subject": "Old", "From": "user@example.com"}, {})
-    
+
     analyzer = EmailAnalyzer(store, provider=DummyProvider())
     result = analyzer.process_queue(lookback_days=7, reference_date=ref_date)
-    
+
     assert result["processed"] == 0
     # Verification: check no analysis sidecar was created
     sidecars = list(data_dir.glob("*.analysis.json"))
     assert len(sidecars) == 0
+
 
 def test_message_processing_limit(test_env):
     """Proof: The analyzer honors the batch 'limit' argument."""
     store, _, ref_date = test_env
     for i in range(5):
         store.save(f"msg_{i}", ref_date, {"Subject": f"Batch {i}", "From": "user@example.com"}, {})
-    
+
     analyzer = EmailAnalyzer(store, provider=DummyProvider())
     result = analyzer.process_queue(limit=3, reference_date=ref_date)
-    
+
     assert result["processed"] == 3
+
 
 def test_ran_out_of_messages(test_env):
     """Proof: Returns idle status when no pending messages exist."""
     store, _, ref_date = test_env
     analyzer = EmailAnalyzer(store, provider=DummyProvider())
     result = analyzer.process_queue(reference_date=ref_date)
-    
+
     assert result["processed"] == 0
     assert result["status"] == "idle"
+
 
 # --- Integration / Multi-Cycle ---
 

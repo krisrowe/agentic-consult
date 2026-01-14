@@ -1,15 +1,15 @@
 import click
 import sys
 from pathlib import Path
-from agentic_consult.config import load_main_config, save_main_config, get_default_settings_dir
+from agentic_consult.config import load_main_config, save_main_config, get_settings_dir
 
 def get_default_user_home_config():
     """
     Returns the default configuration dictionary for user_home backups.
     Shared by 'init-defaults' and 'consult config init'.
     """
-    # Calculate default tool config path
-    default_settings_dir = get_default_settings_dir()
+    # Calculate default tool config path (respects CONSULT_CONFIG_DIR for test isolation)
+    default_settings_dir = get_settings_dir()
     try:
         relative_path = default_settings_dir.relative_to(Path.home())
         tool_config_path = str(relative_path)

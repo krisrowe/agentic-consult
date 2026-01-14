@@ -15,6 +15,7 @@ from .context import context
 from .chat import chat
 from .services import services
 from .cloud import cloud
+from .image import image
 
 @click.group()
 def main():
@@ -36,6 +37,7 @@ main.add_command(context)
 main.add_command(chat)
 main.add_command(services)
 main.add_command(cloud)
+main.add_command(image)
 
 if __name__ == "__main__":
     main()

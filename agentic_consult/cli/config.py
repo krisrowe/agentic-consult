@@ -5,7 +5,7 @@ import yaml
 import os
 
 from agentic_consult.customers import get_active_customers_root
-from agentic_consult.config import load_main_config, save_main_config, get_config_path, get_default_settings_dir
+from agentic_consult.config import load_main_config, save_main_config, get_config_path
 from .user_home import user_home_cli, get_default_user_home_config
 
 
