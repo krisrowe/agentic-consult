@@ -120,14 +120,7 @@ consult precommit
 make test
 ```
 
-4. **Cloud deployment** (optional):
-```bash
-consult cloud config init    # setup project/secrets
-consult cloud deploy         # deploy to GCP
-consult cloud scheduler list # manage schedules
-```
-
-See [deploy/DESIGN.md](deploy/DESIGN.md) for architecture details.
+4. **Cloud deployment** (optional) - see [Cloud Deployment](#cloud-deployment) section below.
 
 ## Key Commands
 
@@ -256,6 +249,119 @@ consult config show
 # Change the storage location (e.g., to a private configuration repo)
 consult config set local_data /home/user/private-config-repo/agentic-consult/data
 ```
+
+## Cloud Deployment
+
+Deploy the email triage system to Google Cloud for automated background processing. See [deploy/DESIGN.md](deploy/DESIGN.md) for architecture details.
+
+### Prerequisites
+
+**GCP Setup:**
+- A GCP project with billing enabled
+- `gcloud` CLI installed and authenticated (`gcloud auth login`)
+- User must have **Editor** role (or equivalent: Cloud Run Admin, Secret Manager Admin, Storage Admin, Cloud Scheduler Admin)
+
+**Create a new project (if needed):**
+```bash
+# Create project
+gcloud projects create my-consult-project --name="My Consult Project"
+
+# Link to billing account (find your billing ID in Cloud Console)
+gcloud billing projects link my-consult-project --billing-account=XXXXXX-XXXXXX-XXXXXX
+
+# Enable required APIs
+gcloud services enable \
+  run.googleapis.com \
+  secretmanager.googleapis.com \
+  cloudscheduler.googleapis.com \
+  containerregistry.googleapis.com \
+  --project=my-consult-project
+```
+
+**Dependencies:**
+- [gmail-extractor](https://github.com/krisrowe/gmail-extractor) - Fetches emails from Gmail API
+
+```bash
+# Clone the gmail-extractor repo (needed to build the fetcher image)
+git clone https://github.com/krisrowe/gmail-extractor.git
+```
+
+### Step-by-Step Deployment
+
+**1. Initialize cloud environment:**
+
+```bash
+# If you have ONE project, just run init (prompts for missing secrets)
+consult cloud config init --project=my-consult-project
+
+# If secrets already exist in GCP, init detects them automatically
+consult cloud config init --project=my-consult-project
+```
+
+`init` will:
+- Validate or prompt for required secrets (`gemini-api-key`, `gmail-token`)
+- Create or identify the storage bucket (labeled `agentic-consult=default`)
+- Save `project_id` and `bucket_name` to local config
+
+**Providing secrets during init:**
+```bash
+# Pass secrets directly (non-interactive)
+consult cloud config init \
+  --project=my-consult-project \
+  --gemini-api-key="AIza..." \
+  --gmail-token-path=~/token.json \
+  --allow-create-bucket
+```
+
+**2. Build and push Docker images:**
+
+```bash
+# From gmail-extractor repo - build and push the fetcher
+cd ~/gmail-extractor
+make push PROJECT=my-consult-project
+
+# From agentic-consult repo - build and push the analyzer
+cd ~/agentic-consult
+consult image build
+consult image push my-consult-project
+```
+
+**3. Deploy infrastructure:**
+
+```bash
+consult cloud deploy
+```
+
+This runs terraform to create Cloud Run Jobs and Cloud Scheduler triggers.
+
+**4. Verify and adjust schedules:**
+
+```bash
+# List current schedules
+consult cloud scheduler list
+
+# Adjust frequency (minutes)
+consult cloud scheduler set fetcher 15   # every 15 min
+consult cloud scheduler set analyzer 20  # every 20 min
+
+# Trigger immediate run
+consult cloud scheduler run fetcher
+```
+
+### Optional: Project Labeling for Auto-Discovery
+
+If you manage multiple GCP projects, you can label them to avoid passing `--project` every time:
+
+```bash
+# Label your project (one-time setup)
+gcloud projects update my-consult-project \
+  --update-labels=agentic-consult=default
+
+# Now init auto-discovers the project
+consult cloud config init  # finds project via label
+```
+
+This is optional - `--project` works fine for single-project setups.
 
 ## Development
 
