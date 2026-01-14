@@ -1,0 +1,10 @@
+# Project exists with agentic-consult label, no bucket yet
+projects:
+  test-project-123:
+    labels:
+      agentic-consult: default
+
+buckets: {}
+secrets: {}
+images: {}
+scheduler_jobs: {}

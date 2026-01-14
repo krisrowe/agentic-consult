@@ -113,14 +113,21 @@ consult customers init --slug acme --name "Acme Corp"
 2. **Run precommit scan:**
 ```bash
 consult precommit
-# Or via make
-make precommit
 ```
 
 3. **Run tests:**
 ```bash
 make test
 ```
+
+4. **Cloud deployment** (optional):
+```bash
+consult cloud config init    # setup project/secrets
+consult cloud deploy         # deploy to GCP
+consult cloud scheduler list # manage schedules
+```
+
+See [deploy/DESIGN.md](deploy/DESIGN.md) for architecture details.
 
 ## Key Commands
 

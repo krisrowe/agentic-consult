@@ -6,21 +6,26 @@ terraform {
     }
     external = {
       source  = "hashicorp/external"
-      version = "2.3.1"
+      version = "~> 2.3"
     }
   }
 }
 
 # 1. Resolve Project & Bucket Context
+# Uses paths.py directly (stdlib only, no package install needed).
+# See deploy/DESIGN.md "paths.py Pattern" for rationale.
 data "external" "project_info" {
-  program = ["python3", "-m", "agentic_consult.cli.main", "cloud", "config", "resolve"]
-  working_dir = "${path.module}/../../"
+  program = ["python3", "${path.module}/../../agentic_consult/paths.py"]
 }
 
 locals {
   project_id  = data.external.project_info.result.project_id
   bucket_name = data.external.project_info.result.bucket_name
   region      = "us-central1"
+
+  # Image references
+  analyzer_image = "gcr.io/${local.project_id}/consult-analyzer:latest"
+  fetcher_image  = "gcr.io/${local.project_id}/gmex-fetcher:latest"
 }
 
 provider "google" {
@@ -61,7 +66,58 @@ resource "google_project_iam_member" "secret_accessor" {
   member  = "serviceAccount:${google_service_account.analyzer_sa.email}"
 }
 
-# 4. Cloud Run Job: Analyzer
+# Grant ability to invoke Cloud Run jobs (needed for scheduler)
+resource "google_project_iam_member" "run_invoker" {
+  project = local.project_id
+  role    = "roles/run.invoker"
+  member  = "serviceAccount:${google_service_account.analyzer_sa.email}"
+}
+
+# 4a. Cloud Run Job: Fetcher (gmex)
+resource "google_cloud_run_v2_job" "fetcher_job" {
+  name     = "gmex-fetcher"
+  location = local.region
+
+  template {
+    template {
+      service_account = google_service_account.analyzer_sa.email
+
+      containers {
+        image = local.fetcher_image
+
+        env {
+          name  = "EMAIL_ARCHIVE_DATA_DIR"
+          value = "/mnt/gcs/email-archive"
+        }
+
+        # Gmail OAuth credentials (JSON blob stored in Secret Manager)
+        env {
+          name = "GOOGLE_APPLICATION_CREDENTIALS"
+          value_source {
+            secret_key_ref {
+              secret  = "gmail-oauth-credentials"
+              version = "latest"
+            }
+          }
+        }
+
+        volume_mounts {
+          name       = "gcs-volume"
+          mount_path = "/mnt/gcs"
+        }
+      }
+
+      volumes {
+        name = "gcs-volume"
+        gcs {
+          bucket = google_storage_bucket.data_bucket.name
+        }
+      }
+    }
+  }
+}
+
+# 4b. Cloud Run Job: Analyzer
 resource "google_cloud_run_v2_job" "analyzer_job" {
   name     = "consult-analyzer"
   location = local.region
@@ -71,7 +127,7 @@ resource "google_cloud_run_v2_job" "analyzer_job" {
       service_account = google_service_account.analyzer_sa.email
 
       containers {
-        image = "gcr.io/${local.project_id}/consult-analyzer:latest"
+        image = local.analyzer_image
 
         env {
           name  = "EMAIL_ARCHIVE_DATA_DIR"
@@ -105,11 +161,38 @@ resource "google_cloud_run_v2_job" "analyzer_job" {
   }
 }
 
-# 5. Hourly Trigger
-resource "google_cloud_scheduler_job" "hourly_analysis" {
+# 5a. Trigger: Fetcher (runs every 30 mins at :00, :30)
+resource "google_cloud_scheduler_job" "periodic_fetch" {
+  name             = "trigger-email-fetch"
+  description      = "Triggers the gmex fetcher job every 30 minutes"
+  schedule         = "0,30 * * * *"
+  time_zone        = "Etc/UTC"
+  attempt_deadline = "320s"
+
+  retry_config {
+    retry_count = 1
+  }
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://${google_cloud_run_v2_job.fetcher_job.location}-run.googleapis.com/apis/run.googleapis.com/v1/${google_cloud_run_v2_job.fetcher_job.id}:run"
+
+    oauth_token {
+      service_account_email = google_service_account.analyzer_sa.email
+    }
+  }
+
+  # Allow schedule to be changed via Console without terraform overwriting it
+  lifecycle {
+    ignore_changes = [schedule]
+  }
+}
+
+# 5b. Trigger: Analyzer (runs every 30 mins at :05, :35 - after fetcher)
+resource "google_cloud_scheduler_job" "periodic_analysis" {
   name             = "trigger-email-analysis"
-  description      = "Triggers the agentic-consult analyzer job every hour"
-  schedule         = "0 * * * *"
+  description      = "Triggers the agentic-consult analyzer job every 30 minutes"
+  schedule         = "5,35 * * * *"
   time_zone        = "Etc/UTC"
   attempt_deadline = "320s"
 
@@ -124,5 +207,10 @@ resource "google_cloud_scheduler_job" "hourly_analysis" {
     oauth_token {
       service_account_email = google_service_account.analyzer_sa.email
     }
+  }
+
+  # Allow schedule to be changed via Console without terraform overwriting it
+  lifecycle {
+    ignore_changes = [schedule]
   }
 }

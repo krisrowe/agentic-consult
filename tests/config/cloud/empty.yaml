@@ -1,0 +1,6 @@
+# No GCP resources exist
+projects: {}
+buckets: {}
+secrets: {}
+images: {}
+scheduler_jobs: {}

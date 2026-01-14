@@ -1,4 +1,9 @@
-.PHONY: install venv
+.PHONY: install venv docker-build push
+
+# GCP project for container registry (override with: make push PROJECT=my-project)
+PROJECT ?= $(shell gcloud config get-value project 2>/dev/null)
+IMAGE_NAME = consult-analyzer
+IMAGE_TAG ?= latest
 
 install:
 	@command -v pipx >/dev/null 2>&1 || (echo "pipx not found; please install pipx or run 'make venv'"; exit 1)
@@ -92,7 +97,19 @@ precommit-verbose:
 run-analyzer:
 	@. .venv/bin/activate && PYTHONPATH=. python3 -m agentic_consult.email.analyzer
 
+# Build Docker image for analyzer
+docker-build:
+	@echo "Building Docker image $(IMAGE_NAME):$(IMAGE_TAG)..."
+	docker build --target analyzer -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	@echo "Done."
 
+# Push Docker image to Google Container Registry
+push: docker-build
+	@if [ -z "$(PROJECT)" ]; then echo "Error: PROJECT not set. Run: make push PROJECT=your-project-id"; exit 1; fi
+	@echo "Tagging and pushing to gcr.io/$(PROJECT)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	docker tag $(IMAGE_NAME):$(IMAGE_TAG) gcr.io/$(PROJECT)/$(IMAGE_NAME):$(IMAGE_TAG)
+	docker push gcr.io/$(PROJECT)/$(IMAGE_NAME):$(IMAGE_TAG)
+	@echo "Done. Image available at: gcr.io/$(PROJECT)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 .PHONY: help refresh preview ensure-exec
 

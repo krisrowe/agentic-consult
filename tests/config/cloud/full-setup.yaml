@@ -1,0 +1,39 @@
+# Complete setup: labeled project, labeled bucket, secrets present
+projects:
+  test-project-123:
+    labels:
+      agentic-consult: default
+
+buckets:
+  consult-data-test-project-123:
+    project: test-project-123
+    labels:
+      agentic-consult: default
+
+secrets:
+  gemini-api-key:
+    project: test-project-123
+    value: "test-api-key-value"
+  gmail-token:
+    project: test-project-123
+    value: '{"token": "test-token"}'
+
+images:
+  gmex-fetcher:
+    project: test-project-123
+  consult-analyzer:
+    project: test-project-123
+
+scheduler_jobs:
+  trigger-email-fetch:
+    project: test-project-123
+    location: us-central1
+    schedule: "0,30 * * * *"
+    state: ENABLED
+    timeZone: UTC
+  trigger-email-analysis:
+    project: test-project-123
+    location: us-central1
+    schedule: "5,35 * * * *"
+    state: ENABLED
+    timeZone: UTC
