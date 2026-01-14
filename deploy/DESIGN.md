@@ -46,50 +46,15 @@ Each repo owns its Docker image. The terraform in agentic-consult references bot
 
 ## CLI Commands
 
-### Deployment
+For step-by-step deployment instructions, see [README.md](../README.md#cloud-deployment).
 
-```bash
-# Initial setup (project, bucket, secrets)
-consult cloud config init
-
-# Deploy infrastructure (runs terraform)
-consult cloud deploy
-```
-
-### Scheduler Management
-
-```bash
-# View schedules
-consult cloud scheduler list
-consult cloud scheduler show fetcher
-
-# Set schedule (simple - minutes)
-consult cloud scheduler set fetcher 15      # every 15 mins
-consult cloud scheduler set analyzer 30     # every 30 mins
-
-# Set schedule (advanced - raw cron)
-consult cloud scheduler set fetcher '0 9 * * *' --cron
-
-# Control
-consult cloud scheduler pause fetcher
-consult cloud scheduler resume fetcher
-consult cloud scheduler run fetcher         # trigger now
-```
-
-## Building & Pushing Images
-
-### From gmail-extractor repo:
-```bash
-make build && make push                     # builds + pushes gmex-fetcher
-make build && make push PROJECT=my-project  # explicit project
-```
-
-### From agentic-consult repo:
-```bash
-consult image build                         # builds consult-analyzer
-consult image push                          # pushes to GCR (uses project from config)
-consult image push my-project               # explicit project
-```
+| Command | Purpose |
+|---------|---------|
+| `consult cloud config init` | Initialize project, bucket, secrets |
+| `consult cloud deploy` | Run terraform to create infrastructure |
+| `consult cloud scheduler list` | View scheduler jobs and schedules |
+| `consult cloud scheduler set <job> <mins>` | Update job frequency |
+| `consult image build` / `push` | Build and push analyzer image |
 
 ## Terraform Behavior
 
@@ -104,33 +69,9 @@ The terraform creates schedulers with default schedules but uses `lifecycle { ig
 | Secret ID | Description | Used By |
 |-----------|-------------|---------|
 | `gemini-api-key` | Gemini API key | analyzer |
-| `gmail-oauth-credentials` | Gmail OAuth token JSON | fetcher |
+| `gmail-token` | Gmail OAuth token JSON | fetcher |
 
-Create secrets via:
-```bash
-consult cloud config init --gemini-api-key=... --gmail-token-path=~/token.json
-```
-
-## Deployment Workflow
-
-```bash
-# 1. One-time: Initialize cloud environment
-consult cloud config init
-
-# 2. Build and push images (from each repo)
-# In gmail-extractor repo:
-make build && make push
-
-# In agentic-consult repo:
-consult image build && consult image push
-
-# 3. Deploy infrastructure
-consult cloud deploy
-
-# 4. Adjust schedules as needed
-consult cloud scheduler set fetcher 15
-consult cloud scheduler set analyzer 20
-```
+Secrets are created/updated via `consult cloud config init`. See [README.md](../README.md#cloud-deployment) for the full deployment workflow.
 
 ## Resource Discovery & Configuration
 
@@ -181,11 +122,9 @@ The environment alias is used only for discovery - only the concrete `project_id
 | User knows | Command | What happens |
 |------------|---------|--------------|
 | Nothing | `consult cloud config init` | Searches `agentic-consult=default`, finds project |
-| Environment name | `consult cloud config init prod` | Searches `agentic-consult=prod`, finds project |
-| Project ID | `consult cloud config init --project=xyz` | Uses `xyz` directly |
+| Project ID | `consult cloud config init --project=xyz` | Uses `xyz` directly, skips label search |
 
-> **Note**: The environment alias argument (`init prod`) is planned but not yet implemented.
-> See [#24](https://github.com/krisrowe/agentic-consult/issues/24) for status and details.
+Environment alias support (`init prod` for `agentic-consult=prod`) is tracked in [#24](https://github.com/krisrowe/agentic-consult/issues/24).
 
 ### Terraform Integration & paths.py Pattern
 
