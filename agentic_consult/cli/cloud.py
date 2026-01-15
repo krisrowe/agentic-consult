@@ -227,10 +227,6 @@ def cloud_init(project, bucket, gemini_api_key, gmail_token_path, allow_create_b
 # See deploy/DESIGN.md "paths.py Pattern" for rationale.
 
 
-# Import from status module to avoid duplication
-from ..cloud.status import REQUIRED_IMAGES
-
-
 @cloud.command("pre-deploy")
 @click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text", help="Output format")
 def cloud_pre_deploy(output_format: str):
