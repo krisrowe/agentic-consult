@@ -28,7 +28,7 @@ setup(
     entry_points={
         "console_scripts": [
             "consult=agentic_consult.cli.main:main",
-            "consult-mcp=agentic_consult.mcp.server:run_server",
+            "consult-mcp=agentic_consult.mcp.stdio:run_server",
         ],
     },
     python_requires=">=3.10",
