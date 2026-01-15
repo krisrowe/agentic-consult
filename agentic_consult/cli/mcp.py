@@ -161,33 +161,111 @@ def mcp_status(test: bool):
 
 
 @mcp.command("register")
+@click.argument("target", type=click.Choice(["local", "cloud"]))
+@click.argument("client", type=click.Choice(["gemini", "claude"]))
 @click.option("--name", default="consult", help="Server name for registration")
 @click.option("--scope", type=click.Choice(["user", "project"]), default="user", help="Where to save")
-@click.option("--run", is_flag=True, help="Execute the command instead of just showing it")
-def mcp_register(name: str, scope: str, run: bool):
-    """Output or run the aicfg command to register this MCP server.
+@click.option("--guide-only", is_flag=True, help="Output guidance without exit 1 (for broken combos)")
+def mcp_register(target: str, client: str, name: str, scope: str, guide_only: bool):
+    """Register MCP server with Gemini or Claude.
+
+    \b
+    Targets:
+        local  - Register local stdio server (consult-mcp)
+        cloud  - Register cloud HTTP server (requires mcp_url config)
+
+    \b
+    Note: 'cloud gemini' requires gemini CLI >= 0.24.0 (HTTP bug fix).
+    Use --guide-only to get upgrade command without exit 1.
 
     \b
     Examples:
-        consult mcp register              # Show command
-        consult mcp register --run        # Execute it
-        consult mcp register --scope project --run
+        consult mcp register local gemini
+        consult mcp register local claude
+        consult mcp register cloud gemini --guide-only
+        consult mcp register cloud claude --name my-consult
     """
+    import subprocess
+    import shutil
+
     config = load_main_config()
-    url = config.get("mcp_url")
-    pat = config.get("personal_access_token")
 
-    if not url or not pat:
-        click.secho("Error: MCP not configured. Run 'consult mcp import' first.", fg="red")
-        sys.exit(1)
+    if target == "cloud":
+        url = config.get("mcp_url")
+        pat = config.get("personal_access_token")
+        if not url or not pat:
+            click.secho("Error: Cloud MCP not configured. Run 'consult mcp import' first.", fg="red", err=True)
+            sys.exit(1)
 
-    # Build URL with embedded token
-    full_url = f"{url.rstrip('/')}?token={pat}"
-    cmd = f'aicfg mcp add --name {name} --url "{full_url}" --scope {scope}'
+    # Check CLI availability
+    if client == "gemini":
+        if not shutil.which("gemini"):
+            click.secho("Error: 'gemini' CLI not found in PATH.", fg="red", err=True)
+            sys.exit(1)
+    elif client == "claude":
+        if not shutil.which("claude"):
+            click.secho("Error: 'claude' CLI not found in PATH.", fg="red", err=True)
+            sys.exit(1)
 
-    if run:
-        import subprocess
-        result = subprocess.run(cmd, shell=True)
-        sys.exit(result.returncode)
-    else:
-        click.echo(cmd)
+    # Build and run command
+    if target == "local":
+        if client == "gemini":
+            # gemini mcp add is idempotent
+            cmd = ["gemini", "mcp", "add", name, "consult-mcp", "--scope", scope]
+            result = subprocess.run(cmd)
+            sys.exit(result.returncode)
+
+        elif client == "claude":
+            # claude mcp add fails if exists, so remove first
+            subprocess.run(["claude", "mcp", "remove", name, "-s", scope],
+                          capture_output=True)  # ignore errors
+            cmd = ["claude", "mcp", "add", "-s", scope, name, "consult-mcp"]
+            result = subprocess.run(cmd)
+            sys.exit(result.returncode)
+
+    elif target == "cloud":
+        if client == "gemini":
+            # Check gemini version - HTTP is broken in < 0.24.0
+            # See: https://github.com/google-gemini/gemini-cli/issues/16169
+            # Default to True (assume newer) if version check fails
+            version_ok = True
+            try:
+                result = subprocess.run(["gemini", "--version"], capture_output=True, text=True)
+                version_str = result.stdout.strip()
+                parts = version_str.split(".")
+                if len(parts) >= 2:
+                    major, minor = int(parts[0]), int(parts[1])
+                    version_ok = (major, minor) >= (0, 24)
+            except Exception as e:
+                import logging
+                logging.warning(f"Could not check gemini version: {e}. Assuming >= 0.24.0")
+
+            full_url = f'{url.rstrip("/")}?token={pat}'
+
+            if version_ok:
+                # v0.24.0+ - use gemini CLI directly
+                cmd = ["gemini", "mcp", "add", name, full_url, "--scope", scope]
+                result = subprocess.run(cmd)
+                sys.exit(result.returncode)
+            elif guide_only:
+                click.echo("npm i -g @google/gemini-cli@latest")
+                sys.exit(0)
+            else:
+                click.secho("Error: 'gemini mcp add' is broken for HTTP in < v0.24.0", fg="red", err=True)
+                click.secho("See: https://github.com/google-gemini/gemini-cli/issues/16169", err=True)
+                click.secho("Upgrade: npm i -g @google/gemini-cli@latest", fg="yellow", err=True)
+                sys.exit(1)
+
+        elif client == "claude":
+            # claude mcp add works for HTTP with headers
+            subprocess.run(["claude", "mcp", "remove", name, "-s", scope],
+                          capture_output=True)  # ignore errors
+            cmd = [
+                "claude", "mcp", "add",
+                "--transport", "http",
+                "--header", f"Authorization: Bearer {pat}",
+                "-s", scope,
+                name, url
+            ]
+            result = subprocess.run(cmd)
+            sys.exit(result.returncode)
