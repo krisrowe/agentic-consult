@@ -25,7 +25,7 @@ def image_build():
     data = load_main_config()
     project_id = data.get("project_id")
     if not project_id:
-        click.secho("Error: project_id not set. Run: consult cloud config init", fg="red")
+        click.secho("Error: project_id not set. Run: consult cloud init", fg="red")
         sys.exit(1)
 
     img = f"gcr.io/{project_id}/consult-analyzer:latest"
@@ -44,7 +44,7 @@ def image_push(project_id: str):
         data = load_main_config()
         project_id = data.get("project_id")
     if not project_id:
-        click.secho("Error: project_id required. Pass as argument or run: consult cloud config init", fg="red")
+        click.secho("Error: project_id required. Pass as argument or run: consult cloud init", fg="red")
         sys.exit(1)
 
     img = f"gcr.io/{project_id}/consult-analyzer:latest"

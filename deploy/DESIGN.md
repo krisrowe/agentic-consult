@@ -44,17 +44,18 @@ The email triage system consists of two Cloud Run Jobs orchestrated by Cloud Sch
 
 Each repo owns its Docker image. The terraform in agentic-consult references both images.
 
-## CLI Commands
+## Commands
 
 For step-by-step deployment instructions, see [README.md](../README.md#cloud-deployment).
 
 | Command | Purpose |
 |---------|---------|
-| `consult cloud config init` | Initialize project, bucket, secrets |
-| `consult cloud deploy` | Run terraform to create infrastructure |
-| `consult cloud scheduler list` | View scheduler jobs and schedules |
-| `consult cloud scheduler set <job> <mins>` | Update job frequency |
-| `consult image build` / `push` | Build and push analyzer image |
+| `./cloud init` | Initialize project, bucket, secrets |
+| `./cloud status` | Show current cloud resource status (read-only) |
+| `./cloud pre-deploy` | Check readiness and output terraform commands |
+| `./cloud scheduler list` | View scheduler jobs and schedules |
+| `./cloud scheduler set <job> <mins>` | Update job frequency |
+| `./cloud image build` / `push` | Build and push analyzer image |
 
 ## Terraform Behavior
 
@@ -62,7 +63,7 @@ The terraform creates schedulers with default schedules but uses `lifecycle { ig
 
 1. **First deploy**: Creates with default schedule (30 min)
 2. **Subsequent deploys**: Does NOT overwrite manual schedule changes
-3. **CLI is source of truth**: Use `consult cloud scheduler set` to change schedules
+3. **CLI is source of truth**: Use `./cloud scheduler set` to change schedules
 
 ## Required Secrets
 
@@ -71,7 +72,7 @@ The terraform creates schedulers with default schedules but uses `lifecycle { ig
 | `gemini-api-key` | Gemini API key | analyzer |
 | `gmail-token` | Gmail OAuth token JSON | fetcher |
 
-Secrets are created/updated via `consult cloud config init`. See [README.md](../README.md#cloud-deployment) for the full deployment workflow.
+Secrets are created/updated via `./cloud init`. See [README.md](../README.md#cloud-deployment) for the full deployment workflow.
 
 ## Resource Discovery & Configuration
 
@@ -97,6 +98,8 @@ Secrets are created/updated via `consult cloud config init`. See [README.md](../
 
 **Rationale**: Both values are stored locally for fast, offline access (especially for terraform `resolve` during tests). To prevent staleness, `deploy` validates that the configured bucket matches the labeled bucket in GCP before running terraform. If they diverge, the user must re-run `init`.
 
+**Intentional Design: `project_id` is write-protected**. There is no direct way for users to set `project_id` in config. It is only written by a successful `init` command after validating that the project exists and is accessible. This ensures that the config always reflects a validated, working project. If the configured project becomes inaccessible, `init` will fail with a helpful error message directing the user to verify their access or use `--project` to specify a different project.
+
 ### Multi-Environment Model
 
 This design supports **multiple projects as environments**, not multiple environments per project:
@@ -111,8 +114,8 @@ Project B (agentic-consult=staging)
 
 To switch environments, run `init` targeting a different project label:
 ```bash
-consult cloud config init prod      # uses agentic-consult=prod
-consult cloud config init staging   # uses agentic-consult=staging
+./cloud init prod      # uses agentic-consult=prod
+./cloud init staging   # uses agentic-consult=staging
 ```
 
 The environment alias is used only for discovery - only the concrete `project_id` is saved.
@@ -121,42 +124,76 @@ The environment alias is used only for discovery - only the concrete `project_id
 
 | User knows | Command | What happens |
 |------------|---------|--------------|
-| Nothing | `consult cloud config init` | Searches `agentic-consult=default`, finds project |
-| Project ID | `consult cloud config init --project=xyz` | Uses `xyz` directly, skips label search |
+| Nothing | `./cloud init` | Searches `agentic-consult=default`, finds project |
+| Project ID | `./cloud init --project=xyz` | Uses `xyz` directly, skips label search |
 
 Environment alias support (`init prod` for `agentic-consult=prod`) is tracked in [#24](https://github.com/krisrowe/agentic-consult/issues/24).
 
-### Terraform Integration & paths.py Pattern
+### CLI/Terraform Decoupling
 
-Terraform gets coordinates via an external data source that runs `paths.py` directly:
+**Critical Design Decision**: Terraform and the CLI are **fully decoupled**. Terraform does NOT call any Python code from the repository.
+
+#### The Problem (Why We Decoupled)
+
+When you install the CLI via `pipx`, you get a frozen snapshot of the code at that version. But when you `git clone` the repo to run terraform, you get a potentially different version. If terraform called Python code from the repo (e.g., via `data "external"`), you'd have:
+
+- **CLI version A** installed via pipx (stable, tested)
+- **Terraform calling version B** from the git clone (potentially newer/different)
+
+This creates subtle bugs where terraform uses different logic than the CLI, and makes the system harder to reason about.
+
+#### The Solution (Input Variables)
+
+Terraform uses **input variables** (`-var` flags) instead of calling Python:
 
 ```hcl
-data "external" "project_info" {
-  program = ["python3", "${path.module}/../../agentic_consult/paths.py"]
+variable "project_id" {
+  description = "GCP Project ID"
+  type        = string
+}
+
+variable "bucket_name" {
+  description = "GCS bucket name for email archive"
+  type        = string
 }
 ```
 
-#### The paths.py Pattern (Intentional - Preserve During Refactoring)
+The CLI's `pre-deploy` command:
+1. Reads configuration from local settings
+2. Checks deploy readiness via the cloud SDK
+3. Outputs the full terraform commands with variables filled in
 
-`agentic_consult/paths.py` is a **dual-purpose module** that can be:
+```bash
+$ ./cloud pre-deploy
 
-1. **Imported as a library** by CLI, SDK, MCP code:
-   ```python
-   from agentic_consult.paths import get_settings_dir, load_settings
-   ```
+Ready to deploy. Run:
 
-2. **Run directly as a script** (no package install needed):
-   ```bash
-   python3 agentic_consult/paths.py
-   # Outputs: {"project_id": "...", "bucket_name": "..."}
-   ```
+  cd deploy/terraform
+  terraform init
+  terraform apply -var="project_id=my-project" -var="bucket_name=my-bucket"
+```
 
-**Key constraints** (preserve these):
-- **Stdlib only** - no external dependencies (os, json, pathlib only)
-- **Self-contained** - all path resolution logic lives here
-- **`if __name__ == "__main__"`** block outputs JSON for terraform
+Users copy-paste these commands to run terraform. The CLI never invokes terraform directly.
 
-This pattern is used in other repos (e.g., `gmex_sdk/paths.py` in gmail-extractor, where Makefile uses it to export env vars for Docker - that one outputs shell `KEY=value` format for `eval`, ours outputs JSON for terraform). The pattern should be preserved during refactoring. The `config.py` module imports from `paths.py` to avoid duplication.
+#### Benefits
+
+1. **Version safety**: Terraform logic is self-contained; CLI version doesn't affect it
+2. **Testability**: Terraform can be validated without Python dependencies
+3. **Transparency**: Users see exactly what terraform commands will run
+4. **Flexibility**: Can run terraform directly without the CLI if needed
+
+#### SDK/CLI Separation
+
+The cloud module follows a consistent SDK/CLI separation:
+
+| Layer | Function | Returns |
+|-------|----------|---------|
+| SDK | `read_cloud_status(provider, project_id)` | `CloudStatus` dataclass |
+| SDK | `pre_deploy(provider, project_id, bucket_name)` | `PreDeployResult` dataclass |
+| CLI | `./cloud status` | Formatted text output |
+| CLI | `./cloud pre-deploy` | Text or JSON (`--format` flag) |
+
+The SDK functions are pure data; they return structured objects. The CLI formats them for human consumption or passes them through as JSON for machine consumption.
 
 ### Staleness Prevention
 
@@ -174,3 +211,75 @@ Terraform validation tests can run without GCP access:
 - Test creates a fake config with `project_id` and `bucket_name`
 - `resolve` reads from config (no network calls)
 - Terraform validates syntax without hitting GCP
+
+## Zero-Install Design (`./cloud`)
+
+### Rationale
+
+Deployment tools should be **repo-centric**. Every major deployment tool (Terraform, CDK, Pulumi, Serverless, Ansible) runs from the directory containing configuration files. They don't install globally and deploy arbitrary projects.
+
+Installing a global CLI for deployment creates problems:
+1. **Version mismatch**: Installed CLI version may differ from repo code
+2. **Implicit dependencies**: Must remember to update CLI when updating repo
+3. **Environment pollution**: Global install affects all projects
+
+### Design Decision
+
+All cloud administration and deployment commands are available via `./cloud`, a stdlib-only dispatcher in the repo root. **No pip, no venv, no pipx required** - just Python 3.10+.
+
+```bash
+# After git clone, immediately usable:
+./cloud status
+./cloud init --project=my-project
+./cloud pre-deploy
+./cloud scheduler list
+./cloud image build
+```
+
+The `./cloud` dispatcher routes to modular scripts in `deploy/scripts/`, all using only Python standard library plus the repo's own `agentic_consult.cloud` SDK (which is also stdlib-only).
+
+### What Uses Venv (via Make)
+
+Virtual environments are **only** used for testing, wrapped in Make targets:
+
+| Command | Purpose | Why venv needed |
+|---------|---------|-----------------|
+| `make test` | Run unit tests | pytest |
+| `make test-integration` | Run integration tests | pytest |
+| `make precommit` | Pre-commit checks | pytest + scanner |
+
+These are developer workflows, not deployment workflows. Users running `make test` are developing, not deploying.
+
+### Architecture
+
+```
+./cloud                      # Dispatcher (stdlib, executable via shebang)
+deploy/scripts/
+  _common.py                 # Shared utilities (colors, prompts, config)
+  init.py                    # Full init with interactive prompts
+  status.py                  # Show cloud status
+  pre_deploy.py              # Check readiness, output terraform commands
+  scheduler.py               # Scheduler management
+  image.py                   # Docker build/push
+```
+
+Each script can also be run directly: `python deploy/scripts/status.py --help`
+
+### Why Not Click/Typer?
+
+Click is excellent for large CLIs with many nested commands. For ~10 deployment commands:
+- **argparse** (stdlib) is sufficient and adds zero dependencies
+- Interactive prompts use `input()` and `getpass.getpass()`
+- Colors use simple ANSI codes
+
+The slight verbosity cost is worth the zero-install benefit.
+
+### Relationship to `consult` CLI
+
+| Tool | Installed via | Purpose | Audience |
+|------|---------------|---------|----------|
+| `./cloud` | git clone | Deployment, cloud admin | Server Admin (has repo) |
+| `consult` | pipx | MCP server, daily tools | Agent User (may not have repo) |
+| `consult-mcp` | pipx | Run local MCP server | Agent User (local MCP) |
+
+The `consult` CLI still exists for users who don't have the repo cloned (e.g., running local MCP server). But for deployment, use `./cloud`.

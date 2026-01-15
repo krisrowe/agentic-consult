@@ -35,6 +35,16 @@ class GCloudProvider(CloudProvider):
         except subprocess.CalledProcessError:
             return ""
 
+    def project_exists(self, project_id: str) -> bool:
+        try:
+            _run_cmd([
+                "gcloud", "projects", "describe", project_id,
+                "--format=value(projectId)"
+            ], capture=True)
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
     # --- Bucket Operations ---
 
     def lookup_bucket_by_label(self, project_id: str, label_key: str, label_value: str) -> str:

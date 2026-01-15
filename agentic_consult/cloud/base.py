@@ -7,7 +7,7 @@ class CloudProvider(ABC):
     """
     Abstract interface for cloud operations (GCP).
 
-    Enables testing CLI commands like `cloud config init` without
+    Enables testing CLI commands like `cloud init` without
     subprocess calls to gcloud or real GCP resources.
     """
 
@@ -16,6 +16,11 @@ class CloudProvider(ABC):
     @abstractmethod
     def lookup_project_by_label(self, label_key: str, label_value: str) -> str:
         """Find project ID by label. Returns empty string if not found."""
+        pass
+
+    @abstractmethod
+    def project_exists(self, project_id: str) -> bool:
+        """Check if project exists and is accessible."""
         pass
 
     # --- Bucket Operations ---
