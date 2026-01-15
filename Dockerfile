@@ -19,3 +19,12 @@ RUN pip install -e .
 FROM base as analyzer
 # Default command: perform one-shot analysis
 CMD ["python", "-m", "agentic_consult.email.analyzer"]
+
+# --- MCP HTTP Stage ---
+FROM base as mcp-http
+# Install HTTP dependencies
+RUN pip install -e ".[http]"
+# Expose port for Cloud Run
+EXPOSE 8080
+# Run uvicorn directly (no entry point needed)
+CMD ["uvicorn", "agentic_consult.mcp.http:app", "--host", "0.0.0.0", "--port", "8080"]
