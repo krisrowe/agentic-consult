@@ -308,8 +308,18 @@ agentic_consult/mcp/
 
 Entry points:
 ```
-consult-mcp       → mcp/stdio.py:run_server()       # stdio
-consult-mcp-http  → mcp/http.py:run_http_server()   # uvicorn
+consult-mcp       → mcp/stdio.py:run_server()       # stdio (pipx install)
+```
+
+HTTP has **no entry point** - it runs via uvicorn in Docker:
+```dockerfile
+CMD ["uvicorn", "agentic_consult.mcp.http:app", "--host", "0.0.0.0", "--port", "8080"]
+```
+
+This keeps `consult-mcp-http` out of users' PATH. HTTP deps are optional:
+```bash
+pipx install agentic-consult        # stdio only, no HTTP deps
+pip install agentic-consult[http]   # includes FastAPI, uvicorn (Docker)
 ```
 
 ### User Authentication (HTTP)

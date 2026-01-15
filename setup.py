@@ -20,10 +20,15 @@ setup(
         "rich",
     ],
     extras_require={
+        "http": [
+            "fastapi>=0.100.0",
+            "uvicorn>=0.20.0",
+            "starlette>=0.27.0",
+        ],
         "dev": [
             "pytest>=7.0",
             "jsonschema>=4.0",
-        ]
+        ],
     },
     entry_points={
         "console_scripts": [
