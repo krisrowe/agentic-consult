@@ -104,20 +104,20 @@ resource "google_cloud_run_v2_job" "fetcher_job" {
           value = "/mnt/gcs/email-archive"
         }
 
-        # Gmail OAuth credentials (JSON blob stored in Secret Manager)
+        # Gmail OAuth credentials - point to mounted secret file
         env {
-          name = "GOOGLE_APPLICATION_CREDENTIALS"
-          value_source {
-            secret_key_ref {
-              secret  = "gmail-token"
-              version = "latest"
-            }
-          }
+          name  = "GOOGLE_APPLICATION_CREDENTIALS"
+          value = "/secrets/gmail-token/credentials.json"
         }
 
         volume_mounts {
           name       = "gcs-volume"
           mount_path = "/mnt/gcs"
+        }
+
+        volume_mounts {
+          name       = "gmail-token"
+          mount_path = "/secrets/gmail-token"
         }
       }
 
@@ -125,6 +125,17 @@ resource "google_cloud_run_v2_job" "fetcher_job" {
         name = "gcs-volume"
         gcs {
           bucket = google_storage_bucket.data_bucket.name
+        }
+      }
+
+      volumes {
+        name = "gmail-token"
+        secret {
+          secret = "gmail-token"
+          items {
+            version = "latest"
+            path    = "credentials.json"
+          }
         }
       }
     }
