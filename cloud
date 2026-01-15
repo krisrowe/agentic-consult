@@ -7,7 +7,7 @@ USAGE (after clone, no setup needed):
     ./cloud init --project=my-project
     ./cloud pre-deploy
     ./cloud scheduler list
-    ./cloud image build
+    ./cloud images list
 
 This dispatcher routes to modular scripts in deploy/scripts/, all stdlib-only.
 Works immediately after git clone - no pip, no venv, no pipx. Just Python 3.10+.
@@ -73,8 +73,8 @@ def main():
             sys.argv = sys.argv[1:]
             cmd_main()
 
-        elif command == "image":
-            from image import main as cmd_main
+        elif command == "images":
+            from images import main as cmd_main
             sys.argv = sys.argv[1:]
             cmd_main()
 
@@ -101,7 +101,7 @@ Commands:
     init            Initialize cloud configuration
     pre-deploy      Check readiness, output terraform commands
     scheduler       Manage Cloud Scheduler jobs
-    image           Build and push container images
+    images          Build and push container images
     secrets         Manage Cloud Run secrets
 
 Examples:
@@ -112,8 +112,9 @@ Examples:
     ./cloud pre-deploy
     ./cloud scheduler list
     ./cloud scheduler set fetcher 15
-    ./cloud image build
-    ./cloud image push
+    ./cloud images list
+    ./cloud images build analyzer
+    ./cloud images push mcp
     ./cloud secrets list
 
 Run './cloud <command> --help' for command-specific options.

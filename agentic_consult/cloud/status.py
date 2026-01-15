@@ -48,11 +48,26 @@ class CloudStatus:
 
 # Required resources for deployment
 REQUIRED_SECRETS = ["gemini-api-key", "gmail-token"]
-REQUIRED_IMAGES = ["gmex-fetcher", "consult-analyzer"]
 SCHEDULER_JOBS = {
     "fetcher": "trigger-email-fetch",
     "analyzer": "trigger-email-analysis",
 }
+
+
+def load_images_config() -> dict:
+    """Load image definitions from deploy/images.ini."""
+    import configparser
+    from pathlib import Path
+    config_path = Path(__file__).parent.parent.parent / "deploy" / "images.ini"
+    parser = configparser.ConfigParser()
+    parser.read(config_path)
+
+    images = {}
+    for section in parser.sections():
+        images[section] = dict(parser[section])
+        if "internal" in images[section]:
+            images[section]["internal"] = parser.getboolean(section, "internal")
+    return images
 
 
 def read_cloud_status(
@@ -161,20 +176,27 @@ def read_cloud_status(
             ))
             all_ready = False
 
-    # 4. Check images
-    for image_name in REQUIRED_IMAGES:
-        if provider.image_exists(project_id, image_name):
+    # 4. Check images (from deploy/images.ini)
+    images_config = load_images_config()
+    for name, info in images_config.items():
+        gcr_name = info["gcr_name"]
+        is_internal = info.get("internal", True)
+
+        if provider.image_exists(project_id, gcr_name):
             resources.append(ResourceStatus(
-                name=image_name,
+                name=gcr_name,
                 status="exists",
             ))
         else:
-            if image_name == "gmex-fetcher":
-                guidance = "cd <path-to>/gmail-extractor && make push"
+            if is_internal:
+                guidance = f"./cloud images build {name} && ./cloud images push {name}"
             else:
-                guidance = "./cloud image build && ./cloud image push"
+                repo = info.get("repo", "<repo>")
+                build_cmd = info.get("build_cmd", "make build")
+                push_cmd = info.get("push_cmd", "make push")
+                guidance = f"cd {repo} && {push_cmd}"
             resources.append(ResourceStatus(
-                name=image_name,
+                name=gcr_name,
                 status="missing",
                 guidance=guidance,
             ))
