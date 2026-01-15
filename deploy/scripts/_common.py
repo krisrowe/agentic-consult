@@ -166,16 +166,27 @@ def format_status_table(status, show_changes: bool = False) -> str:
     else:
         lines.append("+--------------------+-----------+--------------------------------------------------+")
 
-    if status.deploy_ready:
-        lines.append(f"\nDeploy ready: {green('Yes')}")
+    # Show overall status
+    if status.status == "deployed":
+        lines.append(f"\nStatus: {green('Deployed')}")
+    elif status.status == "deploy_ready":
+        lines.append(f"\nStatus: {green('Deploy Ready')}")
     else:
         missing = [r.name for r in status.pre_deploy if r.status == "missing"]
-        lines.append(f"\nDeploy ready: {red('No')} ({len(missing)} missing)")
+        lines.append(f"\nStatus: {red('Not Deploy Ready')} ({len(missing)} missing)")
 
     # Show guidance summary if available
     if hasattr(status, 'guidance') and status.guidance:
         lines.append("\nNext steps:")
-        for g in status.guidance:
-            lines.append(f"  {g}")
+        for i, group in enumerate(status.guidance):
+            if i > 0:
+                lines.append("")  # Blank line between groups
+            if group.heading:
+                lines.append(f"  {group.heading}")
+                for item in group.items:
+                    lines.append(f"    {item}")
+            else:
+                for item in group.items:
+                    lines.append(f"  {item}")
 
     return "\n".join(lines)
