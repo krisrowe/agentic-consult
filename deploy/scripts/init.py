@@ -126,48 +126,70 @@ def main(args=None):
         do_create_bucket = True
 
     # --- PHASE 2: EXECUTION (WRITE-ONLY) ---
-    print(f"Applying changes to project: {project_id}...")
+    # Track operations for JSON output
+    ops = []
+
+    # Progress messages go to stderr when json format
+    def log(msg):
+        if parsed.format == "json":
+            print(msg, file=sys.stderr)
+        else:
+            print(msg)
+
+    log(f"Applying changes to project: {project_id}...")
 
     # 1. Handle Bucket
     if do_unlabel_old:
-        print(f"Unlabeling {labeled_bucket}...")
+        log(f"Unlabeling {labeled_bucket}...")
         provider.remove_bucket_labels(labeled_bucket, [APP_SLUG])
+        ops.append({"op": "bucket_unlabeled", "bucket": labeled_bucket})
 
     if do_create_bucket:
-        print(f"Creating gs://{target_bucket}...")
+        log(f"Creating gs://{target_bucket}...")
         provider.create_bucket(project_id, target_bucket)
+        ops.append({"op": "bucket_created", "bucket": target_bucket})
 
-    print(f"Ensuring {target_bucket} is labeled...")
-    provider.update_bucket_labels(target_bucket, {APP_SLUG: "default"})
+    # Only label if not already labeled (labeled_bucket == target_bucket means already labeled)
+    if labeled_bucket != target_bucket:
+        log(f"Ensuring {target_bucket} is labeled...")
+        provider.update_bucket_labels(target_bucket, {APP_SLUG: "default"})
+        ops.append({"op": "bucket_labeled", "bucket": target_bucket})
 
     # 2. Handle Secrets
     if api_key_value:
         if not provider.secret_exists(project_id, "gemini-api-key"):
-            print("Creating secret 'gemini-api-key'...")
+            log("Creating secret 'gemini-api-key'...")
             provider.create_secret(project_id, "gemini-api-key", api_key_value.encode())
+            ops.append({"op": "secret_created", "secret": "gemini-api-key"})
         else:
-            print("Updating secret 'gemini-api-key'...")
+            log("Updating secret 'gemini-api-key'...")
             provider.add_secret_version(project_id, "gemini-api-key", api_key_value.encode())
+            ops.append({"op": "secret_updated", "secret": "gemini-api-key"})
 
     if token_data:
         if not provider.secret_exists(project_id, "gmail-token"):
-            print("Creating secret 'gmail-token'...")
+            log("Creating secret 'gmail-token'...")
             provider.create_secret(project_id, "gmail-token", token_data)
+            ops.append({"op": "secret_created", "secret": "gmail-token"})
         else:
-            print("Updating secret 'gmail-token'...")
+            log("Updating secret 'gmail-token'...")
             provider.add_secret_version(project_id, "gmail-token", token_data)
+            ops.append({"op": "secret_updated", "secret": "gmail-token"})
 
     # 3. Save Config
     save_settings({"project_id": project_id, "bucket_name": target_bucket})
 
-    success("Cloud environment initialized.\n")
+    if parsed.format != "json":
+        success("Cloud environment initialized.\n")
 
     # 4. Show status
     status = read_cloud_status(provider, project_id, target_bucket)
     status.config_saved = True
 
     if parsed.format == "json":
-        print(json.dumps(status.to_dict(), indent=2))
+        result = status.to_dict()
+        result["operations"] = ops
+        print(json.dumps(result, indent=2))
     else:
         print(format_status_table(status))
 

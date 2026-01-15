@@ -118,16 +118,16 @@ def format_status_table(status, show_changes: bool = False) -> str:
     lines = []
 
     if show_changes:
-        lines.append("+------------------+-----------+---------+---------------------------------------------+")
-        lines.append("| Resource         | Status    | Changed | Guidance                                    |")
-        lines.append("+------------------+-----------+---------+---------------------------------------------+")
+        lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
+        lines.append("| Resource           | Status    | Changed | Guidance                                         |")
+        lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
     else:
-        lines.append("+------------------+-----------+---------------------------------------------+")
-        lines.append("| Resource         | Status    | Guidance                                    |")
-        lines.append("+------------------+-----------+---------------------------------------------+")
+        lines.append("+--------------------+-----------+--------------------------------------------------+")
+        lines.append("| Resource           | Status    | Guidance                                         |")
+        lines.append("+--------------------+-----------+--------------------------------------------------+")
 
     for r in status.resources:
-        name = r.name[:16].ljust(16)
+        name = r.name[:18].ljust(18)
         if r.status in ("found", "exists", "enabled"):
             status_str = f"+ {r.status}"[:9].ljust(9)
         elif r.status == "missing":
@@ -135,7 +135,7 @@ def format_status_table(status, show_changes: bool = False) -> str:
         else:
             status_str = r.status[:9].ljust(9)
 
-        guidance = (r.guidance or "")[:43].ljust(43)
+        guidance = (r.guidance or "")[:48].ljust(48)
 
         if show_changes:
             changed = "yes" if r.changed else "no"
@@ -147,9 +147,9 @@ def format_status_table(status, show_changes: bool = False) -> str:
             lines.append(f"| {name} | {status_str} | {guidance} |")
 
     if show_changes:
-        lines.append("+------------------+-----------+---------+---------------------------------------------+")
+        lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
     else:
-        lines.append("+------------------+-----------+---------------------------------------------+")
+        lines.append("+--------------------+-----------+--------------------------------------------------+")
 
     if status.deploy_ready:
         lines.append(f"\nDeploy ready: {green('Yes')}")
