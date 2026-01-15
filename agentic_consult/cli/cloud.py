@@ -83,44 +83,6 @@ def cloud_status(output_format: str):
     click.echo(format_cloud_status(status, output_format))
 
 
-@cloud.group(name="config")
-def cloud_config():
-    """Manage cloud coordinates and secrets."""
-    pass
-
-
-@cloud_config.command("secrets-list")
-def cloud_config_secrets_list():
-    """List metadata for required cloud secrets."""
-    data = load_main_config()
-    project_id = data.get("project_id")
-    if not project_id:
-        click.secho("Error: project_id not set.", fg="red")
-        sys.exit(1)
-
-    provider = get_cloud_provider()
-    required = ["gemini-api-key", "gmail-token"]
-    results = []
-
-    import hashlib
-    for sid in required:
-        val = provider.get_secret_value(project_id, sid)
-        if val:
-            results.append({
-                "secret_id": sid,
-                "status": "PRESENT",
-                "length": len(val),
-                "sha256": hashlib.sha256(val.encode() if isinstance(val, str) else val).hexdigest()
-            })
-        else:
-            results.append({
-                "secret_id": sid,
-                "status": "MISSING"
-            })
-
-    click.echo(json.dumps(results, indent=2))
-
-
 @cloud.command("init")
 @click.option("--project", help="GCP Project ID.")
 @click.option("--bucket", help="Target bucket name.")

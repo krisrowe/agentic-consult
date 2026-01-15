@@ -14,8 +14,8 @@ from .restore import restore
 from .context import context
 from .chat import chat
 from .services import services
-from .cloud import cloud
-from .image import image
+from .mcp import mcp
+# cloud and image removed - use ./cloud instead (see deploy/DESIGN.md)
 
 @click.group()
 def main():
@@ -36,8 +36,7 @@ main.add_command(workspace)
 main.add_command(context)
 main.add_command(chat)
 main.add_command(services)
-main.add_command(cloud)
-main.add_command(image)
+main.add_command(mcp)
 
 if __name__ == "__main__":
     main()
