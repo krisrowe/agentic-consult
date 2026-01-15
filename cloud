@@ -63,8 +63,8 @@ def main():
             sys.argv = sys.argv[1:]
             cmd_main()
 
-        elif command == "pre-deploy":
-            from pre_deploy import main as cmd_main
+        elif command == "deploy":
+            from deploy import main as cmd_main
             sys.argv = sys.argv[1:]
             cmd_main()
 
@@ -99,7 +99,7 @@ def print_usage():
 Commands:
     status          Show cloud environment status
     init            Initialize cloud configuration
-    pre-deploy      Check readiness, output terraform commands
+    deploy          Deploy infrastructure via terraform
     scheduler       Manage Cloud Scheduler jobs
     images          Build and push container images
     secrets         Manage Cloud Run secrets
@@ -108,14 +108,12 @@ Examples:
     ./cloud status
     ./cloud status --format=json
     ./cloud init --project=my-project
-    ./cloud init --project=my-project --bucket=my-bucket
-    ./cloud pre-deploy
+    ./cloud deploy
+    ./cloud deploy --plan
     ./cloud scheduler list
     ./cloud scheduler set fetcher 15
     ./cloud images list
-    ./cloud images build analyzer
-    ./cloud images push mcp
-    ./cloud secrets list
+    ./cloud images deploy all
 
 Run './cloud <command> --help' for command-specific options.
 """)

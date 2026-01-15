@@ -19,6 +19,12 @@ variable "bucket_name" {
   type        = string
 }
 
+variable "service_delete_protection" {
+  description = "Enable deletion protection for Cloud Run jobs"
+  type        = bool
+  default     = true
+}
+
 locals {
   project_id  = var.project_id
   bucket_name = var.bucket_name
@@ -35,6 +41,12 @@ provider "google" {
 }
 
 # 2. Shared Storage (GCS)
+# Import block: auto-imports if bucket was created by ./cloud init
+import {
+  to = google_storage_bucket.data_bucket
+  id = var.bucket_name
+}
+
 resource "google_storage_bucket" "data_bucket" {
   name          = local.bucket_name
   location      = "US"
@@ -76,8 +88,9 @@ resource "google_project_iam_member" "run_invoker" {
 
 # 4a. Cloud Run Job: Fetcher (gmex)
 resource "google_cloud_run_v2_job" "fetcher_job" {
-  name     = "gmex-fetcher"
-  location = local.region
+  name                = "gmex-fetcher"
+  location            = local.region
+  deletion_protection = var.service_delete_protection
 
   template {
     template {
@@ -96,7 +109,7 @@ resource "google_cloud_run_v2_job" "fetcher_job" {
           name = "GOOGLE_APPLICATION_CREDENTIALS"
           value_source {
             secret_key_ref {
-              secret  = "gmail-oauth-credentials"
+              secret  = "gmail-token"
               version = "latest"
             }
           }
@@ -120,8 +133,9 @@ resource "google_cloud_run_v2_job" "fetcher_job" {
 
 # 4b. Cloud Run Job: Analyzer
 resource "google_cloud_run_v2_job" "analyzer_job" {
-  name     = "consult-analyzer"
-  location = local.region
+  name                = "consult-analyzer"
+  location            = local.region
+  deletion_protection = var.service_delete_protection
 
   template {
     template {
