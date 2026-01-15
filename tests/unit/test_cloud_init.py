@@ -41,7 +41,7 @@ def test_init_creates_bucket_when_allowed(cloud_config, tmp_path):
 
 
 def test_init_uses_existing_labeled_bucket(cloud_config, tmp_path):
-    """Init uses existing labeled bucket without creating new one."""
+    """Init uses existing labeled bucket without creating or re-labeling."""
     provider = cloud_config("full-setup")
 
     runner = CliRunner()
@@ -49,7 +49,9 @@ def test_init_uses_existing_labeled_bucket(cloud_config, tmp_path):
 
     assert result.exit_code == 0, f"Failed: {result.output}"
     assert "Creating gs://" not in result.output
-    assert "Ensuring consult-data-test-project-123 is labeled" in result.output
+    # Should NOT re-label an already labeled bucket
+    assert "Ensuring" not in result.output
+    assert "labeled" not in result.output.lower() or "already labeled" in result.output.lower()
 
 
 def test_init_requires_flag_to_change_bucket(cloud_config):

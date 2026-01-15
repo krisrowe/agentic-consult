@@ -162,47 +162,64 @@ def cloud_init(project, bucket, gemini_api_key, gmail_token_path, allow_create_b
         do_create_bucket = True
 
     # --- PHASE 2: EXECUTION (WRITE-ONLY) ---
-    click.echo(f"Applying changes to project: {project_id}...")
+    ops = []
+    click.echo(f"Applying changes to project: {project_id}...", err=(output_format == "json"))
 
     # 1. Handle Bucket
     if do_unlabel_old:
-        click.echo(f"Unlabeling {labeled_bucket}...")
+        click.echo(f"Unlabeling {labeled_bucket}...", err=(output_format == "json"))
         provider.remove_bucket_labels(labeled_bucket, [APP_SLUG])
+        ops.append({"op": "bucket_unlabeled", "bucket": labeled_bucket})
 
     if do_create_bucket:
-        click.echo(f"Creating gs://{target_bucket}...")
+        click.echo(f"Creating gs://{target_bucket}...", err=(output_format == "json"))
         provider.create_bucket(project_id, target_bucket)
+        ops.append({"op": "bucket_created", "bucket": target_bucket})
 
-    click.echo(f"Ensuring {target_bucket} is labeled...")
-    provider.update_bucket_labels(target_bucket, {APP_SLUG: "default"})
+    # Only label if not already labeled
+    if labeled_bucket != target_bucket:
+        click.echo(f"Ensuring {target_bucket} is labeled...", err=(output_format == "json"))
+        provider.update_bucket_labels(target_bucket, {APP_SLUG: "default"})
+        ops.append({"op": "bucket_labeled", "bucket": target_bucket})
 
     # 2. Handle Secrets
     if api_key_value:
         if not provider.secret_exists(project_id, "gemini-api-key"):
-            click.echo("Creating secret 'gemini-api-key'...")
+            click.echo("Creating secret 'gemini-api-key'...", err=(output_format == "json"))
             provider.create_secret(project_id, "gemini-api-key", api_key_value.encode())
+            ops.append({"op": "secret_created", "secret": "gemini-api-key"})
         else:
-            click.echo("Updating secret 'gemini-api-key'...")
+            click.echo("Updating secret 'gemini-api-key'...", err=(output_format == "json"))
             provider.add_secret_version(project_id, "gemini-api-key", api_key_value.encode())
+            ops.append({"op": "secret_updated", "secret": "gemini-api-key"})
 
     if token_data:
         if not provider.secret_exists(project_id, "gmail-token"):
-            click.echo("Creating secret 'gmail-token'...")
+            click.echo("Creating secret 'gmail-token'...", err=(output_format == "json"))
             provider.create_secret(project_id, "gmail-token", token_data)
+            ops.append({"op": "secret_created", "secret": "gmail-token"})
         else:
-            click.echo("Updating secret 'gmail-token'...")
+            click.echo("Updating secret 'gmail-token'...", err=(output_format == "json"))
             provider.add_secret_version(project_id, "gmail-token", token_data)
+            ops.append({"op": "secret_updated", "secret": "gmail-token"})
 
     # 3. Save Context
     set_app_config_value("project_id", project_id)
     set_app_config_value("bucket_name", target_bucket)
 
-    click.secho("✅ Cloud environment initialized.\n", fg="green")
+    if output_format != "json":
+        click.secho("✅ Cloud environment initialized.\n", fg="green")
 
     # 4. Show status (read-only check of all resources)
     status = read_cloud_status(provider, project_id, target_bucket)
     status.config_saved = True
-    click.echo(format_cloud_status(status, output_format))
+
+    if output_format == "json":
+        result = status.to_dict()
+        result["operations"] = ops
+        click.echo(json.dumps(result, indent=2))
+    else:
+        click.echo(format_cloud_status(status, output_format))
 
 
 # NOTE: Terraform resolution moved to agentic_consult/paths.py
