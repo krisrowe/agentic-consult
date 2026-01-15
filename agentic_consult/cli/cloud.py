@@ -7,13 +7,80 @@ import sys
 from typing import Optional
 from pathlib import Path
 from ..config import load_main_config, set_app_config_value
-from ..cloud import get_cloud_provider
+from ..cloud import get_cloud_provider, read_cloud_status, CloudStatus, pre_deploy
+from ..paths import APP_SLUG
+
+
+def format_cloud_status(status: CloudStatus, format: str = "table") -> str:
+    """Format CloudStatus for display.
+
+    Args:
+        status: CloudStatus object from read_cloud_status()
+        format: "table" for ASCII table, "json" for JSON output
+
+    Returns:
+        Formatted string
+    """
+    if format == "json":
+        return json.dumps(status.to_dict(), indent=2)
+
+    # ASCII table format
+    lines = []
+    lines.append("┌──────────────────┬──────────┬─────────┬─────────────────────────────────────────────┐")
+    lines.append("│ Resource         │ Status   │ Changed │ Guidance                                    │")
+    lines.append("├──────────────────┼──────────┼─────────┼─────────────────────────────────────────────┤")
+
+    for r in status.resources:
+        name = r.name[:16].ljust(16)
+        if r.status in ("found", "exists", "enabled"):
+            status_str = f"✓ {r.status}"[:8].ljust(8)
+        elif r.status == "missing":
+            status_str = f"✗ {r.status}"[:8].ljust(8)
+        else:
+            status_str = r.status[:8].ljust(8)
+
+        changed = "yes" if r.changed else "no"
+        if r.change_type:
+            changed = r.change_type[:7]
+        changed = changed.ljust(7)
+
+        guidance = (r.guidance or "")[:43].ljust(43)
+        lines.append(f"│ {name} │ {status_str} │ {changed} │ {guidance} │")
+
+    lines.append("└──────────────────┴──────────┴─────────┴─────────────────────────────────────────────┘")
+
+    # Summary
+    if status.deploy_ready:
+        lines.append("\nDeploy ready: Yes")
+    else:
+        missing = [r.name for r in status.resources if r.status == "missing"]
+        lines.append(f"\nDeploy ready: No ({len(missing)} missing: {', '.join(missing)})")
+
+    return "\n".join(lines)
 
 
 @click.group()
 def cloud():
     """Cloud deployment and management."""
     pass
+
+
+@cloud.command("status")
+@click.option("--format", "output_format", type=click.Choice(["table", "json"]), default="table", help="Output format")
+def cloud_status(output_format: str):
+    """Show cloud environment status (read-only)."""
+    provider = get_cloud_provider()
+    data = load_main_config()
+    project_id = data.get("project_id")
+    bucket_name = data.get("bucket_name")
+
+    if not project_id:
+        click.secho("Error: project_id not set. Run: consult cloud init", fg="red")
+        sys.exit(1)
+
+    status = read_cloud_status(provider, project_id, bucket_name)
+    status.config_saved = True  # We have config if we got here
+    click.echo(format_cloud_status(status, output_format))
 
 
 @cloud.group(name="config")
@@ -54,7 +121,7 @@ def cloud_config_secrets_list():
     click.echo(json.dumps(results, indent=2))
 
 
-@cloud_config.command("init")
+@cloud.command("init")
 @click.option("--project", help="GCP Project ID.")
 @click.option("--bucket", help="Target bucket name.")
 @click.option("--gemini-api-key", help="Gemini API Key string.")
@@ -62,18 +129,25 @@ def cloud_config_secrets_list():
 @click.option("--allow-create-bucket", is_flag=True, help="Permit bucket creation.")
 @click.option("--allow-change-bucket", is_flag=True, help="Permit switching labels between buckets.")
 @click.option("--non-interactive", is_flag=True, help="Fail instead of prompting.")
-@click.option("--skip-terraform", is_flag=True, help="Skip terraform validation.")
-def cloud_init(project, bucket, gemini_api_key, gmail_token_path, allow_create_bucket, allow_change_bucket, non_interactive, skip_terraform):
+@click.option("--format", "output_format", type=click.Choice(["table", "json"]), default="table", help="Output format")
+def cloud_init(project, bucket, gemini_api_key, gmail_token_path, allow_create_bucket, allow_change_bucket, non_interactive, output_format):
     """Transactional cloud environment setup with strict safety."""
 
     provider = get_cloud_provider()
+    existing_config = load_main_config()
 
     # --- PHASE 1: VERIFICATION (READ-ONLY) ---
 
-    # 1. Resolve Project
-    project_id = project or provider.lookup_project_by_label("agentic-consult", "default")
+    # 1. Resolve Project: --project flag > existing config > label discovery
+    project_id = project or existing_config.get("project_id") or provider.lookup_project_by_label(APP_SLUG, "default")
     if not project_id:
         click.secho("❌ Error: Could not determine Project ID. Pass --project or label your project.", fg="red")
+        sys.exit(1)
+
+    # 2. Validate project exists (if from config, might be stale/inaccessible)
+    if not project and existing_config.get("project_id") and not provider.project_exists(project_id):
+        click.secho(f"❌ Error: Configured project '{project_id}' not found or not accessible.", fg="red")
+        click.secho("Verify your access to this project, or use --project to specify a different one.", fg="yellow")
         sys.exit(1)
 
     # 2. Validate Gemini API Key
@@ -100,7 +174,7 @@ def cloud_init(project, bucket, gemini_api_key, gmail_token_path, allow_create_b
         token_data = path.read_bytes()
 
     # 4. Validate Bucket Logic
-    labeled_bucket = provider.lookup_bucket_by_label(project_id, "agentic-consult", "default")
+    labeled_bucket = provider.lookup_bucket_by_label(project_id, APP_SLUG, "default")
     target_bucket = bucket or labeled_bucket or f"consult-data-{project_id}"
 
     do_unlabel_old = False
@@ -131,14 +205,14 @@ def cloud_init(project, bucket, gemini_api_key, gmail_token_path, allow_create_b
     # 1. Handle Bucket
     if do_unlabel_old:
         click.echo(f"Unlabeling {labeled_bucket}...")
-        provider.remove_bucket_labels(labeled_bucket, ["agentic-consult"])
+        provider.remove_bucket_labels(labeled_bucket, [APP_SLUG])
 
     if do_create_bucket:
         click.echo(f"Creating gs://{target_bucket}...")
         provider.create_bucket(project_id, target_bucket)
 
     click.echo(f"Ensuring {target_bucket} is labeled...")
-    provider.update_bucket_labels(target_bucket, {"agentic-consult": "default"})
+    provider.update_bucket_labels(target_bucket, {APP_SLUG: "default"})
 
     # 2. Handle Secrets
     if api_key_value:
@@ -161,19 +235,12 @@ def cloud_init(project, bucket, gemini_api_key, gmail_token_path, allow_create_b
     set_app_config_value("project_id", project_id)
     set_app_config_value("bucket_name", target_bucket)
 
-    # 4. Validate Terraform Configuration
-    if not skip_terraform:
-        tf_dir = Path(__file__).parent.parent.parent / "deploy" / "terraform"
-        click.echo("Validating terraform configuration...")
-        try:
-            subprocess.run(["terraform", "init", "-backend=false", "-input=false"], cwd=tf_dir, capture_output=True, check=True, text=True)
-            subprocess.run(["terraform", "validate"], cwd=tf_dir, capture_output=True, check=True, text=True)
-            click.echo("  ✓ Terraform configuration valid")
-        except subprocess.CalledProcessError as e:
-            click.secho(f"  ✗ Terraform validation failed: {e.stderr}", fg="red")
-            sys.exit(1)
+    click.secho("✅ Cloud environment initialized.\n", fg="green")
 
-    click.secho("✅ Cloud environment successfully initialized.", fg="green")
+    # 4. Show status (read-only check of all resources)
+    status = read_cloud_status(provider, project_id, target_bucket)
+    status.config_saved = True
+    click.echo(format_cloud_status(status, output_format))
 
 
 # NOTE: Terraform resolution moved to agentic_consult/paths.py
@@ -181,77 +248,53 @@ def cloud_init(project, bucket, gemini_api_key, gmail_token_path, allow_create_b
 # See deploy/DESIGN.md "paths.py Pattern" for rationale.
 
 
-REQUIRED_IMAGES = ["gmex-fetcher", "consult-analyzer"]
+# Import from status module to avoid duplication
+from ..cloud.status import REQUIRED_IMAGES
 
 
-@cloud.command("deploy")
-@click.option("--skip-validation", is_flag=True, help="Skip image validation")
-@click.option("--skip-config-check", is_flag=True, help="Skip config vs GCP label validation")
-def cloud_deploy(skip_validation: bool, skip_config_check: bool):
-    """Deploy infrastructure to GCP.
+@cloud.command("pre-deploy")
+@click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text", help="Output format")
+def cloud_pre_deploy(output_format: str):
+    """Check deploy readiness and output terraform commands.
 
-    Validates config matches GCP labels and required images exist before running terraform.
+    Checks cloud status and either:
+    - Outputs terraform commands to run (if ready)
+    - Outputs issues with guidance (if not ready)
     """
     provider = get_cloud_provider()
     data = load_main_config()
     project_id = data.get("project_id")
     bucket_name = data.get("bucket_name")
+
     if not project_id:
-        click.secho("Error: project_id not set. Run: consult cloud config init", fg="red")
+        click.secho("Error: project_id not set. Run: consult cloud init", fg="red")
         sys.exit(1)
     if not bucket_name:
-        click.secho("Error: bucket_name not set. Run: consult cloud config init", fg="red")
+        click.secho("Error: bucket_name not set. Run: consult cloud init", fg="red")
         sys.exit(1)
 
-    # Validate config matches GCP labels (detect stale config)
-    if not skip_config_check:
-        click.echo("Validating config against GCP labels...")
-        labeled_bucket = provider.lookup_bucket_by_label(project_id, "agentic-consult", "default")
-        if not labeled_bucket:
-            click.secho(f"Error: No bucket found with agentic-consult label in project {project_id}.", fg="red")
-            click.secho("Run: consult cloud config init", fg="yellow")
+    result = pre_deploy(provider, project_id, bucket_name)
+
+    if output_format == "json":
+        click.echo(json.dumps(result.to_dict(), indent=2))
+        if not result.ready:
             sys.exit(1)
-        if labeled_bucket != bucket_name:
-            click.secho(f"Error: Config mismatch! Config has '{bucket_name}' but GCP label is on '{labeled_bucket}'.", fg="red")
-            click.secho("Run: consult cloud config init --bucket=<correct-bucket>", fg="yellow")
-            sys.exit(1)
-        click.echo(f"  ✓ Config matches GCP labels (bucket: {bucket_name})")
+        return
 
-    # Validate images exist
-    if not skip_validation:
-        click.echo("Checking required images...")
-        missing = []
-        for image_name in REQUIRED_IMAGES:
-            if provider.image_exists(project_id, image_name):
-                click.echo(f"  ✓ {image_name}")
-            else:
-                click.secho(f"  ✗ {image_name}", fg="red")
-                missing.append(image_name)
+    # Text format
+    click.echo(format_cloud_status(result.status, "table"))
+    click.echo()
 
-        if missing:
-            click.echo()
-            click.secho("Missing images. Run:", fg="yellow")
-            click.echo()
-            cmds = []
-            for name in missing:
-                if name == "gmex-fetcher":
-                    cmds.append(f"cd <gmail-extractor-repo> && make build && make push PROJECT={project_id}")
-                else:
-                    cmds.append(f"consult image build && consult image push {project_id}")
-            click.echo("\n\n".join(cmds))
-            click.echo()
-            sys.exit(1)
-        click.echo()
+    if not result.ready:
+        click.secho("Fix the issues above before deploying.", fg="yellow")
+        sys.exit(1)
 
-    # Run terraform
-    tf_dir = Path(__file__).parent.parent.parent / "deploy" / "terraform"
-    click.echo("Initializing terraform...")
-    subprocess.run(["terraform", "init", "-input=false"], cwd=tf_dir, check=True)
-
-    click.echo("Applying infrastructure...")
-    subprocess.run(["terraform", "apply", "-auto-approve"], cwd=tf_dir, check=True)
-
-    click.secho("✅ Deployment complete.", fg="green")
+    # Ready - output copy/paste commands
+    click.secho("Ready to deploy. Run:", fg="green")
+    click.echo()
+    for cmd in result.terraform_commands:
+        click.echo(f"  {cmd}")
+    click.echo()
 
 
 # --- Scheduler Management ---
@@ -275,7 +318,7 @@ def scheduler_list():
     data = load_main_config()
     project_id = data.get("project_id")
     if not project_id:
-        click.secho("Error: project_id not set. Run: consult cloud config init", fg="red")
+        click.secho("Error: project_id not set. Run: consult cloud init", fg="red")
         sys.exit(1)
 
     click.echo(f"Scheduler jobs in project: {project_id}\n")

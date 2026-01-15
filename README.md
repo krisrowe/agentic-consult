@@ -254,6 +254,8 @@ consult config set local_data /home/user/private-config-repo/agentic-consult/dat
 
 Deploy the email triage system to Google Cloud for automated background processing. See [deploy/DESIGN.md](deploy/DESIGN.md) for architecture details.
 
+> **Zero-install**: All deployment commands work immediately after `git clone` via `./cloud` - no pip, venv, or pipx needed. Just Python 3.10+.
+
 ### Prerequisites
 
 **GCP Setup:**
@@ -292,10 +294,10 @@ git clone https://github.com/krisrowe/gmail-extractor.git
 
 ```bash
 # If you have ONE project, just run init (prompts for missing secrets)
-consult cloud config init --project=my-consult-project
+./cloud init --project=my-consult-project
 
 # If secrets already exist in GCP, init detects them automatically
-consult cloud config init --project=my-consult-project
+./cloud init --project=my-consult-project
 ```
 
 `init` will:
@@ -306,7 +308,7 @@ consult cloud config init --project=my-consult-project
 **Providing secrets during init:**
 ```bash
 # Pass secrets directly (non-interactive)
-consult cloud config init \
+./cloud init \
   --project=my-consult-project \
   --gemini-api-key="AIza..." \
   --gmail-token-path=~/token.json \
@@ -322,30 +324,36 @@ make push PROJECT=my-consult-project
 
 # From agentic-consult repo - build and push the analyzer
 cd ~/agentic-consult
-consult image build
-consult image push my-consult-project
+./cloud image build
+./cloud image push
 ```
 
-**3. Deploy infrastructure:**
+**3. Check deploy readiness and run terraform:**
 
 ```bash
-consult cloud deploy
+# Check readiness and get terraform commands
+./cloud pre-deploy
+
+# If ready, run the commands output by pre-deploy:
+cd deploy/terraform
+terraform init
+terraform apply -var="project_id=YOUR_PROJECT" -var="bucket_name=YOUR_BUCKET"
 ```
 
-This runs terraform to create Cloud Run Jobs and Cloud Scheduler triggers.
+The `pre-deploy` command validates that all prerequisites are met (secrets, images) and outputs the exact terraform commands to run. See [deploy/DESIGN.md](deploy/DESIGN.md#cliterraform-decoupling) for why terraform is run separately.
 
 **4. Verify and adjust schedules:**
 
 ```bash
 # List current schedules
-consult cloud scheduler list
+./cloud scheduler list
 
 # Adjust frequency (minutes)
-consult cloud scheduler set fetcher 15   # every 15 min
-consult cloud scheduler set analyzer 20  # every 20 min
+./cloud scheduler set fetcher 15   # every 15 min
+./cloud scheduler set analyzer 20  # every 20 min
 
 # Trigger immediate run
-consult cloud scheduler run fetcher
+./cloud scheduler run fetcher
 ```
 
 ### Optional: Project Labeling for Auto-Discovery
@@ -358,7 +366,7 @@ gcloud projects update my-consult-project \
   --update-labels=agentic-consult=default
 
 # Now init auto-discovers the project among all your GCP projects
-consult cloud config init  # finds project via label
+./cloud init  # finds project via label
 ```
 
 This is optional - `--project` always works if you remember the ID.

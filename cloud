@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""
+Zero-install cloud and deployment management for agentic-consult.
+
+USAGE (after clone, no setup needed):
+    ./cloud status
+    ./cloud init --project=my-project
+    ./cloud pre-deploy
+    ./cloud scheduler list
+    ./cloud image build
+
+This dispatcher routes to modular scripts in deploy/scripts/, all stdlib-only.
+Works immediately after git clone - no pip, no venv, no pipx. Just Python 3.10+.
+
+DESIGN RATIONALE:
+    Deployment tools should be repo-centric. Installing a global CLI for
+    deployment creates version mismatch risks between the installed CLI
+    and the repo you're deploying. These scripts use only the repo's code.
+
+    See deploy/DESIGN.md for full rationale.
+
+ALTERNATIVES (if you prefer shorter commands):
+
+    Option B - Source alias for current session:
+        source deploy/env
+        cloud status
+
+    Option C - Eval pattern:
+        eval "$(make cloud-env)"
+        cloud status
+
+    Both alternatives are session-only and leave no permanent changes.
+"""
+import os
+import sys
+
+# Add deploy/scripts to path for imports
+SCRIPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy", "scripts")
+sys.path.insert(0, SCRIPT_DIR)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print_usage()
+        sys.exit(1)
+
+    command = sys.argv[1]
+
+    # Handle --help at top level
+    if command in ("-h", "--help"):
+        print_usage()
+        sys.exit(0)
+
+    # Import and dispatch
+    try:
+        if command == "status":
+            from status import main as cmd_main
+            sys.argv = sys.argv[1:]  # shift
+            cmd_main()
+
+        elif command == "init":
+            from init import main as cmd_main
+            sys.argv = sys.argv[1:]
+            cmd_main()
+
+        elif command == "pre-deploy":
+            from pre_deploy import main as cmd_main
+            sys.argv = sys.argv[1:]
+            cmd_main()
+
+        elif command == "scheduler":
+            from scheduler import main as cmd_main
+            sys.argv = sys.argv[1:]
+            cmd_main()
+
+        elif command == "image":
+            from image import main as cmd_main
+            sys.argv = sys.argv[1:]
+            cmd_main()
+
+        else:
+            print(f"Unknown command: {command}\n")
+            print_usage()
+            sys.exit(1)
+
+    except KeyboardInterrupt:
+        print("\nAborted.")
+        sys.exit(130)
+
+
+def print_usage():
+    print("""Usage: ./cloud <command> [args]
+
+Commands:
+    status          Show cloud environment status
+    init            Initialize cloud configuration
+    pre-deploy      Check readiness, output terraform commands
+    scheduler       Manage Cloud Scheduler jobs
+    image           Build and push container images
+
+Examples:
+    ./cloud status
+    ./cloud status --format=json
+    ./cloud init --project=my-project
+    ./cloud init --project=my-project --bucket=my-bucket
+    ./cloud pre-deploy
+    ./cloud scheduler list
+    ./cloud scheduler set fetcher 15
+    ./cloud image build
+    ./cloud image push
+
+Run './cloud <command> --help' for command-specific options.
+""")
+
+
+if __name__ == "__main__":
+    main()

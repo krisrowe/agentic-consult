@@ -97,6 +97,43 @@ precommit-verbose:
 run-analyzer:
 	@. .venv/bin/activate && PYTHONPATH=. python3 -m agentic_consult.email.analyzer
 
+# ============================================
+# Cloud Deployment (zero-install, repo-centric)
+# ============================================
+# These targets let deployers use the SDK without pipx install.
+# Run from repo root. Uses local code, no version mismatch.
+
+.PHONY: cloud-init cloud-status cloud-pre-deploy
+
+cloud-init:
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Creating it..."; \
+		python3 -m venv .venv; \
+		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
+	fi
+	@. .venv/bin/activate && PYTHONPATH=. python -m agentic_consult.cli.main cloud init $(ARGS)
+
+cloud-status:
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Creating it..."; \
+		python3 -m venv .venv; \
+		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
+	fi
+	@. .venv/bin/activate && PYTHONPATH=. python -m agentic_consult.cli.main cloud status
+
+cloud-pre-deploy:
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Creating it..."; \
+		python3 -m venv .venv; \
+		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
+	fi
+	@. .venv/bin/activate && PYTHONPATH=. python -m agentic_consult.cli.main cloud pre-deploy
+
+# Full deployment workflow: test -> build -> push -> show terraform commands
+deploy: test docker-build push cloud-pre-deploy
+	@echo ""
+	@echo "Run the terraform commands shown above to complete deployment."
+
 # Build Docker image for analyzer
 docker-build:
 	@echo "Building Docker image $(IMAGE_NAME):$(IMAGE_TAG)..."

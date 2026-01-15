@@ -4,23 +4,24 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.0"
     }
-    external = {
-      source  = "hashicorp/external"
-      version = "~> 2.3"
-    }
   }
 }
 
-# 1. Resolve Project & Bucket Context
-# Uses paths.py directly (stdlib only, no package install needed).
-# See deploy/DESIGN.md "paths.py Pattern" for rationale.
-data "external" "project_info" {
-  program = ["python3", "${path.module}/../../agentic_consult/paths.py"]
+# 1. Input Variables
+# Passed via -var flags from CLI. See deploy/DESIGN.md "CLI/Terraform Decoupling".
+variable "project_id" {
+  description = "GCP Project ID"
+  type        = string
+}
+
+variable "bucket_name" {
+  description = "GCS bucket name for email archive"
+  type        = string
 }
 
 locals {
-  project_id  = data.external.project_info.result.project_id
-  bucket_name = data.external.project_info.result.bucket_name
+  project_id  = var.project_id
+  bucket_name = var.bucket_name
   region      = "us-central1"
 
   # Image references

@@ -23,6 +23,9 @@ build/
 .gemini/*
 !.gemini/settings.json
 
+# Temporary context files
+TEMP-CONTEXT.md
+
 # Terraform
 .terraform/
 *.tfstate

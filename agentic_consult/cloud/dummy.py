@@ -66,6 +66,9 @@ class DummyCloudProvider(CloudProvider):
                 return pid
         return ""
 
+    def project_exists(self, project_id: str) -> bool:
+        return project_id in self.projects
+
     # --- Bucket Operations ---
 
     def lookup_bucket_by_label(self, project_id: str, label_key: str, label_value: str) -> str:

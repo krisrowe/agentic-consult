@@ -23,7 +23,7 @@ def test_analyzer_with_real_gemini(tmp_path, monkeypatch):
     # 2. Retrieve Secret from Vault
     api_key = get_secret_value(project_id, "gemini-api-key")
     if not api_key:
-        pytest.skip(f"Test Skipped: 'gemini-api-key' secret not found in project '{project_id}'. Run 'consult cloud config init'.")
+        pytest.skip(f"Test Skipped: 'gemini-api-key' secret not found in project '{project_id}'. See README.md#cloud-deployment.")
     
     monkeypatch.setenv("GEMINI_API_KEY", api_key)
 
