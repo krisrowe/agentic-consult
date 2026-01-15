@@ -79,6 +79,13 @@ class CloudProvider(ABC):
         """Check if container image exists in GCR."""
         pass
 
+    # --- Cloud Run Operations ---
+
+    @abstractmethod
+    def get_cloud_run_job(self, project_id: str, job_name: str, location: str = "us-central1") -> Optional[Dict[str, Any]]:
+        """Get Cloud Run job details. Returns None if not found."""
+        pass
+
     # --- Scheduler Operations ---
 
     @abstractmethod

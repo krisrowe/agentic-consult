@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 # Now we can import from agentic_consult
-from agentic_consult.cloud import get_cloud_provider, read_cloud_status, pre_deploy
+from agentic_consult.cloud import get_cloud_provider, read_cloud_status
 from agentic_consult.paths import get_settings_dir, get_settings_path, load_settings, APP_SLUG
 
 
@@ -126,7 +126,7 @@ def format_status_table(status, show_changes: bool = False) -> str:
         lines.append("| Resource           | Status    | Guidance                                         |")
         lines.append("+--------------------+-----------+--------------------------------------------------+")
 
-    for r in status.resources:
+    def render_resource(r):
         name = r.name[:18].ljust(18)
         if r.status in ("found", "exists", "enabled"):
             status_str = f"+ {r.status}"[:9].ljust(9)
@@ -134,7 +134,6 @@ def format_status_table(status, show_changes: bool = False) -> str:
             status_str = f"- {r.status}"[:9].ljust(9)
         else:
             status_str = r.status[:9].ljust(9)
-
         guidance = (r.guidance or "")[:48].ljust(48)
 
         if show_changes:
@@ -142,10 +141,26 @@ def format_status_table(status, show_changes: bool = False) -> str:
             if r.change_type:
                 changed = r.change_type[:7]
             changed = changed.ljust(7)
-            lines.append(f"| {name} | {status_str} | {changed} | {guidance} |")
+            return f"| {name} | {status_str} | {changed} | {guidance} |"
         else:
-            lines.append(f"| {name} | {status_str} | {guidance} |")
+            return f"| {name} | {status_str} | {guidance} |"
 
+    # Render pre_deploy resources
+    for r in status.pre_deploy:
+        lines.append(render_resource(r))
+
+    # Separator between pre_deploy and deploy
+    if status.deploy:
+        if show_changes:
+            lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
+        else:
+            lines.append("+--------------------+-----------+--------------------------------------------------+")
+
+        # Render deploy resources
+        for r in status.deploy:
+            lines.append(render_resource(r))
+
+    # Final border
     if show_changes:
         lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
     else:
@@ -154,7 +169,13 @@ def format_status_table(status, show_changes: bool = False) -> str:
     if status.deploy_ready:
         lines.append(f"\nDeploy ready: {green('Yes')}")
     else:
-        missing = [r.name for r in status.resources if r.status == "missing"]
-        lines.append(f"\nDeploy ready: {red('No')} ({len(missing)} missing: {', '.join(missing)})")
+        missing = [r.name for r in status.pre_deploy if r.status == "missing"]
+        lines.append(f"\nDeploy ready: {red('No')} ({len(missing)} missing)")
+
+    # Show guidance summary if available
+    if hasattr(status, 'guidance') and status.guidance:
+        lines.append("\nNext steps:")
+        for g in status.guidance:
+            lines.append(f"  {g}")
 
     return "\n".join(lines)

@@ -39,6 +39,7 @@ class DummyCloudProvider(CloudProvider):
         provider.buckets = data.get("buckets", {})
         provider.secrets = data.get("secrets", {})
         provider.images = data.get("images", {})
+        provider.cloud_run_jobs = data.get("cloud_run_jobs", {})
         provider.scheduler_jobs = data.get("scheduler_jobs", {})
         return provider
 
@@ -54,6 +55,9 @@ class DummyCloudProvider(CloudProvider):
 
         # {image_name: {"project": str}}
         self.images: Dict[str, Dict[str, Any]] = {}
+
+        # {job_name: {"project": str, "location": str}}
+        self.cloud_run_jobs: Dict[str, Dict[str, Any]] = {}
 
         # {job_name: {"project": str, "location": str, "schedule": str, "state": str, "timeZone": str}}
         self.scheduler_jobs: Dict[str, Dict[str, Any]] = {}
@@ -127,6 +131,14 @@ class DummyCloudProvider(CloudProvider):
     def image_exists(self, project_id: str, image_name: str) -> bool:
         image = self.images.get(image_name)
         return image is not None and image.get("project") == project_id
+
+    # --- Cloud Run Operations ---
+
+    def get_cloud_run_job(self, project_id: str, job_name: str, location: str = "us-central1") -> Optional[Dict[str, Any]]:
+        job = self.cloud_run_jobs.get(job_name)
+        if job and job.get("project") == project_id and job.get("location", "us-central1") == location:
+            return {"name": job_name}
+        return None
 
     # --- Scheduler Operations ---
 
