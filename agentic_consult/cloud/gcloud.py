@@ -140,6 +140,18 @@ class GCloudProvider(CloudProvider):
         except subprocess.CalledProcessError:
             return False
 
+    # --- Cloud Run Operations ---
+
+    def get_cloud_run_job(self, project_id: str, job_name: str, location: str = "us-central1") -> Optional[Dict[str, Any]]:
+        try:
+            res = _run_cmd([
+                "gcloud", "run", "jobs", "describe", job_name,
+                f"--project={project_id}", f"--region={location}", "--format=json"
+            ], capture=True)
+            return json.loads(res.stdout)
+        except subprocess.CalledProcessError:
+            return None
+
     # --- Scheduler Operations ---
 
     def get_scheduler_job(self, project_id: str, job_name: str, location: str = "us-central1") -> Optional[Dict[str, Any]]:

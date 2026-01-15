@@ -13,7 +13,7 @@ from .base import CloudProvider
 class ResourceStatus:
     """Status of a single cloud resource."""
     name: str
-    status: str  # "found", "exists", "missing", "error"
+    status: str  # "found", "exists", "missing", "error", "separator"
     id: Optional[str] = None
     changed: bool = False
     change_type: Optional[str] = None  # "created", "labeled", "updated"
@@ -23,24 +23,28 @@ class ResourceStatus:
 @dataclass
 class CloudStatus:
     """Complete cloud environment status."""
-    resources: List[ResourceStatus] = field(default_factory=list)
+    pre_deploy: List[ResourceStatus] = field(default_factory=list)  # Required before deploy
+    deploy: List[ResourceStatus] = field(default_factory=list)  # Created by terraform
+    guidance: List[str] = field(default_factory=list)  # Ordered summary guidance
     deploy_ready: bool = False
     config_saved: bool = False
+
+    def _resource_to_dict(self, r: ResourceStatus) -> Dict[str, Any]:
+        return {
+            "name": r.name,
+            "status": r.status,
+            "id": r.id,
+            "changed": r.changed,
+            "change_type": r.change_type,
+            "guidance": r.guidance,
+        }
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dict."""
         return {
-            "resources": [
-                {
-                    "name": r.name,
-                    "status": r.status,
-                    "id": r.id,
-                    "changed": r.changed,
-                    "change_type": r.change_type,
-                    "guidance": r.guidance,
-                }
-                for r in self.resources
-            ],
+            "pre_deploy": [self._resource_to_dict(r) for r in self.pre_deploy],
+            "deploy": [self._resource_to_dict(r) for r in self.deploy],
+            "guidance": self.guidance,
             "deploy_ready": self.deploy_ready,
             "config_saved": self.config_saved,
         }
@@ -48,6 +52,10 @@ class CloudStatus:
 
 # Required resources for deployment
 REQUIRED_SECRETS = ["gemini-api-key", "gmail-token"]
+CLOUD_RUN_JOBS = {
+    "fetcher": "gmex-fetcher",
+    "analyzer": "consult-analyzer",
+}
 SCHEDULER_JOBS = {
     "fetcher": "trigger-email-fetch",
     "analyzer": "trigger-email-analysis",
@@ -65,9 +73,12 @@ def load_images_config() -> dict:
     images = {}
     for section in parser.sections():
         images[section] = dict(parser[section])
-        if "internal" in images[section]:
-            images[section]["internal"] = parser.getboolean(section, "internal")
     return images
+
+
+def is_internal_image(info: dict) -> bool:
+    """Check if image is internal (has target = built in this repo)."""
+    return "target" in info
 
 
 def read_cloud_status(
@@ -106,31 +117,36 @@ def read_cloud_status(
     if provider is None:
         provider = _get_cloud_provider()
 
-    resources = []
+    pre_deploy = []
+    deploy = []
     all_ready = True
+    needs_init = False
+    missing_images = []
 
     # Handle missing project_id
     if not project_id:
-        resources.append(ResourceStatus(
+        pre_deploy.append(ResourceStatus(
             name="project",
             status="missing",
             guidance="Run: ./cloud init",
         ))
         return CloudStatus(
-            resources=resources,
+            pre_deploy=pre_deploy,
+            deploy=[],
+            guidance=["./cloud init"],
             deploy_ready=False,
             config_saved=False,
         )
 
     # 1. Check project
     if provider.project_exists(project_id):
-        resources.append(ResourceStatus(
+        pre_deploy.append(ResourceStatus(
             name="project",
             status="found",
             id=project_id,
         ))
     else:
-        resources.append(ResourceStatus(
+        pre_deploy.append(ResourceStatus(
             name="project",
             status="missing",
             id=project_id,
@@ -141,160 +157,130 @@ def read_cloud_status(
     # 2. Check bucket
     labeled_bucket = provider.lookup_bucket_by_label(project_id, APP_SLUG, "default")
     if labeled_bucket:
-        resources.append(ResourceStatus(
+        pre_deploy.append(ResourceStatus(
             name="bucket",
             status="found",
             id=labeled_bucket,
         ))
     elif bucket_name and provider.bucket_exists(project_id, bucket_name):
-        resources.append(ResourceStatus(
+        pre_deploy.append(ResourceStatus(
             name="bucket",
             status="found",
             id=bucket_name,
             guidance=f"Bucket exists but missing {APP_SLUG} label",
         ))
     else:
-        resources.append(ResourceStatus(
+        pre_deploy.append(ResourceStatus(
             name="bucket",
             status="missing",
-            guidance="Run: ./cloud init",
+            guidance="./cloud init",
         ))
+        needs_init = True
         all_ready = False
 
     # 3. Check secrets
     for secret_id in REQUIRED_SECRETS:
         if provider.secret_exists(project_id, secret_id):
-            resources.append(ResourceStatus(
+            pre_deploy.append(ResourceStatus(
                 name=secret_id,
                 status="exists",
             ))
         else:
-            resources.append(ResourceStatus(
+            pre_deploy.append(ResourceStatus(
                 name=secret_id,
                 status="missing",
-                guidance="Run: ./cloud init",
+                guidance="./cloud init",
             ))
+            needs_init = True
             all_ready = False
 
     # 4. Check images (from deploy/images.ini)
     images_config = load_images_config()
     for name, info in images_config.items():
-        gcr_name = info["gcr_name"]
-        is_internal = info.get("internal", True)
+        image_name = info["image"]
 
-        if provider.image_exists(project_id, gcr_name):
-            resources.append(ResourceStatus(
-                name=gcr_name,
+        if provider.image_exists(project_id, image_name):
+            pre_deploy.append(ResourceStatus(
+                name=image_name,
                 status="exists",
             ))
         else:
-            if is_internal:
-                guidance = f"./cloud images build {name} && ./cloud images push {name}"
-            else:
-                repo = info.get("repo", "<repo>")
-                build_cmd = info.get("build_cmd", "make build")
-                push_cmd = info.get("push_cmd", "make push")
-                guidance = f"cd {repo} && {push_cmd}"
-            resources.append(ResourceStatus(
-                name=gcr_name,
+            pre_deploy.append(ResourceStatus(
+                name=image_name,
                 status="missing",
-                guidance=guidance,
+                guidance=f"./cloud images deploy {name}",
             ))
+            missing_images.append(name)
             all_ready = False
 
-    # 5. Check scheduler jobs
+    # 5. Check Cloud Run jobs (deploy phase - created by terraform)
+    deploy_missing = False
+    for alias, job_name in CLOUD_RUN_JOBS.items():
+        job = provider.get_cloud_run_job(project_id, job_name)
+        if job:
+            deploy.append(ResourceStatus(
+                name=f"cloud run:{alias}",
+                status="exists",
+                id=job_name,
+            ))
+        else:
+            deploy.append(ResourceStatus(
+                name=f"cloud run:{alias}",
+                status="missing",
+                id=job_name,
+            ))
+            deploy_missing = True
+
+    # 6. Check scheduler jobs (deploy phase - created by terraform)
     for alias, job_name in SCHEDULER_JOBS.items():
         job = provider.get_scheduler_job(project_id, job_name)
         if job:
             state = job.get("state", "UNKNOWN")
-            resources.append(ResourceStatus(
+            deploy.append(ResourceStatus(
                 name=f"scheduler:{alias}",
                 status=state.lower(),
                 id=job_name,
             ))
         else:
-            resources.append(ResourceStatus(
+            deploy.append(ResourceStatus(
                 name=f"scheduler:{alias}",
                 status="missing",
                 id=job_name,
-                guidance="Created by terraform (run pre-deploy for commands)",
             ))
-            # Scheduler jobs are created by deploy, not a blocker for deploy
+            deploy_missing = True
+
+    # Set deploy guidance based on overall pre-deploy readiness
+    for r in deploy:
+        if r.status == "missing":
+            if all_ready:
+                r.guidance = "(terraform - see below)"
+            else:
+                r.guidance = "(fix above first)"
+
+    # Build consolidated guidance array (ordered by priority)
+    guidance = []
+    if needs_init:
+        guidance.append("./cloud init")
+    if missing_images:
+        guidance.append("./cloud images deploy all --if-missing")
+
+    # If deploy ready and terraform resources need setup, show terraform commands
+    if all_ready and deploy_missing:
+        from pathlib import Path
+        terraform_dir = Path(__file__).parent.parent.parent / "deploy" / "terraform"
+        # Make path home-relative if possible
+        home = Path.home()
+        try:
+            tf_path = "~/" + str(terraform_dir.relative_to(home))
+        except ValueError:
+            tf_path = str(terraform_dir)
+        guidance.append(f"cd {tf_path}")
+        guidance.append("terraform init")
+        guidance.append(f'terraform apply -var="project_id={project_id}" -var="bucket_name={bucket_name}"')
 
     return CloudStatus(
-        resources=resources,
+        pre_deploy=pre_deploy,
+        deploy=deploy,
+        guidance=guidance,
         deploy_ready=all_ready,
-    )
-
-
-@dataclass
-class PreDeployResult:
-    """Result from pre_deploy check."""
-    ready: bool
-    status: CloudStatus
-    terraform_commands: Optional[List[str]] = None
-    terraform_vars: Optional[Dict[str, str]] = None
-    issues: Optional[List[str]] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to JSON-serializable dict."""
-        result = {
-            "ready": self.ready,
-            "status": self.status.to_dict(),
-        }
-        if self.ready:
-            result["terraform_commands"] = self.terraform_commands
-            result["terraform_vars"] = self.terraform_vars
-        else:
-            result["issues"] = self.issues
-        return result
-
-
-def pre_deploy(
-    provider: CloudProvider,
-    project_id: str,
-    bucket_name: str,
-) -> PreDeployResult:
-    """Check deploy readiness and return terraform commands if ready.
-
-    Args:
-        provider: Cloud provider instance
-        project_id: GCP project ID
-        bucket_name: GCS bucket name
-
-    Returns:
-        PreDeployResult with status, and either terraform commands (if ready)
-        or list of issues (if not ready)
-    """
-    status = read_cloud_status(provider, project_id, bucket_name)
-    status.config_saved = True
-
-    if not status.deploy_ready:
-        issues = [
-            f"{r.name}: {r.guidance}"
-            for r in status.resources
-            if r.status == "missing" and r.guidance
-        ]
-        return PreDeployResult(
-            ready=False,
-            status=status,
-            issues=issues,
-        )
-
-    # Ready - provide terraform commands
-    terraform_vars = {
-        "project_id": project_id,
-        "bucket_name": bucket_name,
-    }
-    terraform_commands = [
-        "cd deploy/terraform",
-        "terraform init",
-        f'terraform apply -var="project_id={project_id}" -var="bucket_name={bucket_name}"',
-    ]
-
-    return PreDeployResult(
-        ready=True,
-        status=status,
-        terraform_commands=terraform_commands,
-        terraform_vars=terraform_vars,
     )
