@@ -283,3 +283,161 @@ The slight verbosity cost is worth the zero-install benefit.
 | `consult-mcp` | pipx | Run local MCP server | Agent User (local MCP) |
 
 The `consult` CLI still exists for users who don't have the repo cloned (e.g., running local MCP server). But for deployment, use `./cloud`.
+
+## MCP Server Architecture
+
+### Transport Options
+
+The MCP server supports two transports with **shared tools**:
+
+```
+agentic_consult/mcp/
+  server.py      # FastMCP + all tools (pure shared, no transport)
+  stdio.py       # Stdio transport wrapper
+  http.py        # FastAPI + auth middleware (HTTP only)
+```
+
+| Component | File | Shared? |
+|-----------|------|---------|
+| Tools (backup, triage, scan, etc.) | `mcp/server.py` | ✓ Yes |
+| FastMCP instance | `mcp/server.py` | ✓ Yes |
+| Stdio transport (`mcp.run()`) | `mcp/stdio.py` | No - stdio only |
+| HTTP transport (`mcp.streamable_http_app()`) | `mcp/http.py` | No - http only |
+| Auth middleware (PAT check) | `mcp/http.py` | No - http only |
+| Health endpoint (`/health`) | `mcp/http.py` | No - http only |
+
+Entry points:
+```
+consult-mcp       → mcp/stdio.py:run_server()       # stdio
+consult-mcp-http  → mcp/http.py:run_http_server()   # uvicorn
+```
+
+### User Authentication (HTTP)
+
+HTTP transport uses Personal Access Token (PAT) authentication:
+
+| Secret | Location | Purpose |
+|--------|----------|---------|
+| `mcp-personal-access-token` | Secret Manager | Server reads at startup |
+| `personal_access_token` | Local `settings.json` | Client sends with requests |
+
+**Auth flow:**
+1. Request includes `Authorization: Bearer <PAT>` header OR `?token=<PAT>` query param
+2. Server validates against secret from Secret Manager
+3. `/health` endpoint bypasses auth (for connectivity checks)
+
+**Logging:**
+- Valid token → `logger.info`
+- Invalid/missing token → `logger.error` (for diagnostics)
+
+### Admin vs User Separation
+
+**Why two separate command sets?**
+
+The admin and user are fundamentally different personas with different capabilities:
+
+| Persona | Has repo? | Has gcloud? | Cloud access? |
+|---------|-----------|-------------|---------------|
+| Server Admin | ✓ Yes | ✓ Yes | Direct (Secret Manager, Cloud Run) |
+| MCP User | ✗ No | ✗ No | None (only knows URL + PAT) |
+
+**Design constraints:**
+
+1. **User has NO gcloud** - They `pipx install agentic-consult` and that's it. No GCP SDK, no service account, no cloud CLI.
+
+2. **User has NO repo** - They don't clone the repo. They just install the package and use the MCP server.
+
+3. **No shared auth SDK** - Admin commands talk to Secret Manager directly. User commands only read/write local config files. These are completely separate code paths.
+
+4. **Export/Import pattern** - Admin generates credentials and exports them. User receives credentials out-of-band (email, Slack, etc.) and imports them. This is the same pattern used by `food-agent`.
+
+**Rationale:**
+
+- Keeps user experience simple (no cloud setup required)
+- Prevents users from accidentally modifying cloud resources
+- Allows admin to control who gets access
+- Works for users who only want to consume the service, not deploy it
+
+### Admin vs User Commands
+
+**Server Admin** (`./cloud` - has repo + gcloud):
+
+```bash
+./cloud user-auth init      # creates PAT in Secret Manager
+./cloud user-auth regen     # rotates PAT (prompts unless --force)
+./cloud user-auth status    # checks Secret Manager
+./cloud user-auth export    # outputs URL + PAT as YAML
+```
+
+**MCP User** (`consult mcp` - pipx only, NO gcloud):
+
+```bash
+consult mcp import          # reads YAML from stdin, saves to local config
+consult mcp status [--test] # shows config, optionally validates connectivity
+consult mcp register gemini [--dry-run]
+consult mcp register claude [--dry-run]
+consult mcp register url    # outputs URL with embedded token
+```
+
+### Config Storage
+
+Single file (`settings.json`), different keys per persona:
+
+```json
+{
+  "project_id": "my-project",
+  "bucket_name": "my-bucket",
+  "mcp_url": "https://consult-mcp-xxx.run.app",
+  "personal_access_token": "abc123..."
+}
+```
+
+| Key | Written by | Read by |
+|-----|------------|---------|
+| `project_id` | `./cloud init` | `./cloud *` |
+| `bucket_name` | `./cloud init` | `./cloud *` |
+| `mcp_url` | `consult mcp import` | `consult mcp *` |
+| `personal_access_token` | `consult mcp import` | `consult mcp *` |
+
+### User Flow
+
+```bash
+# Admin exports config
+./cloud user-auth export > config.yaml
+
+# User imports (via email, slack, etc.)
+cat config.yaml | consult mcp import
+
+# User validates and registers
+consult mcp status --test && consult mcp register gemini
+```
+
+### Status Command
+
+```bash
+consult mcp status
+```
+```
+MCP Configuration
+─────────────────
+URL: https://consult-mcp-abc123.run.app
+PAT: Xk9mQ2... ✓
+```
+
+```bash
+consult mcp status --test
+```
+```
+MCP Configuration
+─────────────────
+URL: https://consult-mcp-abc123.run.app
+PAT: Xk9mQ2... ✓
+
+Health: ✓ Service reachable
+Auth:   ✓ Token valid
+```
+
+Chainable for scripts:
+```bash
+consult mcp status --test && consult mcp register gemini
+```

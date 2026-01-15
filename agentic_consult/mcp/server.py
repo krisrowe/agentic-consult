@@ -1066,9 +1066,3 @@ async def get_fake_email_addresses(
         logger.exception("Error in get_fake_email_addresses")
         return {"error": str(e)}
 
-def run_server():
-    """Run the MCP server with stdio transport."""
-    mcp.run()
-
-if __name__ == "__main__":
-    run_server()
