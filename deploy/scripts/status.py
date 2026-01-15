@@ -10,10 +10,7 @@ import argparse
 import json
 import sys
 
-from _common import (
-    load_settings, get_cloud_provider, read_cloud_status,
-    format_status_table, error
-)
+from _common import read_cloud_status, format_status_table
 
 
 def main(args=None):
@@ -29,17 +26,7 @@ def main(args=None):
 
     parsed = parser.parse_args(args)
 
-    settings = load_settings()
-    project_id = settings.get("project_id")
-    bucket_name = settings.get("bucket_name")
-
-    if not project_id:
-        error("project_id not set. Run: ./cloud init --project=YOUR_PROJECT")
-        sys.exit(1)
-
-    provider = get_cloud_provider()
-    status = read_cloud_status(provider, project_id, bucket_name)
-    status.config_saved = True
+    status = read_cloud_status()
 
     if parsed.format == "json":
         print(json.dumps(status.to_dict(), indent=2))
