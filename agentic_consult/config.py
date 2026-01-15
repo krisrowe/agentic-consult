@@ -286,6 +286,51 @@ def get_model_configuration() -> dict:
         "resolutions": resolutions
     }
 
+def get_mcp_registration_info(include_token: bool = False) -> dict:
+    """
+    Returns MCP registration info for manual configuration.
+
+    Args:
+        include_token: If True, include full token. If False, mask it.
+
+    Returns:
+        Dict with 'url', 'header_auth', 'query_auth', or 'error' if not configured.
+    """
+    config = load_main_config()
+    url = config.get("mcp_url")
+    pat = config.get("personal_access_token")
+
+    if not url or not pat:
+        return {"error": "Cloud MCP not configured. Run 'consult mcp import' first."}
+
+    token_display = pat if include_token else "************"
+
+    result = {
+        "url": url,
+        "header_auth": {
+            "url": url,
+            "header": f"Authorization: Bearer {token_display}",
+            "guidance": [
+                {"code": "header_support", "message": "For clients that support custom headers."},
+            ],
+        },
+        "query_auth": {
+            "url": f"{url.rstrip('/')}?token={token_display}",
+            "guidance": [
+                {"code": "claude_ai", "message": "For claude.ai custom connectors, use this as simple URL."},
+                {"code": "simple_url_fallback", "message": "Try same for others that support simple URL or OAuth2 but not custom headers."},
+            ],
+        },
+    }
+
+    if not include_token:
+        result["guidance"] = [
+            {"code": "token_masked", "message": "Use --include-token to reveal full token."},
+        ]
+
+    return result
+
+
 def get_model_help_text() -> str:
     """
     Generates a user-facing summary of available models and dynamic aliases.

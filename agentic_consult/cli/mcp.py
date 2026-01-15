@@ -12,7 +12,7 @@ import json
 import sys
 import urllib.request
 import urllib.error
-from ..config import load_main_config, set_app_config_value
+from ..config import load_main_config, set_app_config_value, get_mcp_registration_info
 
 
 @click.group()
@@ -161,18 +161,21 @@ def mcp_status(test: bool):
 
 
 @mcp.command("register")
-@click.argument("target", type=click.Choice(["local", "cloud"]))
-@click.argument("client", type=click.Choice(["gemini", "claude"]))
+@click.argument("target", type=click.Choice(["local", "cloud", "manual"]))
+@click.argument("client", type=click.Choice(["gemini", "claude"]), required=False)
 @click.option("--name", default="consult", help="Server name for registration")
 @click.option("--scope", type=click.Choice(["user", "project"]), default="user", help="Where to save")
 @click.option("--guide-only", is_flag=True, help="Output guidance without exit 1 (for broken combos)")
-def mcp_register(target: str, client: str, name: str, scope: str, guide_only: bool):
+@click.option("--include-token", is_flag=True, help="Include full token in output (masked by default)")
+@click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text", help="Output format")
+def mcp_register(target: str, client: str, name: str, scope: str, guide_only: bool, include_token: bool, output_format: str):
     """Register MCP server with Gemini or Claude.
 
     \b
     Targets:
         local  - Register local stdio server (consult-mcp)
         cloud  - Register cloud HTTP server (requires mcp_url config)
+        manual - Show URL and auth info for manual registration
 
     \b
     Note: 'cloud gemini' requires gemini CLI >= 0.24.0 (HTTP bug fix).
@@ -182,13 +185,51 @@ def mcp_register(target: str, client: str, name: str, scope: str, guide_only: bo
     Examples:
         consult mcp register local gemini
         consult mcp register local claude
-        consult mcp register cloud gemini --guide-only
         consult mcp register cloud claude --name my-consult
+        consult mcp register manual
     """
     import subprocess
     import shutil
 
     config = load_main_config()
+
+    # Manual target: show URL info for manual registration
+    if target == "manual":
+        info = get_mcp_registration_info(include_token=include_token)
+        if "error" in info:
+            click.secho(f"Error: {info['error']}", fg="red", err=True)
+            sys.exit(1)
+
+        if output_format == "json":
+            click.echo(json.dumps(info, indent=2))
+        else:
+            click.echo("MCP Registration Info")
+            click.echo("─────────────────────")
+            click.echo()
+            click.echo("Option 1 (header auth):")
+            click.echo(f"  URL:    {info['header_auth']['url']}")
+            click.echo(f"  Header: {info['header_auth']['header']}")
+            if info['header_auth'].get('guidance'):
+                click.echo()
+                for g in info['header_auth']['guidance']:
+                    click.echo(f"  {g['message']}")
+            click.echo()
+            click.echo("Option 2 (query string auth):")
+            click.echo(f"  URL:    {info['query_auth']['url']}")
+            if info['query_auth'].get('guidance'):
+                click.echo()
+                for g in info['query_auth']['guidance']:
+                    click.echo(f"  {g['message']}")
+            if info.get('guidance'):
+                click.echo()
+                for g in info['guidance']:
+                    click.echo(g['message'])
+        sys.exit(0)
+
+    # local/cloud require client argument
+    if not client:
+        click.secho("Error: CLIENT argument required for local/cloud targets.", fg="red", err=True)
+        sys.exit(1)
 
     if target == "cloud":
         url = config.get("mcp_url")
