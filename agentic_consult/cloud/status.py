@@ -56,8 +56,8 @@ SCHEDULER_JOBS = {
 
 
 def read_cloud_status(
-    provider: CloudProvider,
-    project_id: str,
+    provider: Optional[CloudProvider] = None,
+    project_id: Optional[str] = None,
     bucket_name: Optional[str] = None,
 ) -> CloudStatus:
     """Read cloud environment status (read-only, no mutations).
@@ -70,17 +70,42 @@ def read_cloud_status(
     - Scheduler jobs exist and their state
 
     Args:
-        provider: Cloud provider instance
-        project_id: GCP project ID to check
-        bucket_name: Optional bucket name (if known from config)
+        provider: Cloud provider instance (defaults to get_cloud_provider())
+        project_id: GCP project ID (defaults to settings)
+        bucket_name: Bucket name (defaults to settings)
 
     Returns:
         CloudStatus with all resource statuses
     """
-    from ..paths import APP_SLUG
+    from ..paths import APP_SLUG, load_settings
+    from .factory import get_cloud_provider as _get_cloud_provider
+
+    # Load from settings if not provided
+    if project_id is None or bucket_name is None:
+        settings = load_settings()
+        if project_id is None:
+            project_id = settings.get("project_id")
+        if bucket_name is None:
+            bucket_name = settings.get("bucket_name")
+
+    if provider is None:
+        provider = _get_cloud_provider()
 
     resources = []
     all_ready = True
+
+    # Handle missing project_id
+    if not project_id:
+        resources.append(ResourceStatus(
+            name="project",
+            status="missing",
+            guidance="Run: ./cloud init",
+        ))
+        return CloudStatus(
+            resources=resources,
+            deploy_ready=False,
+            config_saved=False,
+        )
 
     # 1. Check project
     if provider.project_exists(project_id):
@@ -117,7 +142,7 @@ def read_cloud_status(
         resources.append(ResourceStatus(
             name="bucket",
             status="missing",
-            guidance="Run: consult cloud init",
+            guidance="Run: ./cloud init",
         ))
         all_ready = False
 
@@ -132,7 +157,7 @@ def read_cloud_status(
             resources.append(ResourceStatus(
                 name=secret_id,
                 status="missing",
-                guidance="Run: consult cloud init",
+                guidance="Run: ./cloud init",
             ))
             all_ready = False
 
@@ -147,7 +172,7 @@ def read_cloud_status(
             if image_name == "gmex-fetcher":
                 guidance = "cd <path-to>/gmail-extractor && make push"
             else:
-                guidance = "consult image build && consult image push"
+                guidance = "./cloud image build && ./cloud image push"
             resources.append(ResourceStatus(
                 name=image_name,
                 status="missing",
