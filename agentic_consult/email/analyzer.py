@@ -7,6 +7,7 @@ results as sidecar JSON files.
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol
@@ -38,15 +39,20 @@ class GeminiProvider:
         self.client = GeminiAPIClient(model_name=model)
     
     def analyze(self, email: Dict[str, Any], prompt: str) -> Dict[str, Any]:
+        msg_id = email.get('id', 'unknown')
+        logger.debug(f"Analyzing email {msg_id} - sending to Gemini")
+
         # 1. Invoke Gemini
         response = self.client.generate_prompt_driven_json(prompt)
-        
+
+        logger.debug(f"Gemini returned for {msg_id}: {response}")
+
         # 2. Flatten the response (Gemini template returns lists)
         recs = response.get("emails", []) + response.get("invites", [])
-        
+
         if not recs:
-            raise RuntimeError(f"No analysis returned for email {email['id']}")
-            
+            raise RuntimeError(f"No analysis returned for email {msg_id}")
+
         # 3. Return the specific result for this item
         return recs[0]
 
@@ -136,9 +142,50 @@ class EmailAnalyzer:
         )
 
         # 4. Invoke Provider
-        logger.debug(f"Thinking about: {msg_id}")
+        # Format email date for logging (preserve original timezone from email)
+        from email.utils import parsedate_to_datetime
+        try:
+            email_dt = parsedate_to_datetime(email_data["date"])
+            email_date_str = email_dt.strftime("%Y-%m-%d %I:%M %p (%Z)")
+        except Exception:
+            email_date_str = email_data["date"]  # Fallback to raw date
+        logger.info(f"Asking Gemini (via API) about message {msg_id} from {email_date_str}...")
         result = self.provider.analyze(email_payload[0], prompt)
-        
+
         # 5. Save Sidecar via SDK
         self.store.save_sidecar(msg_id, "analysis.json", result)
-        logger.info(f"Analysis persisted for: {msg_id}")
+
+        # 6. Structured logging for metrics/debugging
+        from agentic_consult.logging import log_json
+
+        action = result.get("action", "unknown")
+        rule_id = result.get("rule_id", result.get("rule", "none"))
+        reason = result.get("reason", "")
+
+        # INFO: Summary for metrics
+        info_payload = {
+            "event": "analysis_complete",
+            "msg_id": msg_id,
+            "email_date": email_data["date"],
+            "action": action,
+            "rule": rule_id,
+            "reason": reason
+        }
+        # Note: These fields may contain PII when enabled
+        if os.environ.get("INFO_LOG_EMAIL_SUBJECT", "").lower() in ("true", "1", "yes"):
+            info_payload["subject"] = email_data["subject"]
+        if os.environ.get("INFO_LOG_EMAIL_SENDER", "").lower() in ("true", "1", "yes"):
+            info_payload["from"] = email_data["from"]
+        log_json("INFO", info_payload)
+
+        # DEBUG: Full context for debugging
+        log_json("DEBUG", {
+            "event": "analysis_detail",
+            "email": {
+                "id": msg_id,
+                "date": email_data["date"],
+                "from": email_data["from"],
+                "subject": email_data["subject"]
+            },
+            "analysis": result
+        })

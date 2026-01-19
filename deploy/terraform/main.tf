@@ -51,13 +51,16 @@ resource "google_storage_bucket" "data_bucket" {
   name          = local.bucket_name
   location      = "US"
   force_destroy = false
-  
+
   labels = {
     "agentic-consult" = "default"
   }
-  
+
   uniform_bucket_level_access = true
 }
+
+# 2b. Config sync handled via gsutil (see deploy/scripts/deploy.py)
+# Terraform bucket object has permission issues with user credentials.
 
 # 3. Service Account
 resource "google_service_account" "analyzer_sa" {
@@ -159,7 +162,12 @@ resource "google_cloud_run_v2_job" "analyzer_job" {
           name  = "EMAIL_ARCHIVE_DATA_DIR"
           value = "/mnt/gcs/email-archive"
         }
-        
+
+        env {
+          name  = "CONSULT_CONFIG_DIR"
+          value = "/mnt/gcs/config"
+        }
+
         # Point directly to secret names for env var injection
         env {
           name = "GEMINI_API_KEY"
@@ -201,7 +209,7 @@ resource "google_cloud_scheduler_job" "periodic_fetch" {
 
   http_target {
     http_method = "POST"
-    uri         = "https://${google_cloud_run_v2_job.fetcher_job.location}-run.googleapis.com/apis/run.googleapis.com/v1/${google_cloud_run_v2_job.fetcher_job.id}:run"
+    uri         = "https://${local.region}-run.googleapis.com/v2/projects/${local.project_id}/locations/${local.region}/jobs/${google_cloud_run_v2_job.fetcher_job.name}:run"
 
     oauth_token {
       service_account_email = google_service_account.analyzer_sa.email
@@ -228,7 +236,7 @@ resource "google_cloud_scheduler_job" "periodic_analysis" {
 
   http_target {
     http_method = "POST"
-    uri         = "https://${google_cloud_run_v2_job.analyzer_job.location}-run.googleapis.com/apis/run.googleapis.com/v1/${google_cloud_run_v2_job.analyzer_job.id}:run"
+    uri         = "https://${local.region}-run.googleapis.com/v2/projects/${local.project_id}/locations/${local.region}/jobs/${google_cloud_run_v2_job.analyzer_job.name}:run"
 
     oauth_token {
       service_account_email = google_service_account.analyzer_sa.email

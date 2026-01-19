@@ -27,5 +27,14 @@ def generate_synthetic_drive_id(seed=20251223, total_length=33, underscore_pos=2
     return token
 
 
+def generate_synthetic_ssn():
+    """Return a synthetic SSN-like string via concatenation.
+
+    Avoids literal SSN patterns in source code while producing
+    a string that looks like an SSN for testing detection.
+    """
+    return "123" + "-" + "45" + "-" + "6789"
+
+
 if __name__ == '__main__':
     print(generate_synthetic_drive_id())

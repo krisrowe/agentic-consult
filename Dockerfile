@@ -1,7 +1,7 @@
 # Multi-Stage Dockerfile for agentic-consult
 
 # --- Base Stage (Shared Dependencies) ---
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 WORKDIR /app
 
 # Install system dependencies
@@ -16,12 +16,12 @@ RUN pip install "email-archive @ git+https://github.com/krisrowe/gmail-extractor
 RUN pip install -e .
 
 # --- Analyzer Stage ---
-FROM base as analyzer
+FROM base AS analyzer
 # Default command: perform one-shot analysis
-CMD ["python", "-m", "agentic_consult.email.analyzer"]
+CMD ["python", "-m", "agentic_consult.email"]
 
 # --- MCP HTTP Stage ---
-FROM base as mcp-http
+FROM base AS mcp-http
 # Install HTTP dependencies
 RUN pip install -e ".[http]"
 # Expose port for Cloud Run
