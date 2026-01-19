@@ -106,7 +106,7 @@ This scans for:
 consult precommit --include-ignored
 ```
 
-### Backup operations
+## Backup operations
 
 **Backup customer data to Drive:**
 ```bash

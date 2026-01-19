@@ -78,19 +78,151 @@ def save_main_config(data):
         json.dump(data, f, indent=2)
     return path
 
-def get_local_data_root():
+def get_local_data_root() -> Path:
     """
-    Resolves the root directory for all user data.
-    Priority:
-    1. local_data setting in settings.json
-    2. ~/.local/share/agentic-consult/ (Standard XDG Data)
+    Returns the root directory for local data (config, topics, customers).
+    Resolves priorities:
+    1. CONSULT_DATA_ROOT environment variable.
+    2. local_data setting in settings.json.
+    3. ~/.config/agentic-consult (XDG_CONFIG_HOME fallback).
     """
-    config = load_main_config()
-    if config.get('local_data'):
-        return Path(config['local_data']).expanduser()
+    if os.environ.get("CONSULT_DATA_ROOT"):
+        return Path(os.environ["CONSULT_DATA_ROOT"])
     
-    # Default XDG Data location (relative to actual HOME, not BACKUPS_HOME_LOCAL_PATH)
-    return Path.home() / ".local" / "share" / "agentic-consult"
+    settings = load_main_config()
+    if settings.get('local_data'):
+        return Path(settings['local_data']).expanduser()
+
+    # Default to XDG path
+    xdg_config = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    return Path(xdg_config) / "agentic-consult"
+
+def configure_workspace_context(repo_path: Path):
+    """
+    Bootstraps the shared CONSULT-TOOLS.md context into a repository.
+    
+    1. Copies CONSULT-TOOLS.md from pkg to ~/.config/agentic-consult/context/
+    2. Symlinks ./CONSULT-TOOLS.md -> config location
+    3. Updates .gemini/settings.json to include CONSULT-TOOLS.md (and GEMINI.md if initializing)
+    4. Registers consult-mcp server if missing.
+    """
+    import importlib.resources
+    import json
+    import shutil
+    import subprocess
+
+    # 1. Installation
+    data_root = get_local_data_root()
+    context_dir = data_root / "context"
+    context_dir.mkdir(parents=True, exist_ok=True)
+    target_file = context_dir / "CONSULT-TOOLS.md"
+
+    # Find source in package root
+    try:
+        pkg_root = importlib.resources.files("agentic_consult").parent
+        source_path = pkg_root / "CONSULT-TOOLS.md"
+        
+        if not source_path.exists():
+            # Fallback for development/source tree
+            source_path = Path(__file__).parent.parent.parent / "CONSULT-TOOLS.md"
+
+        shutil.copy2(source_path, target_file)
+    except Exception as e:
+        # Warning only, file might not be packaged yet during dev
+        print(f"Warning: Could not locate source CONSULT-TOOLS.md: {e}")
+
+    # 2. Symlinking
+    repo_symlink = repo_path / "CONSULT-TOOLS.md"
+    
+    # Path resolution for symlink (home-relative if possible)
+    try:
+        home = Path.home()
+        if target_file.is_relative_to(home):
+            link_target = Path("~") / target_file.relative_to(home)
+        else:
+            link_target = target_file
+    except Exception:
+        link_target = target_file
+
+    if repo_symlink.is_symlink() or repo_symlink.exists():
+        repo_symlink.unlink()
+    
+    if target_file.exists():
+        os.symlink(target_file, repo_symlink)
+
+    # 3. Registration in .gemini/settings.json
+    gemini_dir = repo_path / ".gemini"
+    gemini_dir.mkdir(exist_ok=True)
+    settings_file = gemini_dir / "settings.json"
+    
+    settings = {}
+    if settings_file.exists():
+        try:
+            with open(settings_file, 'r') as f:
+                settings = json.load(f)
+        except Exception:
+            pass
+            
+    if "context" not in settings:
+        settings["context"] = {}
+        
+    # Logic: If fileName exists, append ONLY ours. If missing, init with Default + Ours.
+    if "fileName" in settings["context"]:
+        filenames = settings["context"]["fileName"]
+        if "CONSULT-TOOLS.md" not in filenames:
+            filenames.append("CONSULT-TOOLS.md")
+    else:
+        # Initialize
+        filenames = ["GEMINI.md", "CONSULT-TOOLS.md"]
+        
+    settings["context"]["fileName"] = filenames
+    
+    with open(settings_file, 'w') as f:
+        json.dump(settings, f, indent=2)
+
+    # 4. Check & Register MCP Server
+    mcp_registered = False
+    
+    # Check Project Scope
+    if "mcpServers" in settings and "consult" in settings["mcpServers"]:
+        mcp_registered = True
+        
+    # Check User Scope (Simple check of file existence)
+    user_settings = Path.home() / ".gemini/settings.json"
+    if not mcp_registered and user_settings.exists():
+        try:
+            with open(user_settings, 'r') as f:
+                u_data = json.load(f)
+                if "mcpServers" in u_data and "consult" in u_data["mcpServers"]:
+                    mcp_registered = True
+        except Exception:
+            pass
+            
+    if not mcp_registered:
+        # Register at Project Scope via CLI
+        try:
+            # We use 'gemini mcp add' but inside the repo dir so it defaults to project?
+            # No, gemini CLI usually requires --scope project explicitly if that's desired behavior.
+            # But here we want to ensure it works for THIS repo.
+            subprocess.run(
+                ["gemini", "mcp", "add", "consult", "consult-mcp", "--scope", "project"],
+                cwd=str(repo_path),
+                check=True,
+                capture_output=True
+            )
+            mcp_action = "Registered (Project)"
+        except Exception as e:
+            mcp_action = f"Failed to register: {e}"
+    else:
+        mcp_action = "Already Registered"
+        
+    return {
+        "installed": str(target_file),
+        "symlink": str(repo_symlink),
+        "settings_updated": str(settings_file),
+        "filenames": filenames,
+        "mcp_status": mcp_action
+    }
 
 def load_yaml_file(path):
     """
@@ -146,31 +278,51 @@ def initialize_app_config() -> tuple[bool, str]:
     except Exception as e:
         return False, f"Failed to copy default app.yaml: {e}"
 
+def deep_merge(target: dict, source: dict) -> dict:
+    """
+    Recursively merges source dict into target dict.
+    - Dicts are merged recursively.
+    - Lists are OVERWRITTEN by source (standard config behavior).
+    - Scalars are overwritten.
+    """
+    for key, value in source.items():
+        if isinstance(value, dict) and key in target and isinstance(target[key], dict):
+            deep_merge(target[key], value)
+        else:
+            target[key] = value
+    return target
+
 def load_app_config() -> dict:
     """
-    Loads core system configuration.
-    Priority:
-    1. User override in config directory (app.yaml).
-    2. Default from package root.
+    Loads core system configuration by merging user overrides onto package defaults.
+    1. Load & Validate Package Default app.yaml
+    2. Load User app.yaml (from resolved config dir)
+    3. Deep Merge User -> Default
+    4. Validate Final Config
     """
-    # 1. Check User Config Directory
-    user_path = get_config_path("app.yaml")
-    if user_path.exists():
-        with open(user_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f) or {}
-            validate_yaml(data, "app_schema.json")
-            return data
-
-    # 2. Fallback to Package Default
-    path = Path(__file__).parent / "app.yaml"
+    import agentic_consult.config as config_pkg
     
-    if path.exists():
-        with open(path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f) or {}
-            validate_yaml(data, "app_schema.json")
-            return data
-                
-    return {}
+    # 1. Load Package Default
+    pkg_app_yaml = Path(config_pkg.__file__).parent / "app.yaml"
+    config = {}
+    
+    if pkg_app_yaml.exists():
+        with open(pkg_app_yaml, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f) or {}
+            # Validate defaults immediately to ensure package integrity
+            validate_yaml(config, "app_schema.json")
+            
+    # 2. Load User Override
+    user_app_yaml = get_config_path("app.yaml")
+    if user_app_yaml.exists():
+        with open(user_app_yaml, 'r', encoding='utf-8') as f:
+            user_config = yaml.safe_load(f) or {}
+            # Merge user config ON TOP OF default config
+            deep_merge(config, user_config)
+
+    # 4. Validate final merged config (ensures user didn't break requirements)
+    validate_yaml(config, "app_schema.json")
+    return config
 
 def parse_model_version(model_id: str) -> tuple:
     """

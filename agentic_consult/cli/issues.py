@@ -13,7 +13,8 @@ def issues():
 @click.option('--verbose', '-v', is_flag=True, help="Show issue details and previews.")
 def issues_list(identifier, verbose):
     """List issues and open task counts for customers."""
-    from agentic_consult.ticktick import load_tasks_from_json
+    from agentic_consult.sdk.issues import list_issues
+    # from agentic_consult.ticktick import load_tasks_from_json
     
     root = get_active_customers_root()
     if not root.exists():
@@ -42,36 +43,35 @@ def issues_list(identifier, verbose):
     for cust in customers:
         c_slug = cust['slug']
         c_name = cust['name']
-        cust_dir = root / c_slug
         
-        # Get open task count from cache
-        tasks_dir = cust_dir / 'tasks'
-        tasks = load_tasks_from_json(tasks_dir)
-        task_count = len(tasks)
+        # Get open task count (Mocked/Disabled for now)
+        task_count = "?" 
         
-        # Get issues
-        issues_dir = cust_dir / 'issues'
-        issues = []
-        if issues_dir.exists():
-            issues = [f for f in issues_dir.iterdir() if f.is_file() and not f.name.startswith('.')]
-            # Sort by modification time, newest first
-            issues.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+        # Get issues via SDK
+        issues = list_issues(c_slug, status='all')
+        open_issues = [i for i in issues if i['status'] == 'open']
+        resolved_issues = [i for i in issues if i['status'] == 'resolved']
             
         if verbose:
             click.echo(f"\n=== {c_name} ({task_count} Open Tasks) ===")
-            if not issues:
-                click.echo("  No issues found.")
-            for issue in issues:
-                click.echo(f"  [Issue] {issue.name}")
-                try:
-                    with open(issue, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        preview = content[:100].replace('\n', ' ')
-                        if len(content) > 100: preview += "..."
-                        click.echo(f"    Preview: {preview}")
-                except Exception:
-                    click.echo("    (Could not read content)")
+            if not open_issues:
+                click.echo("  No open issues found.")
+            
+            for issue in open_issues:
+                click.echo(f"  [OPEN] {issue['name']}")
+                _print_preview(issue['path'])
+            
+            if resolved_issues:
+                click.echo(f"\n  [RESOLVED] {len(resolved_issues)} issues archived.")
         else:
-            # Table row format
-            issue_names = ", ".join([i.name for i in issues]) if issues else "-"
-            click.echo(f"{c_name:<20} | Tasks: {task_count:<3} | Issues: {issue_names}")
+            click.echo(f"{c_name:<20} | Tasks: {task_count:<3} | Open Issues: {len(open_issues):<3} (Resolved: {len(resolved_issues)})")
+
+def _print_preview(path):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            preview = content[:100].replace('\n', ' ')
+            if len(content) > 100: preview += "..."
+            click.echo(f"    Preview: {preview}")
+    except Exception:
+        click.echo("    (Could not read content)")

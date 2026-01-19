@@ -927,6 +927,67 @@ async def list_customers(
         logger.exception("Error in list_customers")
         return {"error": str(e)}
 
+@mcp.tool()
+async def list_customer_issues(
+    slug: str,
+    status: Literal['open', 'resolved', 'all'] = 'open'
+) -> dict[str, Any]:
+    """
+    List issues for a specific customer.
+    
+    Args:
+        slug: The customer identifier.
+        status: Filter by status ('open', 'resolved', 'all').
+    """
+    try:
+        from agentic_consult.sdk.issues import list_issues
+        issues = list_issues(slug, status)
+        return {"issues": issues, "count": len(issues)}
+    except Exception as e:
+        logger.exception(f"Error in list_customer_issues for {slug}")
+        return {"error": str(e)}
+
+@mcp.tool()
+async def create_customer_issue(
+    slug: str,
+    title: str,
+    content: str = ""
+) -> dict[str, Any]:
+    """
+    Create a new issue in the customer's 'open' folder.
+    
+    Args:
+        slug: The customer identifier.
+        title: Title of the issue.
+        content: Markdown content of the issue.
+    """
+    try:
+        from agentic_consult.sdk.issues import create_issue
+        result = create_issue(slug, title, content)
+        return {"success": True, "issue": result}
+    except Exception as e:
+        logger.exception(f"Error in create_customer_issue for {slug}")
+        return {"error": str(e)}
+
+@mcp.tool()
+async def resolve_customer_issue(
+    slug: str,
+    filename: str
+) -> dict[str, Any]:
+    """
+    Mark an issue as resolved (moves it to the 'resolved' folder).
+    
+    Args:
+        slug: The customer identifier.
+        filename: The filename of the issue (e.g. 'network-outage.md').
+    """
+    try:
+        from agentic_consult.sdk.issues import resolve_issue
+        result = resolve_issue(slug, filename)
+        return {"success": True, "issue": result}
+    except Exception as e:
+        logger.exception(f"Error in resolve_customer_issue for {slug}")
+        return {"error": str(e)}
 
 @mcp.tool()
 async def get_customer_info(slug: str) -> dict[str, Any]:
@@ -941,6 +1002,8 @@ async def get_customer_info(slug: str) -> dict[str, Any]:
     """
     try:
         from agentic_consult.customers import find_customer_by_id, get_active_customers_root
+        from pathlib import Path
+        import os
         
         cust = find_customer_by_id(slug)
         if not cust:
@@ -949,15 +1012,21 @@ async def get_customer_info(slug: str) -> dict[str, Any]:
         customer_root = get_active_customers_root() / cust['slug']
         drive_id = cust.get('drive_folder_id')
         
+        def to_rel(p: Path) -> str:
+            try:
+                return str(p).replace(str(Path.home()), "~")
+            except Exception:
+                return str(p)
+        
         # Structured Response as defined in DESIGN.md
         return {
             "name": cust.get('name', slug),
             "slug": cust['slug'],
             "keywords": cust.get('keywords', []),
             "local": {
-                "path": str(customer_root),
-                "notes_path": str(customer_root / 'notes'),
-                "config_path": str(customer_root / 'customer.yaml')
+                "path": to_rel(customer_root),
+                "notes_path": to_rel(customer_root / 'notes'),
+                "config_path": to_rel(customer_root / 'customer.yaml')
             },
             "cloud": {
                 "status": "initialized" if drive_id else "missing",

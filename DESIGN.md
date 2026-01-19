@@ -503,7 +503,32 @@ This section defines the pattern for linking local customer contexts with Google
 ### UX Pattern
 The Agent should interpret a missing cloud ID in `get_customer_info` not as a fatal error, but as a prompt to offer a repair action via `register_customer`.
 
-## 12. Strict Git Identity Enforcement Logic
+## 12. Shared Context Injection (CONSULT-TOOLS.md)
+
+To ensure consistent tool usage (e.g., Task Archival procedures) across different agent workspaces (Configuration Repos), we implement a **Shared Context Injection** pattern.
+
+### Components
+1.  **Source:** `CONSULT-TOOLS.md` (in repo root). Contains authoritative guidance on tool workflows.
+2.  **Mechanism:** The `consult config context` command.
+
+### Bootstrapping Workflow
+When a user sets up a configuration repository (like `pso-agentic`), they run:
+```bash
+consult config context
+```
+
+**Actions Performed:**
+1.  **Installation:** Copies `CONSULT-TOOLS.md` from the installed package to the local config directory (e.g., `~/.config/agentic-consult/context/CONSULT-TOOLS.md`).
+2.  **Symlinking:** Creates a symlink in the repository root pointing to this file.
+    *   `./CONSULT-TOOLS.md` -> `~/.config/agentic-consult/context/CONSULT-TOOLS.md`
+3.  **Registration:** Updates the local `.gemini/settings.json`:
+    *   Ensures `context.fileName` includes `["GEMINI.md", "CONSULT-TOOLS.md"]`.
+    *   Preserves existing entries while ensuring the tool context is loaded.
+
+**Benefit:**
+Updates to the core tool's guidance can be propagated to all client workspaces by upgrading the package and re-running `consult config context`, without manually editing every `GEMINI.md`.
+
+## 13. Strict Git Identity Enforcement Logic
 
 This logic ensures that for every repository, the committer identity is either perfectly consistent with the entire history or explicitly declared via a local configuration.
 

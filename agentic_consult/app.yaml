@@ -36,6 +36,8 @@ email:
 analyze:
   max_file_count: 50
   max_total_content_bytes: 1048576  # 1MB
+  max_text_size_kb: 100
+  max_binary_size_kb: 20480 # 20MB
 
 # Global Settings
 use_mock_gemini: false

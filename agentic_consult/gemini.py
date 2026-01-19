@@ -5,7 +5,7 @@ import logging
 import re
 from google import genai
 from google.genai import types
-from agentic_consult.config import get_default_model, resolve_model_alias
+from agentic_consult.config import get_default_model, resolve_model_alias, load_app_config
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,14 @@ def clean_json_output(content: str) -> str:
 class GeminiAPIClient:
     def __init__(self, api_key=None, model_name=None):
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        
+        # Fallback to app config
         if not self.api_key:
-            raise ValueError("GEMINI_API_KEY not found in environment or provided arguments.")
+            app_config = load_app_config()
+            self.api_key = app_config.get("gemini", {}).get("api_key")
+
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY not found in environment, arguments, or app configuration.")
         
         raw_model = model_name or get_default_model()
         self.model_name = resolve_model_alias(raw_model)
@@ -77,14 +83,15 @@ class GeminiAPIClient:
             
         return prompt
 
-    def generate_content(self, prompt, generation_config=None, tools=None, tool_config=None):
+    def generate_content(self, contents, generation_config=None, tools=None, tool_config=None):
         """
         Generates content using the google-genai SDK.
         """
-        prompt = self._tweak_prompt(prompt)
+        if isinstance(contents, str):
+            contents = self._tweak_prompt(contents)
         
-        logger.debug(f"Gemini request - model={self.model_name}, prompt_length={len(prompt)}")
-        logger.debug(f"Gemini full prompt:\n{prompt}")
+        logger.debug(f"Gemini request - model={self.model_name}, prompt_length={len(contents) if isinstance(contents, str) else 'N/A'}")
+        logger.debug(f"Gemini full prompt:\n{contents}")
         start_time = time.time()
         
         config_kwargs = {}
@@ -102,7 +109,7 @@ class GeminiAPIClient:
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
-                contents=prompt,
+                contents=contents,
                 config=config
             )
             duration = time.time() - start_time
@@ -120,11 +127,11 @@ class GeminiAPIClient:
             logger.error(f"API execution failed after {duration:.2f}s: {e}")
             raise
 
-    def generate_prompt_driven_json(self, prompt, generation_config=None, schema=None):
+    def generate_prompt_driven_json(self, contents, generation_config=None, schema=None):
         """
         Operation 1: Basic Prompt-Driven JSON.
         """
-        result = self.generate_content(prompt, generation_config)
+        result = self.generate_content(contents, generation_config)
         text = result["text"]
         
         # Determine candidate string
@@ -156,7 +163,7 @@ class GeminiAPIClient:
 
         return data
 
-    def generate_schema_driven_json(self, prompt, schema):
+    def generate_schema_driven_json(self, contents, schema):
         """
         Operation 2: Schema-Driven JSON.
         Uses the SDK's response_schema capability to enforce strict adherence to a structure.
@@ -166,18 +173,18 @@ class GeminiAPIClient:
             "response_schema": schema
         }
         
-        result = self.generate_content(prompt, generation_config=config)
+        result = self.generate_content(contents, generation_config=config)
         return json.loads(result["text"])
 
-    def generate_with_function_calls_prepared(self, prompt, tools, tool_config=None):
+    def generate_with_function_calls_prepared(self, contents, tools, tool_config=None):
         """
         Operation 3: Manual Function Calling (Prepared).
         The model analyzes the prompt and prepares suggested function calls (name and arguments) 
         without executing them.
         """
-        return self.generate_content(prompt, tools=tools, tool_config=tool_config)
+        return self.generate_content(contents, tools=tools, tool_config=tool_config)
 
-    def generate_with_function_calls_executed(self, prompt, tools, tool_config=None):
+    def generate_with_function_calls_executed(self, contents, tools, tool_config=None):
         """
         Operation 4: Automatic Function Calling (Executed).
         The SDK automatically executes the suggested tools and uses the results 
@@ -191,7 +198,7 @@ class GeminiAPIClient:
         chat = self.client.chats.create(model=self.model_name, config=config)
         
         start_time = time.time()
-        response = chat.send_message(prompt)
+        response = chat.send_message(contents)
         duration = time.time() - start_time
         
         return {
