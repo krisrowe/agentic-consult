@@ -83,7 +83,8 @@ class GeminiAPIClient:
         """
         prompt = self._tweak_prompt(prompt)
         
-        logger.debug(f"Starting API generation. Prompt preview: {prompt[:100]}...")
+        logger.debug(f"Gemini request - model={self.model_name}, prompt_length={len(prompt)}")
+        logger.debug(f"Gemini full prompt:\n{prompt}")
         start_time = time.time()
         
         config_kwargs = {}
@@ -105,7 +106,8 @@ class GeminiAPIClient:
                 config=config
             )
             duration = time.time() - start_time
-            logger.debug(f"API generation finished in {duration:.2f}s.")
+            logger.debug(f"Gemini response - latency={duration:.2f}s")
+            logger.debug(f"Gemini full response:\n{response.text}")
             
             return {
                 "text": response.text,

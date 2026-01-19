@@ -6,7 +6,7 @@ from pathlib import Path
 from email_archive import EmailStore
 from agentic_consult.email.analyzer import EmailAnalyzer, GeminiProvider
 from agentic_consult.config import load_main_config
-from agentic_consult.cli.cloud import get_secret_value
+from agentic_consult.cloud import get_cloud_provider
 
 # INTEGRATION TEST: Calls real Gemini API using key from Vault.
 
@@ -21,7 +21,8 @@ def test_analyzer_with_real_gemini(tmp_path, monkeypatch):
         pytest.skip("Test Skipped: project_id not configured in local settings or environment.")
 
     # 2. Retrieve Secret from Vault
-    api_key = get_secret_value(project_id, "gemini-api-key")
+    provider = get_cloud_provider()
+    api_key = provider.get_secret_value(project_id, "gemini-api-key")
     if not api_key:
         pytest.skip(f"Test Skipped: 'gemini-api-key' secret not found in project '{project_id}'. See README.md#cloud-deployment.")
     

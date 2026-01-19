@@ -13,7 +13,7 @@ from agentic_consult.backup.folder_providers.factory import get_folder_provider
 from agentic_consult.config import get_backups_google_drive_folder_id, get_model_help_text
 from agentic_consult.backup.exceptions import BackupError
 from agentic_consult.backup.results import BackupItemResult, BackupStatus
-from agentic_consult.scanner.core import run_scan
+from agentic_consult.sdk.scanner import run_scan
 from agentic_consult.context import build_context
 from agentic_consult.gemini import GeminiAPIClient
 from agentic_consult.backup.status import assess_repo_status
@@ -274,25 +274,58 @@ async def assess_workstation_backup_state() -> dict[str, Any]:
 @mcp.tool()
 async def run_precommit_scan(
     path: str = ".",
-    include_ignored: bool = False
+    deep: bool = False
 ) -> dict[str, Any]:
     """
-    Runs a pre-commit scan for sensitive data in a local directory.
-    
-    This tool is designed to be used by agents to check for secrets, customer data,
-    and other sensitive information before committing code.
+    Comprehensive pre-commit scan for sensitive data before committing code.
+
+    Checks for:
+    - User-specific patterns: names, employers, keywords from sensitive-patterns.yaml
+    - Customer patterns: client names, slugs, keywords from customer.yaml files
+    - Dollar amounts: large (>$300k), non-round, amounts with cents
+    - Identifiers: SSN (XXX-XX-XXXX), EIN (XX-XXXXXXX), Google Drive IDs
+    - Emails: flags non-test email addresses
+    - OAuth/API tokens: Google OAuth (ya29), GitHub PAT (ghp_), OpenAI (sk-), etc.
+    - Local username: prevents $USER from leaking into commits
+    - Git identity: ensures consistent committer identity
+    - External devws precommit: entropy-based secret detection
+
+    Use this tool BEFORE committing to any repository to prevent accidental
+    exposure of sensitive information in public or shared repos.
 
     Args:
-        path: The directory or file path to scan. Defaults to the current working directory.
-        include_ignored: Whether to scan files ignored by git.
+        path: Git repository path to scan. Defaults to current working directory.
+        deep: If True, also scans full git history (slower but more thorough).
+              Use for pre-push validation or periodic audits.
 
     Returns:
-        A dictionary containing the structured scan results. Includes a 'failed'
-        boolean flag and a 'findings' dictionary with any detected issues.
+        {
+            "failed": bool,           # True if any check found issues
+            "findings": {             # Only populated for failed checks
+                "Check Name": ["finding1", "finding2", ...]
+            },
+            "passed_count": int,      # Number of checks that passed
+            "failed_count": int       # Number of checks that failed
+        }
+
+    Example:
+        result = await run_precommit_scan(path="/home/user/my-repo")
+        if result["failed"]:
+            print("Issues found:", result["findings"])
     """
     try:
-        scan_results = run_scan(path=path, include_ignored=include_ignored)
-        return scan_results
+        report = run_scan(repo_path=path, deep=deep)
+        # Convert to dict for MCP response
+        findings = {}
+        for check in report.checks:
+            if not check.passed and not check.skipped and check.findings:
+                findings[check.name] = check.findings
+        return {
+            "failed": report.failed,
+            "findings": findings,
+            "passed_count": report.passed_count,
+            "failed_count": report.failed_count
+        }
     except Exception as e:
         logger.exception(f"Unexpected error during run_precommit_scan for {path}")
         return {"error": f"An unexpected error occurred: {str(e)}"}

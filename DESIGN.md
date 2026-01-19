@@ -534,3 +534,57 @@ In the absence of a local declaration, the tool enforces 100% historical consist
 When a conflict is detected in the "Missing Local Configuration" scenario, the following options are presented:
 1.  **Set Local Identity:** `git config user.email <impending_email>`
 2.  **Disable Enforcement:** `consult config set precommit.git_local_user_identity_optional true`
+
+## 13. Logging Design Principles
+
+### Transaction-Level INFO Logs
+
+For batch processing (email analyzer, fetcher, etc.), each item processed should have 1-2 INFO log entries:
+
+1. **Before processing**: Brief context about what's being processed
+2. **After processing**: Result/outcome
+
+These logs should be:
+- **Concise**: One sentence each
+- **No PII by default**: Message IDs and dates are OK; subjects/senders require opt-in
+- **Not large**: No full payloads or responses
+
+**Purpose**: These INFO logs serve as the basis for:
+- **Statistics**: Action distributions, processing volumes, rule effectiveness
+- **Health monitoring**: Throughput, error rates, processing latency
+- **High-level debugging**: Identify which messages were processed, when, and with what outcome
+
+**Example (email analyzer):**
+```
+INFO: Asking Gemini (via API) about message abc123 from 2025-01-15 10:30 AM (UTC-06:00)...
+INFO: {event: "analysis_complete", msg_id: "abc123", action: "archive", rule: "newsletters"}
+```
+
+### PII in Logs
+
+**What counts as PII (for email):**
+- **Email address fields** (To/From/CC/BCC/etc.): Automatically considered PII
+- **Subject and Body**: Treated as PII because they could contain it
+- **Attachments and metadata** (filenames, content): Treated as PII
+- **Analysis reason text**: Free-form explanation from LLM may reference email content
+
+**By log level:**
+- **DEBUG**: Contains PII by default (full payloads, subjects, senders, API responses, prompts)
+- **INFO**: No PII by default; may include PII if explicitly enabled via env vars
+- **WARNING, ERROR, CRITICAL**: Must NEVER contain PII
+
+**Enabling PII in INFO logs** (example for email analyzer):
+- `INFO_LOG_EMAIL_SUBJECT=true` - Adds subject to INFO logs (may contain PII)
+- `INFO_LOG_EMAIL_SENDER=true` - Adds sender to INFO logs (contains PII)
+
+The exact env var names and mechanism may vary by component; the pattern is opt-in via env vars.
+
+Control the startup warning level with `EMAIL_PII_LOG_NOTICE=WARNING|INFO|DEBUG|ERROR|NONE`.
+
+### DEBUG Logs
+
+For deeper debugging, use `LOG_LEVEL=DEBUG`. DEBUG logs contain PII by default and are suppressed unless explicitly enabled.
+
+### Structured JSON Logging
+
+For GCP Cloud Logging compatibility, use `log_json()` from `agentic_consult.logging` for logs that need to be queryable/metrics-ready. Raw JSON to stdout is parsed by Cloud Logging as structured data.
