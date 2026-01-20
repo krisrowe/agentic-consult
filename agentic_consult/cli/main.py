@@ -14,7 +14,7 @@ from .restore import restore
 from .context import context
 from .chat import chat
 from .services import services
-from .mcp import mcp
+from .remote import remote
 from .email import email
 # cloud and image removed - use ./cloud instead (see deploy/DESIGN.md)
 
@@ -37,7 +37,7 @@ main.add_command(workspace)
 main.add_command(context)
 main.add_command(chat)
 main.add_command(services)
-main.add_command(mcp)
+main.add_command(remote)
 main.add_command(email)
 
 if __name__ == "__main__":

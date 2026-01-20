@@ -83,6 +83,11 @@ def main():
             sys.argv = sys.argv[1:]
             cmd_main()
 
+        elif command == "user-auth":
+            from user_auth import main as cmd_main
+            sys.argv = sys.argv[1:]
+            cmd_main()
+
         else:
             print(f"Unknown command: {command}\n")
             print_usage()
@@ -103,17 +108,17 @@ Commands:
     scheduler       Manage Cloud Scheduler jobs
     images          Build and push container images
     secrets         Manage Cloud Run secrets
+    user-auth       Manage user authentication (tokens for MCP access)
 
 Examples:
     ./cloud status
-    ./cloud status --format=json
     ./cloud init --project=my-project
     ./cloud deploy
-    ./cloud deploy --plan
-    ./cloud scheduler list
-    ./cloud scheduler set fetcher 15
-    ./cloud images list
-    ./cloud images deploy all
+
+    # User authentication workflow:
+    ./cloud user-auth init              # Create access token
+    ./cloud user-auth export            # Output credentials (pipe to user)
+    # User runs: consult remote auth import
 
 Run './cloud <command> --help' for command-specific options.
 """)
