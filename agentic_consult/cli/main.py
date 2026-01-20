@@ -15,6 +15,7 @@ from .context import context
 from .chat import chat
 from .services import services
 from .mcp import mcp
+from .email import email
 # cloud and image removed - use ./cloud instead (see deploy/DESIGN.md)
 
 @click.group()
@@ -37,6 +38,7 @@ main.add_command(context)
 main.add_command(chat)
 main.add_command(services)
 main.add_command(mcp)
+main.add_command(email)
 
 if __name__ == "__main__":
     main()

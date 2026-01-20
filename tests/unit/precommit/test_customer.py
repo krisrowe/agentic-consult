@@ -18,7 +18,8 @@ generate_synthetic_drive_id = _mod.generate_synthetic_drive_id
 
 def run_checker(repo_root, tmp_repo_dir, customers_dir, expect_ok=True, args=None):
     # Use sys.executable to run our module directly
-    cmd = [_sys.executable, '-m', 'agentic_consult', 'precommit', str(tmp_repo_dir)]
+    # Use --only=customers to skip slow checks like devws
+    cmd = [_sys.executable, '-m', 'agentic_consult', 'precommit', '--only=customers', str(tmp_repo_dir)]
     if args:
         cmd.extend(args)
         

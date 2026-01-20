@@ -25,17 +25,26 @@ def get_terraform_commands(
     deletion_protection: bool = None,
 ) -> list:
     """Build list of terraform commands to run."""
+    # Init command with GCS backend configuration
+    init_cmd = [
+        "terraform", "init",
+        f"-backend-config=bucket={bucket_name}",
+        "-backend-config=prefix=terraform/state",
+    ]
+
+    # Plan or apply command
     action = "plan" if plan_only else "apply"
-    cmd = [
+    action_cmd = [
         "terraform", action,
         f"-var=project_id={project_id}",
         f"-var=bucket_name={bucket_name}",
     ]
     if not plan_only:
-        cmd.insert(2, "-auto-approve")
+        action_cmd.insert(2, "-auto-approve")
     if deletion_protection is not None:
-        cmd.append(f"-var=service_delete_protection={str(deletion_protection).lower()}")
-    return [["terraform", "init"], cmd]
+        action_cmd.append(f"-var=service_delete_protection={str(deletion_protection).lower()}")
+
+    return [init_cmd, action_cmd]
 
 
 def parse_bool(value: str) -> bool:

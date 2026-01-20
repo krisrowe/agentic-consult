@@ -122,9 +122,11 @@ def mcp_status(test: bool):
                     sys.exit(1)
         except urllib.error.URLError as e:
             click.secho(f"Health: ✗ {e.reason}", fg="red")
+            _show_connection_guidance()
             sys.exit(1)
         except Exception as e:
             click.secho(f"Health: ✗ {e}", fg="red")
+            _show_connection_guidance()
             sys.exit(1)
 
         # Test auth (call /mcp endpoint with token)
@@ -157,7 +159,56 @@ def mcp_status(test: bool):
                 click.echo("Auth:   ✓ Token valid")
         except urllib.error.URLError as e:
             click.secho(f"Auth:   ✗ {e.reason}", fg="red")
+            _show_connection_guidance()
             sys.exit(1)
+
+        # Call get_triage_stats tool for functional health check
+        try:
+            req = urllib.request.Request(mcp_url, method="POST")
+            req.add_header("Authorization", f"Bearer {pat}")
+            req.add_header("Content-Type", "application/json")
+            req.data = json.dumps({
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": "email_triage_stats", "arguments": {"sample_size": 20}},
+                "id": 2
+            }).encode()
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode())
+                if "error" in result:
+                    click.secho(f"Stats:  ✗ {result['error']}", fg="red")
+                elif "result" in result:
+                    content = result["result"]
+                    # Handle MCP tool response format
+                    if isinstance(content, list) and content:
+                        content = content[0].get("text", "{}")
+                        if isinstance(content, str):
+                            content = json.loads(content)
+                    if "error" in content:
+                        click.secho(f"Stats:  ✗ {content['error']}", fg="red")
+                    elif "emails" in content:
+                        emails = content["emails"]
+                        fetched = emails.get("fetched", {}).get("count", 0)
+                        analyzed = emails.get("analyzed", {}).get("count", 0)
+                        active = emails.get("active", {}).get("count", 0)
+                        click.echo(f"Stats:  ✓ {fetched} fetched, {analyzed} analyzed, {active} active")
+                    else:
+                        click.echo("Stats:  ✓ Tool responded (no email data)")
+                else:
+                    click.echo("Stats:  ? Unexpected response format")
+        except Exception as e:
+            click.secho(f"Stats:  ✗ {e}", fg="yellow")
+            # Not fatal - stats are optional
+
+
+def _show_connection_guidance():
+    """Show guidance when connection fails."""
+    click.echo()
+    click.secho("To fix:", fg="yellow")
+    click.echo("  1. Deploy MCP service:  ./cloud deploy")
+    click.echo("  2. Register cloud URL:  consult mcp register cloud claude")
+    click.echo()
+    click.echo("  Or use local server:    consult mcp register local claude")
 
 
 @mcp.command("register")

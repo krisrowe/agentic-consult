@@ -67,7 +67,7 @@ def test_detects_pattern_in_unstaged_content(tmp_path, config_dir):
     # Commit clean file first
     (repo / "file.txt").write_text("clean content")
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "--no-verify", "-m", "init"], check=True, capture_output=True)
 
     # Modify without staging
     (repo / "file.txt").write_text("now has SecretWord")
@@ -112,12 +112,12 @@ def test_detects_pattern_in_git_history(tmp_path, config_dir):
     # Commit file with sensitive content
     (repo / "file.txt").write_text("Has SecretWord in it")
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "add file"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "--no-verify", "-m", "add file"], check=True, capture_output=True)
 
     # Replace with clean content and commit again
     (repo / "file.txt").write_text("Now clean")
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "clean up"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "--no-verify", "-m", "clean up"], check=True, capture_output=True)
 
     # History should still find the old content
     report = run_scan(str(repo), deep=True, only_check="user")

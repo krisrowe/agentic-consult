@@ -61,16 +61,132 @@ class CloudStatus:
         }
 
 
-# Required resources for deployment
+# Required resources for deployment (not managed by terraform)
 REQUIRED_SECRETS = ["gemini-api-key", "gmail-token"]
-CLOUD_RUN_JOBS = {
-    "fetcher": "gmex-fetcher",
-    "analyzer": "consult-analyzer",
-}
-SCHEDULER_JOBS = {
-    "fetcher": "trigger-email-fetch",
-    "analyzer": "trigger-email-analysis",
-}
+
+
+def load_terraform_state() -> Optional[Dict[str, Any]]:
+    """Load terraform state from local file.
+
+    Returns:
+        Parsed tfstate dict, or None if not found/invalid.
+    """
+    import json
+    from pathlib import Path
+
+    tfstate_path = Path(__file__).parent.parent.parent / "deploy" / "terraform" / "terraform.tfstate"
+    if not tfstate_path.exists():
+        return None
+
+    try:
+        with open(tfstate_path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return None
+
+
+def format_tf_resource(resource: Dict[str, Any]) -> Optional[Tuple[str, str, Optional[str]]]:
+    """Format a terraform resource for status display.
+
+    Args:
+        resource: Resource dict from terraform state.
+
+    Returns:
+        Tuple of (display_name, status, id) or None to suppress.
+    """
+    rtype = resource.get("type", "")
+    name = resource.get("name", "")
+    instances = resource.get("instances", [])
+
+    if not instances:
+        return None
+
+    attrs = instances[0].get("attributes", {})
+
+    # Cloud Run Jobs
+    if rtype == "google_cloud_run_v2_job":
+        job_name = attrs.get("name", name)
+        return (f"run:{job_name}", "exists", job_name)
+
+    # Cloud Run Services
+    elif rtype == "google_cloud_run_v2_service":
+        svc_name = attrs.get("name", name)
+        return (f"run:{svc_name}", "exists", svc_name)
+
+    # Scheduler Jobs
+    elif rtype == "google_cloud_scheduler_job":
+        job_name = attrs.get("name", name)
+        state = attrs.get("state", "UNKNOWN").lower()
+        return (f"sched:{job_name}", state, job_name)
+
+    # Service Accounts
+    elif rtype == "google_service_account":
+        account_id = attrs.get("account_id", name)
+        return (f"svc account", "exists", account_id)
+
+    # Storage Buckets - skip, shown in pre-deploy via API
+    elif rtype == "google_storage_bucket":
+        return None
+
+    # IAM bindings - suppress (rolled into svc account conceptually)
+    elif rtype.endswith("_iam_member"):
+        return None
+
+    # Unknown - show raw
+    else:
+        return (f"{rtype}.{name}", "exists", None)
+
+
+def refresh_terraform_state(project_id: str, bucket_name: str) -> Tuple[bool, Optional[str]]:
+    """Run terraform refresh to update state from cloud.
+
+    Args:
+        project_id: GCP project ID for -var flag.
+        bucket_name: Bucket name for -var flag.
+
+    Returns:
+        Tuple of (success, error_message).
+    """
+    import subprocess
+    from pathlib import Path
+
+    terraform_dir = Path(__file__).parent.parent.parent / "deploy" / "terraform"
+
+    # Check if terraform is initialized
+    if not (terraform_dir / ".terraform").exists():
+        return False, "Terraform not initialized. Run ./cloud deploy first."
+
+    cmd = [
+        "terraform", "refresh",
+        f"-var=project_id={project_id}",
+        f"-var=bucket_name={bucket_name}",
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=terraform_dir,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            # Strip ANSI codes and get first meaningful line
+            import re
+            stderr = re.sub(r'\x1b\[[0-9;]*m', '', result.stderr)
+            # Find first line with actual content
+            for line in stderr.split('\n'):
+                line = line.strip().lstrip('│').strip()
+                if line and not line.startswith('╷') and not line.startswith('╵'):
+                    return False, line[:80]  # Truncate long messages
+            return False, "Terraform refresh failed"
+        return True, None
+    except subprocess.TimeoutExpired:
+        return False, "Terraform refresh timed out"
+    except FileNotFoundError:
+        return False, "Terraform not found in PATH"
+    except Exception as e:
+        return False, str(e)
 
 
 def load_images_config() -> dict:
@@ -96,6 +212,7 @@ def read_cloud_status(
     provider: Optional[CloudProvider] = None,
     project_id: Optional[str] = None,
     bucket_name: Optional[str] = None,
+    refresh: bool = True,
 ) -> CloudStatus:
     """Read cloud environment status (read-only, no mutations).
 
@@ -104,12 +221,14 @@ def read_cloud_status(
     - Bucket exists and is labeled
     - Secrets exist
     - Images exist in GCR
-    - Scheduler jobs exist and their state
+    - Terraform-managed resources (from state)
 
     Args:
         provider: Cloud provider instance (defaults to get_cloud_provider())
         project_id: GCP project ID (defaults to settings)
         bucket_name: Bucket name (defaults to settings)
+        refresh: If True (default), run terraform refresh before reading state.
+                 If False, use cached state file (faster but may be stale).
 
     Returns:
         CloudStatus with all resource statuses
@@ -224,41 +343,48 @@ def read_cloud_status(
             missing_images.append(name)
             pre_deploy_complete = False
 
-    # 5. Check Cloud Run jobs (deploy phase - created by terraform)
+    # 5. Check terraform-managed resources (deploy phase)
     deploy_missing = False
-    for alias, job_name in CLOUD_RUN_JOBS.items():
-        job = provider.get_cloud_run_job(project_id, job_name)
-        if job:
-            deploy.append(ResourceStatus(
-                name=f"cloud run:{alias}",
-                status="exists",
-                id=job_name,
-            ))
-        else:
-            deploy.append(ResourceStatus(
-                name=f"cloud run:{alias}",
-                status="missing",
-                id=job_name,
-            ))
-            deploy_missing = True
+    refresh_warning = None
 
-    # 6. Check scheduler jobs (deploy phase - created by terraform)
-    for alias, job_name in SCHEDULER_JOBS.items():
-        job = provider.get_scheduler_job(project_id, job_name)
-        if job:
-            state = job.get("state", "UNKNOWN")
-            deploy.append(ResourceStatus(
-                name=f"scheduler:{alias}",
-                status=state.lower(),
-                id=job_name,
-            ))
-        else:
-            deploy.append(ResourceStatus(
-                name=f"scheduler:{alias}",
-                status="missing",
-                id=job_name,
-            ))
+    # Optionally refresh terraform state before reading
+    if refresh and project_id and bucket_name:
+        success, error = refresh_terraform_state(project_id, bucket_name)
+        if not success:
+            refresh_warning = error
+
+    tf_state = load_terraform_state()
+
+    if refresh_warning and tf_state:
+        # Refresh failed but we have cached state - show warning
+        deploy.append(ResourceStatus(
+            name="terraform state",
+            status="cached",
+            guidance=f"Refresh failed: {refresh_warning}",
+        ))
+
+    if tf_state:
+        resources = tf_state.get("resources", [])
+        for resource in resources:
+            formatted = format_tf_resource(resource)
+            if formatted:
+                display_name, status, res_id = formatted
+                deploy.append(ResourceStatus(
+                    name=display_name,
+                    status=status,
+                    id=res_id,
+                ))
+        # If we have tf state but no deploy resources, something's off
+        if not deploy:
             deploy_missing = True
+    else:
+        # No terraform state - indicate deploy needed
+        deploy.append(ResourceStatus(
+            name="terraform",
+            status="not initialized",
+            guidance="./cloud deploy",
+        ))
+        deploy_missing = True
 
     # Set deploy guidance based on overall pre-deploy readiness
     for r in deploy:

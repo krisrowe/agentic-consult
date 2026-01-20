@@ -879,6 +879,52 @@ async def get_chat_mentions(
 
 
 
+# --- Triage Stats Tool ---
+
+@mcp.tool()
+async def email_triage_stats(
+    sample_size: int = 20
+) -> dict[str, Any]:
+    """
+    Get email triage statistics from the email archive.
+
+    Uses EmailStore SDK for disk I/O. Returns counts and date ranges
+    plus a sampled breakdown of active emails by recommended_action.
+
+    Use this for health checks to verify the MCP server can access email data.
+
+    Args:
+        sample_size: Max active emails to load for action breakdown (default 20).
+
+    Returns:
+        {
+            "emails": {
+                "fetched": {"count": N, "start": "YYYY-MM-DD HH:MM", "end": "..."},
+                "analyzed": {"count": N, "start": "...", "end": "..."},
+                "resolved": {"count": N, "start": "...", "end": "..."},
+                "active": {
+                    "count": N,
+                    "sample": {
+                        "size": M,
+                        "archive_now": X,
+                        "archive_later": Y,
+                        "review": Z,
+                        "track_as_task": W,
+                        "ask_user": V
+                    }
+                }
+            }
+        }
+    """
+    from agentic_consult.email.triage import get_triage_stats
+
+    try:
+        return get_triage_stats(sample_size=sample_size)
+    except Exception as e:
+        logger.exception("Error in email_triage_stats")
+        return {"error": str(e)}
+
+
 # --- Customer Management Tools ---
 
 @mcp.tool()
