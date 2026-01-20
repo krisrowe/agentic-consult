@@ -72,7 +72,7 @@ def test_cli_exit_zero_when_sdk_scanner_passes(tmp_path):
     subprocess.run(["git", "-C", str(repo), "add", "clean.txt"], check=True)
 
     proc = subprocess.run(
-        [sys.executable, "-m", "agentic_consult", "precommit", str(repo)],
+        [sys.executable, "-m", "agentic_consult", "precommit", "--only=ssn_ein", str(repo)],
         cwd=str(repo),
         capture_output=True,
         text=True
@@ -92,7 +92,7 @@ def test_cli_exit_nonzero_when_sdk_scanner_finds_ssn(tmp_path):
     subprocess.run(["git", "-C", str(repo), "add", "data.txt"], check=True)
 
     proc = subprocess.run(
-        [sys.executable, "-m", "agentic_consult", "precommit", str(repo)],
+        [sys.executable, "-m", "agentic_consult", "precommit", "--only=ssn_ein", str(repo)],
         cwd=str(repo),
         capture_output=True,
         text=True

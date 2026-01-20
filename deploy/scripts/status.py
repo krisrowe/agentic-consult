@@ -3,7 +3,8 @@
 Show cloud environment status. Stdlib only.
 
 Usage:
-    ./cloud status
+    ./cloud status           # Refreshes terraform state first (default)
+    ./cloud status --cached  # Use cached state (faster, may be stale)
     ./cloud status --format=json
 """
 import argparse
@@ -23,10 +24,15 @@ def main(args=None):
         default="table",
         help="Output format"
     )
+    parser.add_argument(
+        "--cached",
+        action="store_true",
+        help="Use cached terraform state (skip refresh, faster but may be stale)"
+    )
 
     parsed = parser.parse_args(args)
 
-    status = read_cloud_status()
+    status = read_cloud_status(refresh=not parsed.cached)
 
     if parsed.format == "json":
         print(json.dumps(status.to_dict(), indent=2))

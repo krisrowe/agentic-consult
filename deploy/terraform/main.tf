@@ -5,6 +5,10 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  # GCS backend for remote state storage - TEMPORARILY DISABLED due to billing issue
+  # TODO: Re-enable once GCS auth issue resolved
+  # backend "gcs" {}
 }
 
 # 1. Input Variables
@@ -33,6 +37,7 @@ locals {
   # Image references
   analyzer_image = "gcr.io/${local.project_id}/consult-analyzer:latest"
   fetcher_image  = "gcr.io/${local.project_id}/gmex-fetcher:latest"
+  mcp_image      = "gcr.io/${local.project_id}/consult-mcp:latest"
 }
 
 provider "google" {
@@ -190,6 +195,57 @@ resource "google_cloud_run_v2_job" "analyzer_job" {
         gcs {
           bucket = google_storage_bucket.data_bucket.name
         }
+      }
+    }
+  }
+}
+
+# 4c. Cloud Run Service: MCP Server (HTTP endpoint)
+resource "google_cloud_run_v2_service" "mcp_service" {
+  name                = "consult-mcp"
+  location            = local.region
+  deletion_protection = var.service_delete_protection
+
+  template {
+    service_account = google_service_account.analyzer_sa.email
+
+    containers {
+      image = local.mcp_image
+
+      env {
+        name  = "EMAIL_ARCHIVE_DATA_DIR"
+        value = "/mnt/gcs/email-archive"
+      }
+
+      env {
+        name  = "CONSULT_CONFIG_DIR"
+        value = "/mnt/gcs/config"
+      }
+
+      env {
+        name = "GEMINI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = "gemini-api-key"
+            version = "latest"
+          }
+        }
+      }
+
+      volume_mounts {
+        name       = "gcs-volume"
+        mount_path = "/mnt/gcs"
+      }
+
+      ports {
+        container_port = 8000
+      }
+    }
+
+    volumes {
+      name = "gcs-volume"
+      gcs {
+        bucket = google_storage_bucket.data_bucket.name
       }
     }
   }

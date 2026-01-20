@@ -28,7 +28,7 @@ def commit_file(path, filename, content, author_email=None):
         env['GIT_AUTHOR_EMAIL'] = author_email
         env['GIT_COMMITTER_EMAIL'] = author_email
 
-    subprocess.run(['git', 'commit', '-m', f'Add {filename}'], cwd=path, env=env, check=True, capture_output=True)
+    subprocess.run(['git', 'commit', '--no-verify', '-m', f'Add {filename}'], cwd=path, env=env, check=True, capture_output=True)
 
 # --- 1. No Local Configuration (Historical Consistency Mode) ---
 

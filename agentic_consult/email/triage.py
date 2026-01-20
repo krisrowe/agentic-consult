@@ -705,3 +705,132 @@ def _format_sender(sender: str) -> str:
 
 def _format_subject(subject: str) -> str:
     return str(subject)[:20].replace('|', '-').replace('\n', ' ')
+
+
+def get_triage_stats(sample_size: int = 20) -> dict:
+    """
+    Get email triage statistics from the email archive.
+
+    Uses EmailStore SDK methods for disk I/O. Returns counts and date ranges
+    plus a sampled breakdown of active emails by recommended_action.
+
+    Args:
+        sample_size: Max active emails to load for action breakdown (default 20).
+
+    Returns:
+        {
+            "emails": {
+                "fetched": {"count": N, "start": "YYYY-MM-DD HH:MM", "end": "..."},
+                "analyzed": {"count": N, "start": "...", "end": "..."},
+                "resolved": {"count": N, "start": "...", "end": "..."},
+                "active": {
+                    "count": N,
+                    "sample": {"size": M, "archive_now": X, ...}
+                }
+            }
+        }
+    """
+    from email_archive import EmailStore
+
+    store = EmailStore()
+
+    if not store.root.exists():
+        return {"error": "Email archive directory not found", "path": str(store.root)}
+
+    def format_date(dt: Optional[datetime]) -> Optional[str]:
+        if dt is None:
+            return None
+        return dt.strftime("%Y-%m-%d %I:%M %p")
+
+    def get_date_range(items: list) -> tuple:
+        """Extract min/max dates from list of items with 'date' field."""
+        dates = []
+        for item in items:
+            dt = item.get('date')
+            if dt is not None:
+                if isinstance(dt, datetime):
+                    dates.append(dt)
+                elif isinstance(dt, str):
+                    try:
+                        dates.append(datetime.fromisoformat(dt.replace('Z', '+00:00')))
+                    except (ValueError, TypeError):
+                        pass
+        if not dates:
+            return None, None
+        return min(dates), max(dates)
+
+    # Fetched = all emails in store
+    # Note: list() reads .meta files; TODO: email-archive should add count() for efficiency
+    all_emails = store.list()
+    fetched_start, fetched_end = get_date_range(all_emails)
+    fetched = {
+        "count": len(all_emails),
+        "start": format_date(fetched_start),
+        "end": format_date(fetched_end)
+    }
+
+    # Build lookup of which emails have which sidecars
+    analyzed_ids = set()
+    resolved_ids = set()
+    for item in all_emails:
+        msg_id = item.get('id')
+        if msg_id:
+            if store.has_sidecar(msg_id, "analysis.json"):
+                analyzed_ids.add(msg_id)
+            if store.has_sidecar(msg_id, "triage.json"):
+                resolved_ids.add(msg_id)
+
+    # Analyzed = has analysis.json
+    analyzed_items = [e for e in all_emails if e.get('id') in analyzed_ids]
+    analyzed_start, analyzed_end = get_date_range(analyzed_items)
+    analyzed = {
+        "count": len(analyzed_ids),
+        "start": format_date(analyzed_start),
+        "end": format_date(analyzed_end)
+    }
+
+    # Resolved = has triage.json
+    resolved_items = [e for e in all_emails if e.get('id') in resolved_ids]
+    resolved_start, resolved_end = get_date_range(resolved_items)
+    resolved = {
+        "count": len(resolved_ids),
+        "start": format_date(resolved_start),
+        "end": format_date(resolved_end)
+    }
+
+    # Active = analyzed but not resolved
+    active_ids = analyzed_ids - resolved_ids
+    active_items = [e for e in all_emails if e.get('id') in active_ids]
+    active_start, active_end = get_date_range(active_items)
+    active_result = {
+        "count": len(active_ids),
+        "start": format_date(active_start),
+        "end": format_date(active_end)
+    }
+
+    # Sample active emails to break down by recommended_action
+    if active_ids and sample_size > 0:
+        sample_ids = list(active_ids)[:sample_size]
+        action_counts = {}
+        loaded = 0
+
+        for msg_id in sample_ids:
+            analysis = store.get_sidecar(msg_id, "analysis.json")
+            if analysis:
+                action = analysis.get("recommended_action", "unknown")
+                action_counts[action] = action_counts.get(action, 0) + 1
+                loaded += 1
+
+        active_result["sample"] = {
+            "size": loaded,
+            **action_counts
+        }
+
+    return {
+        "emails": {
+            "fetched": fetched,
+            "analyzed": analyzed,
+            "resolved": resolved,
+            "active": active_result
+        }
+    }

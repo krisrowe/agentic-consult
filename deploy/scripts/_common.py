@@ -118,23 +118,31 @@ def format_status_table(status, show_changes: bool = False) -> str:
     lines = []
 
     if show_changes:
-        lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
-        lines.append("| Resource           | Status    | Changed | Guidance                                         |")
-        lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
+        lines.append("+------------------------------+-----------+---------+--------------------------------------+")
+        lines.append("| Resource                     | Status    | Changed | Guidance                             |")
+        lines.append("+------------------------------+-----------+---------+--------------------------------------+")
     else:
-        lines.append("+--------------------+-----------+--------------------------------------------------+")
-        lines.append("| Resource           | Status    | Guidance                                         |")
-        lines.append("+--------------------+-----------+--------------------------------------------------+")
+        lines.append("+------------------------------+-----------+------------------------------------------+")
+        lines.append("| Resource                     | Status    | Guidance                                 |")
+        lines.append("+------------------------------+-----------+------------------------------------------+")
 
     def render_resource(r):
-        name = r.name[:18].ljust(18)
+        name = r.name[:28].ljust(28)
         if r.status in ("found", "exists", "enabled"):
-            status_str = f"+ {r.status}"[:9].ljust(9)
+            icon = green("✓")
+            status_text = r.status[:7].ljust(7)
+            status_str = f"{icon} {status_text}"
         elif r.status == "missing":
-            status_str = f"- {r.status}"[:9].ljust(9)
+            icon = red("✗")
+            status_text = r.status[:7].ljust(7)
+            status_str = f"{icon} {status_text}"
+        elif r.status == "cached":
+            icon = yellow("⚠")
+            status_text = r.status[:7].ljust(7)
+            status_str = f"{icon} {status_text}"
         else:
-            status_str = r.status[:9].ljust(9)
-        guidance = (r.guidance or "")[:48].ljust(48)
+            status_str = f"  {r.status[:7].ljust(7)}"
+        guidance = (r.guidance or "")[:40].ljust(40)
 
         if show_changes:
             changed = "yes" if r.changed else "no"
@@ -152,9 +160,9 @@ def format_status_table(status, show_changes: bool = False) -> str:
     # Separator between pre_deploy and deploy
     if status.deploy:
         if show_changes:
-            lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
+            lines.append("+------------------------------+-----------+---------+--------------------------------------+")
         else:
-            lines.append("+--------------------+-----------+--------------------------------------------------+")
+            lines.append("+------------------------------+-----------+------------------------------------------+")
 
         # Render deploy resources
         for r in status.deploy:
@@ -162,9 +170,9 @@ def format_status_table(status, show_changes: bool = False) -> str:
 
     # Final border
     if show_changes:
-        lines.append("+--------------------+-----------+---------+--------------------------------------------------+")
+        lines.append("+------------------------------+-----------+---------+--------------------------------------+")
     else:
-        lines.append("+--------------------+-----------+--------------------------------------------------+")
+        lines.append("+------------------------------+-----------+------------------------------------------+")
 
     # Show overall status
     if status.status == "deployed":

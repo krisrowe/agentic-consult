@@ -52,6 +52,8 @@ def isolate_config(tmp_path, monkeypatch):
     monkeypatch.setenv("CONSULT_CONFIG_DIR", str(test_config_dir))
 
 
+
+
 @pytest.fixture
 def config_dir(tmp_path):
     """Returns the isolated config directory path for tests that need it.
