@@ -8,7 +8,7 @@ Workflow:
 1. Server admin runs: ./cloud user-auth export > config.yaml
 2. Admin sends config.yaml to user (email, Slack, etc.)
 3. User runs: cat config.yaml | consult remote auth import
-4. User validates: consult remote status --test
+4. User validates: consult remote test
 5. User registers: consult remote register claude
 
 See also:
@@ -41,7 +41,7 @@ def remote():
     \b
     Quick Start:
         1. Get config from admin: cat config.yaml | consult remote auth import
-        2. Verify connection:      consult remote status --test
+        2. Verify connection:      consult remote test
         3. Register with Claude:   consult remote register claude
     """
     pass
@@ -126,7 +126,7 @@ def auth_import():
     click.echo(f"URL:   {url}")
     click.echo(f"Token: {token[:8]}...")
     click.echo()
-    click.echo("Next: consult remote status --test")
+    click.echo("Next: consult remote test")
 
 
 @auth.command("show")
@@ -187,27 +187,20 @@ def config_show():
         click.echo("Import credentials: cat config.yaml | consult remote auth import")
 
 
-# --- Status command ---
+# --- Show command ---
 
-@remote.command("status")
-@click.option("--test", is_flag=True, help="Test connectivity and authentication")
-def status(test: bool):
-    """Show remote server status.
-
-    \b
-    Without --test:
-        Shows current configuration only.
+@remote.command("show")
+def show():
+    """Show remote server configuration.
 
     \b
-    With --test:
-        Validates connectivity, authentication, and tool access.
-        Use for health checks before registering with Claude/Gemini.
+    Displays the current URL and token (masked) without making network calls.
+    Use 'consult remote test' to verify connectivity.
 
     \b
     Examples:
-        consult remote status
-        consult remote status --test
-        consult remote status --test && consult remote register claude
+        consult remote show
+        consult remote show && consult remote test
     """
     # Check for legacy config and migrate
     if migrate_legacy_config():
@@ -234,35 +227,72 @@ def status(test: bool):
         click.secho("Run 'consult remote auth import' to configure.", fg="yellow")
         sys.exit(1)
 
-    if test:
+
+# --- Test command ---
+
+@remote.command("test")
+def test():
+    """Test connectivity and authentication to remote server.
+
+    \b
+    Validates:
+        1. Service reachable (health check)
+        2. Token valid (auth check)
+        3. Tool access (optional email stats)
+
+    \b
+    Use before registering with Claude/Gemini to ensure connection works.
+
+    \b
+    Examples:
+        consult remote test
+        consult remote test && consult remote register claude
+    """
+    # Check for legacy config and migrate
+    if migrate_legacy_config():
+        click.echo("Migrated legacy config to new format.")
         click.echo()
-        remote_status = get_full_status(test_tool="email_triage_stats")
 
-        # Health
-        if remote_status.health_ok:
-            click.echo("Health: ✓ Service reachable")
-        else:
-            click.secho(f"Health: ✗ {remote_status.health_error}", fg="red")
-            _show_connection_guidance()
-            sys.exit(1)
+    cfg = get_remote_config()
 
-        # Auth
-        if remote_status.auth_ok:
-            click.echo("Auth:   ✓ Token valid")
-        else:
-            click.secho(f"Auth:   ✗ {remote_status.auth_error}", fg="red")
-            sys.exit(1)
+    if not cfg.is_configured:
+        click.secho("Error: Not configured. Run 'consult remote auth import' first.", fg="red")
+        sys.exit(1)
 
-        # Tool test
-        if remote_status.tool_result:
-            emails = remote_status.tool_result.get("emails", {})
-            fetched = emails.get("fetched", {}).get("count", 0)
-            analyzed = emails.get("analyzed", {}).get("count", 0)
-            active = emails.get("active", {}).get("count", 0)
-            click.echo(f"Stats:  ✓ {fetched} fetched, {analyzed} analyzed, {active} active")
-        elif remote_status.tool_error:
-            click.secho(f"Stats:  ✗ {remote_status.tool_error}", fg="yellow")
-            # Not fatal - stats are optional
+    click.echo("Testing connection...")
+    click.echo(f"URL:   {cfg.url}")
+    click.echo()
+
+    remote_status = get_full_status(test_tool="email_triage_stats")
+
+    # Health
+    if remote_status.health_ok:
+        click.echo("Health: ✓ Service reachable")
+    else:
+        click.secho(f"Health: ✗ {remote_status.health_error}", fg="red")
+        _show_connection_guidance()
+        sys.exit(1)
+
+    # Auth
+    if remote_status.auth_ok:
+        click.echo("Auth:   ✓ Token valid")
+    else:
+        click.secho(f"Auth:   ✗ {remote_status.auth_error}", fg="red")
+        sys.exit(1)
+
+    # Tool test
+    if remote_status.tool_result:
+        emails = remote_status.tool_result.get("emails", {})
+        fetched = emails.get("fetched", {}).get("count", 0)
+        analyzed = emails.get("analyzed", {}).get("count", 0)
+        active = emails.get("active", {}).get("count", 0)
+        click.echo(f"Stats:  ✓ {fetched} fetched, {analyzed} analyzed, {active} active")
+    elif remote_status.tool_error:
+        click.secho(f"Stats:  ✗ {remote_status.tool_error}", fg="yellow")
+        # Not fatal - stats are optional
+
+    click.echo()
+    click.secho("Connection verified.", fg="green")
 
 
 def _show_connection_guidance():

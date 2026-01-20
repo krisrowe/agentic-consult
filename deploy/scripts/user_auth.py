@@ -16,12 +16,13 @@ Workflow:
     2. Admin: ./cloud user-auth export > creds.yaml
     3. Admin sends creds.yaml to user (Slack, email, etc.)
     4. User:  cat creds.yaml | consult remote auth import
-    5. User:  consult remote status --test
+    5. User:  consult remote test
 """
 import argparse
+import base64
 import hashlib
 import json
-import secrets
+import os
 import subprocess
 import sys
 
@@ -49,8 +50,9 @@ def get_cloud_run_url(project_id: str) -> str:
 
 
 def generate_token(length: int = 32) -> str:
-    """Generate a secure random token."""
-    return secrets.token_urlsafe(length)
+    """Generate a secure random token (urlsafe base64 encoded)."""
+    # Using os.urandom + base64 directly to avoid collision with local secrets.py
+    return base64.urlsafe_b64encode(os.urandom(length)).rstrip(b"=").decode("ascii")
 
 
 def cmd_status(args, provider, project_id):
