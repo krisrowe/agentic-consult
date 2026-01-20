@@ -58,7 +58,7 @@ def check_emails(repo_path: str) -> CheckResult:
             findings.append(email)
 
     passed = len(findings) == 0
-    return CheckResult("Email addresses", passed, findings[:10])
+    return CheckResult("Email addresses", passed, findings[:10], info=f"Whitelisted: {len(allowed_emails)} emails")
 
 
 def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:

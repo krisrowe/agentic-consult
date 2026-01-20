@@ -1,4 +1,4 @@
-"""OAuth token and API key checks."""
+"OAuth token and API key checks."
 
 from typing import List
 
@@ -27,7 +27,7 @@ def check_oauth_tokens(repo_path: str) -> CheckResult:
                 findings.append(f"{name}: {truncated}")
 
     passed = len(findings) == 0
-    return CheckResult("OAuth/API tokens", passed, findings[:10])
+    return CheckResult("OAuth/API tokens", passed, findings[:10], info="Scanning for sensitive tokens")
 
 
 def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:

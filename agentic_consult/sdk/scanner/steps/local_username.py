@@ -1,4 +1,4 @@
-"""Local username check - derived from $USER env var."""
+"Local username check - derived from $USER env var."
 
 import os
 from typing import List
@@ -40,7 +40,7 @@ def check_local_username(repo_path: str) -> CheckResult:
                         findings.append(f"{f}: {line[:80]}")
 
     passed = len(findings) == 0
-    return CheckResult("Local username", passed, findings[:10], info=f"checking for '{username}'")
+    return CheckResult("Local username", passed, findings[:10], info=f"Checking for '{username}'")
 
 
 def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:

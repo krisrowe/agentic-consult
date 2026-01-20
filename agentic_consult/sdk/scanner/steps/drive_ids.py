@@ -24,7 +24,7 @@ def check_drive_ids(repo_path: str) -> CheckResult:
                 findings.append(match)
 
     passed = len(findings) == 0
-    return CheckResult("Google Drive IDs", passed, findings[:10])
+    return CheckResult("Google Drive IDs", passed, findings[:10], info="Scanning for doc/folder IDs")
 
 
 def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:

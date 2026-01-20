@@ -1,4 +1,4 @@
-"""Dollar amount checks for sensitive financial data."""
+"Dollar amount checks for sensitive financial data."
 
 import re
 from typing import List
@@ -47,7 +47,8 @@ def check_large_amounts(repo_path: str, thresholds: dict) -> CheckResult:
     """Check for very large dollar amounts (>= $300k default)."""
     threshold = thresholds.get("large_amount", 300000)
 
-    cmd = f"git diff --staged 2>/dev/null | {DIFF_METADATA_FILTER} | grep -oE '\\$[0-9]{{1,3}}(,[0-9]{{3}})+(\\.[0-9]{{2}})?' | head -30"
+    # Use raw strings in Python for the command construction to avoid SyntaxWarnings
+    cmd = rf"git diff --staged 2>/dev/null | {DIFF_METADATA_FILTER} | grep -oE '\$\ [0-9]{{1,3}}(,[0-9]{{3}})+(\.[0-9]{{2}})?' | head -30"
     rc, stdout, _ = run_cmd(cmd, repo_path)
 
     findings = []
@@ -57,7 +58,7 @@ def check_large_amounts(repo_path: str, thresholds: dict) -> CheckResult:
             if amount >= threshold and not is_acceptable_amount(amount_str):
                 findings.append(f"{amount_str} (>= ${threshold:,})")
 
-    cmd = f"git diff 2>/dev/null | {DIFF_METADATA_FILTER} | grep -oE '\\$[0-9]{{1,3}}(,[0-9]{{3}})+(\\.[0-9]{{2}})?' | head -30"
+    cmd = rf"git diff 2>/dev/null | {DIFF_METADATA_FILTER} | grep -oE '\$\ [0-9]{{1,3}}(,[0-9]{{3}})+(\.[0-9]{{2}})?' | head -30"
     rc, stdout, _ = run_cmd(cmd, repo_path)
 
     if stdout.strip():
@@ -68,14 +69,14 @@ def check_large_amounts(repo_path: str, thresholds: dict) -> CheckResult:
                     findings.append(f"{amount_str} (>= ${threshold:,})")
 
     passed = len(findings) == 0
-    return CheckResult(f"Large amounts (>= ${threshold:,})", passed, findings[:10])
+    return CheckResult(f"Large amounts (>= ${threshold:,})", passed, findings[:10], info=f"Threshold: ${threshold:,}")
 
 
 def check_nonround_amounts(repo_path: str, thresholds: dict) -> CheckResult:
     """Check for suspicious non-round amounts that might be real data."""
     threshold = thresholds.get("suspicious_nonround", 10000)
 
-    cmd = f"git diff --staged 2>/dev/null | {DIFF_METADATA_FILTER} | grep -oE '\\$[0-9]{{1,3}}(,[0-9]{{3}})+(\\.[0-9]{{2}})?' | head -50"
+    cmd = rf"git diff --staged 2>/dev/null | {DIFF_METADATA_FILTER} | grep -oE '\$\ [0-9]{{1,3}}(,[0-9]{{3}})+(\.[0-9]{{2}})?' | head -50"
     rc, stdout, _ = run_cmd(cmd, repo_path)
 
     findings = []
@@ -86,14 +87,14 @@ def check_nonround_amounts(repo_path: str, thresholds: dict) -> CheckResult:
                 findings.append(amount_str)
 
     passed = len(findings) == 0
-    return CheckResult("Non-round suspicious amounts", passed, findings[:10])
+    return CheckResult("Non-round suspicious amounts", passed, findings[:10], info=f"Threshold: ${threshold:,}")
 
 
 def check_amounts_with_cents(repo_path: str, thresholds: dict) -> CheckResult:
     """Check for amounts with cents (often real payroll data)."""
     threshold = thresholds.get("cents_review", 500)
 
-    cmd = f"git diff --staged 2>/dev/null | {DIFF_METADATA_FILTER} | grep -oE '\\$[0-9,]+\\.[0-9]{{2}}' | head -30"
+    cmd = rf"git diff --staged 2>/dev/null | {DIFF_METADATA_FILTER} | grep -oE '\$\ [0-9,]+\.[0-9]{{2}}' | head -30"
     rc, stdout, _ = run_cmd(cmd, repo_path)
 
     findings = []
@@ -105,7 +106,7 @@ def check_amounts_with_cents(repo_path: str, thresholds: dict) -> CheckResult:
                 findings.append(amount_str)
 
     passed = len(findings) == 0
-    return CheckResult("Amounts with cents", passed, findings[:10])
+    return CheckResult("Amounts with cents", passed, findings[:10], info=f"Reviewing > ${threshold:,}")
 
 
 def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:

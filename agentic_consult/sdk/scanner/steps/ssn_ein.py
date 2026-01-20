@@ -1,4 +1,4 @@
-"""SSN and EIN pattern checks."""
+"SSN and EIN pattern checks."
 
 from typing import List
 
@@ -26,7 +26,7 @@ def check_ssn_ein(repo_path: str) -> CheckResult:
             findings.append(f"EIN-like: {match}")
 
     passed = len(findings) == 0
-    return CheckResult("SSN/EIN patterns", passed, findings[:10])
+    return CheckResult("SSN/EIN patterns", passed, findings[:10], info="Scanning for personal/tax IDs")
 
 
 def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:

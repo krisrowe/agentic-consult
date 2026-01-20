@@ -10,7 +10,7 @@ def check_uncommitted_content(repo_path: str, simple_patterns: List[str],
                                special_patterns: List[Tuple[dict, str]]) -> CheckResult:
     """Check uncommitted changes for sensitive patterns."""
     if not simple_patterns and not special_patterns:
-        return CheckResult("Sensitive patterns in uncommitted", True, [], skipped=True)
+        return CheckResult("Sensitive patterns in uncommitted", True, [], skipped=True, info="No patterns configured")
 
     findings = []
 
@@ -35,14 +35,14 @@ def check_uncommitted_content(repo_path: str, simple_patterns: List[str],
                 findings.append(f"[untracked] {f}")
 
     passed = len(findings) == 0
-    return CheckResult("Sensitive patterns in uncommitted", passed, findings)
+    return CheckResult("Sensitive patterns in uncommitted", passed, findings, info=f"{len(simple_patterns)} patterns loaded")
 
 
 def check_history(repo_path: str, simple_patterns: List[str],
                   special_patterns: List[Tuple[dict, str]]) -> CheckResult:
     """Check git history for sensitive patterns (deep mode)."""
     if not simple_patterns:
-        return CheckResult("Sensitive patterns in history", True, [], skipped=True)
+        return CheckResult("Sensitive patterns in history", True, [], skipped=True, info="No patterns configured")
 
     patterns = "|".join(simple_patterns)
     cmd = f"git log -p --all 2>/dev/null | {DIFF_METADATA_FILTER} | grep -iE '{patterns}' | head -20"
@@ -54,13 +54,13 @@ def check_history(repo_path: str, simple_patterns: List[str],
             findings.append(line[:80])
 
     passed = len(findings) == 0
-    return CheckResult("Sensitive patterns in history", passed, findings)
+    return CheckResult("Sensitive patterns in history", passed, findings, info=f"Scanned history with {len(simple_patterns)} patterns")
 
 
 def check_commits(repo_path: str, simple_patterns: List[str]) -> CheckResult:
     """Check commit messages for sensitive patterns."""
     if not simple_patterns:
-        return CheckResult("Sensitive patterns in commits", True, [], skipped=True)
+        return CheckResult("Sensitive patterns in commits", True, [], skipped=True, info="No patterns configured")
 
     patterns = "|".join(simple_patterns)
     cmd = f"git log --all --format='%s%n%b' 2>/dev/null | grep -iE '{patterns}' | head -10"
@@ -72,7 +72,7 @@ def check_commits(repo_path: str, simple_patterns: List[str]) -> CheckResult:
             findings.append(line[:80])
 
     passed = len(findings) == 0
-    return CheckResult("Sensitive patterns in commits", passed, findings)
+    return CheckResult("Sensitive patterns in commits", passed, findings, info="Checked commit messages")
 
 
 def check_stash(repo_path: str) -> CheckResult:
@@ -82,14 +82,14 @@ def check_stash(repo_path: str) -> CheckResult:
 
     count = int(stdout.strip()) if stdout.strip().isdigit() else 0
     if count > 0:
-        return CheckResult("Stash entries", False, [f"{count} stash entries exist (should be cleared)"])
-    return CheckResult("Stash entries", True)
+        return CheckResult("Stash entries", False, [f"{count} stash entries exist (should be cleared)"], info=f"Found {count} entries")
+    return CheckResult("Stash entries", True, info="No stash entries")
 
 
 def check_reflog(repo_path: str, simple_patterns: List[str]) -> CheckResult:
     """Check reflog for sensitive patterns."""
     if not simple_patterns:
-        return CheckResult("Reflog patterns", True, [], skipped=True)
+        return CheckResult("Reflog patterns", True, [], skipped=True, info="No patterns configured")
 
     patterns = "|".join(simple_patterns[:5])
     cmd = f"git reflog 2>/dev/null | grep -iE '{patterns}' | head -5"
@@ -101,13 +101,13 @@ def check_reflog(repo_path: str, simple_patterns: List[str]) -> CheckResult:
             findings.append(line[:80])
 
     passed = len(findings) == 0
-    return CheckResult("Reflog patterns", passed, findings)
+    return CheckResult("Reflog patterns", passed, findings, info="Checked local reflog")
 
 
 def check_filenames(repo_path: str, simple_patterns: List[str], deep: bool = False) -> CheckResult:
     """Check filenames for sensitive patterns."""
     if not simple_patterns:
-        return CheckResult("Sensitive filenames", True, [], skipped=True)
+        return CheckResult("Sensitive filenames", True, [], skipped=True, info="No patterns configured")
 
     findings = []
     patterns = "|".join(simple_patterns)
@@ -126,13 +126,13 @@ def check_filenames(repo_path: str, simple_patterns: List[str], deep: bool = Fal
                 findings.append(f"[history] {f}")
 
     passed = len(findings) == 0
-    return CheckResult("Sensitive filenames", passed, findings)
+    return CheckResult("Sensitive filenames", passed, findings, info="Checked project filenames")
 
 
 def check_branches(repo_path: str, simple_patterns: List[str]) -> CheckResult:
     """Check branch names for sensitive patterns."""
     if not simple_patterns:
-        return CheckResult("Branch names", True, [], skipped=True)
+        return CheckResult("Branch names", True, [], skipped=True, info="No patterns configured")
 
     patterns = "|".join(simple_patterns)
     cmd = f"git branch -a 2>/dev/null | grep -iE '{patterns}' | head -5"
@@ -144,13 +144,13 @@ def check_branches(repo_path: str, simple_patterns: List[str]) -> CheckResult:
             findings.append(line.strip())
 
     passed = len(findings) == 0
-    return CheckResult("Branch names", passed, findings)
+    return CheckResult("Branch names", passed, findings, info="Checked branch names")
 
 
 def check_tags(repo_path: str, simple_patterns: List[str]) -> CheckResult:
     """Check tag names for sensitive patterns."""
     if not simple_patterns:
-        return CheckResult("Tag names", True, [], skipped=True)
+        return CheckResult("Tag names", True, [], skipped=True, info="No patterns configured")
 
     patterns = "|".join(simple_patterns)
     cmd = f"git tag 2>/dev/null | grep -iE '{patterns}' | head -5"
@@ -162,7 +162,7 @@ def check_tags(repo_path: str, simple_patterns: List[str]) -> CheckResult:
             findings.append(line.strip())
 
     passed = len(findings) == 0
-    return CheckResult("Tag names", passed, findings)
+    return CheckResult("Tag names", passed, findings, info="Checked tag names")
 
 
 def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
