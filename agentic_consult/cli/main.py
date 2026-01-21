@@ -16,6 +16,7 @@ from .chat import chat
 from .services import services
 from .remote import remote
 from .email import email
+from .client import client
 # cloud and image removed - use ./cloud instead (see deploy/DESIGN.md)
 
 @click.group()
@@ -39,6 +40,7 @@ main.add_command(chat)
 main.add_command(services)
 main.add_command(remote)
 main.add_command(email)
+main.add_command(client)
 
 if __name__ == "__main__":
     main()

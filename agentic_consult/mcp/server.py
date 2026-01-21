@@ -7,7 +7,9 @@ from typing import Any, Literal, Optional, Union
 from dataclasses import asdict
 
 from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.transport_security import TransportSecuritySettings
 
+from agentic_consult import __version__, __package_name__
 from agentic_consult.backup.providers.local_repos import LocalRepoBackup
 from agentic_consult.backup.folder_providers.factory import get_folder_provider
 from agentic_consult.config import get_backups_google_drive_folder_id, get_model_help_text
@@ -31,18 +33,41 @@ from agentic_consult.mcp.email_processing import (
     mark_email_in_review_with_gwsa
 )
 from agentic_consult.email.triage import (
-    triage_emails as sdk_triage_emails,
+    fetch_triage_pool as sdk_fetch_triage_pool,
     get_cached_emails as sdk_get_cached_emails,
     mark_email_in_review as sdk_mark_email_in_review,
     mark_email_archivable as sdk_mark_email_archivable,
-    suggest_email_action as sdk_suggest_email_action
+    flag_for_reanalysis as sdk_flag_for_reanalysis
 )
 from agentic_consult.chat.triage import get_chat_mentions as sdk_get_chat_mentions
+from agentic_consult.mcp.docstrings import get_tool_docstring
 import fnmatch
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("agentic-consult")
+# Transport Security Configuration for MCP HTTP transport
+#
+# Problem: FastMCP auto-enables DNS rebinding protection when host defaults to
+# localhost (127.0.0.1). This validates Host headers against an allowed list.
+# On Cloud Run, the Host header is "xxx.run.app" which isn't in the default
+# allowed list, causing HTTP 421 "Misdirected Request" errors.
+#
+# Why disabling on Cloud Run is safe:
+# - Cloud Run's frontend validates Host headers at the infrastructure level
+# - Requests with mismatched Host headers get Google's 404, never reach container
+# - DNS rebinding attacks are not possible against Cloud Run services
+# - Our token authentication is the real security boundary
+#
+# K_SERVICE is set by Cloud Run: https://cloud.google.com/run/docs/container-contract
+if os.environ.get("K_SERVICE"):
+    transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+else:
+    transport_security = None  # Let FastMCP use its defaults (protection for localhost)
+
+mcp = FastMCP(__package_name__, transport_security=transport_security)
+
+# Log version on module load (appears in Cloud Run startup logs)
+logger.info(f"{__package_name__} MCP server v{__version__}")
 
 @mcp.tool()
 async def get_backup_metadata(path: str = ".") -> dict[str, Any]:
@@ -330,7 +355,7 @@ async def run_precommit_scan(
         logger.exception(f"Unexpected error during run_precommit_scan for {path}")
         return {"error": f"An unexpected error occurred: {str(e)}"}
 
-@mcp.tool()
+@mcp.tool(description=get_tool_docstring("triage_emails"))
 async def triage_emails(
     review_status: Literal["new", "reviewing", "all"] = "all",
     limit: int = 20,
@@ -339,112 +364,8 @@ async def triage_emails(
     width: Optional[Union[int, str]] = None,
     ctx: Context = None
 ) -> dict[str, Any]:
-    """
-    Triage inbox emails using pre-computed background analysis.
-
-    Reads results from 'analysis.json' sidecars produced by the background analyzer service.
-    Excludes emails already marked with a 'triage.json' sidecar.
-
-    ## Workflow
-
-    Terminal state = triaged (archived or in review). Goal is to clear the pending queue.
-
-    1. **Start with "all" (default)** - See full pending triage state.
-
-    2. **Wait for User Confirmation** - The tool returns a plan (instructions).
-       **DO NOT EXECUTE THESE ACTIONS AUTOMATICALLY.**
-       Display the plan to the user and wait for their explicit command or confirmation.
-
-    3. **Process results (After Confirmation)** - Based on user input:
-       - archive_now → `archive_email()` → done (creates triage.json)
-       - archive_later → `mark_email_archivable()` → stays until aged
-       - review → `mark_email_in_review()` → stays for user attention (creates triage.json)
-       - track_as_task → create task, then `archive_email()` → done (creates triage.json)
-       - ask_user → get user decision, act accordingly → done
-
-    4. **Subsequent batches** - Use `review_status="new"` to skip labeled emails
-       when fetching the next batch. Use "reviewing" to focus on emails awaiting
-       user attention. These filters are for efficiency when "all" is manageable.
-
-    5. **When "all" is cluttered** - If default limit returns mostly deferred
-       emails (Reviewing/Archivable), increase `limit` or use filters to reach
-       emails that can be immediately actioned.
-
-    6. **Done** - Triage complete when inbox is empty.
-
-    ## Google Chat Handling
-
-    The tool also scans for **Google Chat Recent Mentions and DMs**.
-    
-    *   **Scope:** Scans active DMs and Spaces based on recency tiers.
-    *   **Filtering:** Items are included if they contain an explicit mention (@You) or are in a
-        small group (DM), AND you have **not responded** later in the thread **nor reacted** (emoji) to the message.
-    *   **Presentation:** These are presented in a dedicated section at the top of the triage table.
-    
-    ## Calendar Invites Handling
-
-    The tool separates Calendar Invites into a distinct `invites` list in the response.
-    
-    *   **Availability Check:** The Agent MUST iterate through the `invites` list and use
-        **available calendar tools** to check user availability for the proposed times.
-    *   **Presentation:** The Agent MUST update the display table (filling in the `Avail` column placeholders)
-        to show availability status (e.g., ✅/❌).
-    *   **Action Handling:** Facilitate the user's ability to accept these invites using
-        **available tools** and then reply/archive the email.
-
-    ## DSL & Command Handling
-
-    The tool output includes a "Suggested Actions" block using a shorthand DSL.
-    If the user replies with these commands (e.g., `do rev A1 B2`), you must:
-    1.  **Resolve Refs**: Look up the `ref` (e.g., "A1") in the tool output table to find the corresponding `id` (Gmail Message ID).
-    2.  **Execute Tool**: Call the appropriate tool for the command:
-        - `do rev <refs>`   → `mark_email_in_review(message_id=id)`
-        - `do task <refs>`  → Create a task for each, then `archive_email(message_id=id)`
-        - `do arc <refs>`   → `archive_email(message_id=id, reason="ad-hoc")`
-        - `do later <refs>` → `mark_email_archivable(message_id=id)`
-        - `do sum <refs>`   → `get_cached_emails(message_ids=[id])` (Summarize content)
-        - `do show <refs>`  → `get_cached_emails(message_ids=[id])` (Show full content)
-        - `do relist`       → Filter and redisplay the table with remaining items (no tool call)
-    
-    **Example:**
-    User: "do rev A1"
-    Agent: Finds A1 in table -> ID "19b9..." -> Calls `mark_email_in_review(message_id="19b9...")`
-
-    Args:
-        review_status: Filter emails by state
-            - "all": All inbox emails (default - use for initial triage and final passes)
-            - "new": Emails without Reviewing/Archivable labels (efficient for mid-session batches)
-            - "reviewing": Emails previously marked for review
-        limit: Maximum emails to fetch (default 20, max recommended for context)
-        profile: Optional gwsa profile name (omit for default)
-        model: Optional Gemini model override (default from app.yaml)
-        width: Optional table width hint ("small", "medium", "large") OR integer (total chars). 
-               Defaults to "medium" (120). 
-               HINT: When using terminal width, pass a value slightly less (e.g., -10) than 
-               the detected width to account for margins and agentic indentation.
-
-    Returns:
-        Dictionary with:
-            - recommendations: List of {id, date, from, subject, recommended_action, rule_id, reason}
-            - rules_referenced: Rules that matched at least one email
-            - instructions: Next steps guidance
-            - stats: Processing statistics
-
-        recommended_action values:
-            - "archive_now": Archive immediately (routine email, aged sufficiently for user visibility)
-            - "archive_later": Archivable per rules, but kept visible a bit longer; use
-              `mark_email_archivable` tool to apply label so user can archive manually via
-              Gmail UI and our tooling can skip these emails via filter when pulling batches
-            - "track_as_task": Requires follow-up action (create task, then archive)
-            - "review": Needs human attention (apply Reviewing label)
-            - "ask_user": No rule matched (present to user for decision)
-
-        Follow-up tools:
-            - get_cached_emails([message_ids]): Get full cached email content
-            - archive_email(...): Archive with logging
-            - mark_email_archivable(message_id): Apply Archivable label
-            - mark_email_in_review(message_id): Apply/remove Reviewing label
-    """
+    # Full docstring loaded from mcp/tool-docstrings.json via @mcp.tool(description=...)
+    # See DESIGN.md section 15 for updateable app resources.
     try:
         # Create sync progress callback that wraps async report_progress
         def progress_callback(current: int, total: int) -> None:
@@ -457,7 +378,7 @@ async def triage_emails(
                 except Exception:
                     pass  # Silently ignore if progress reporting fails
 
-        return sdk_triage_emails(
+        return sdk_fetch_triage_pool(
             review_status=review_status,
             limit=limit,
             profile=profile,
@@ -563,6 +484,32 @@ async def mark_email_archivable(
 
 
 @mcp.tool()
+async def flag_for_reanalysis(message_ids: list[str]) -> dict[str, Any]:
+    """
+    Flag emails for reanalysis by removing their analysis.json sidecars.
+
+    Use this when an email was incorrectly analyzed or when rules have changed
+    and you want the background analyzer to re-process specific emails.
+
+    The analyzer job runs periodically and will re-analyze flagged emails on
+    its next run, applying current rules and context.
+
+    Args:
+        message_ids: List of message IDs to flag for reanalysis.
+
+    Returns:
+        Dictionary with:
+        - flagged: Count of emails successfully flagged
+        - errors: List of any failures (optional, only if errors occurred)
+    """
+    try:
+        return sdk_flag_for_reanalysis(message_ids)
+    except Exception as e:
+        logger.exception("Error in flag_for_reanalysis")
+        return {"error": str(e)}
+
+
+@mcp.tool()
 async def list_email_rules(
     filter_pattern: Optional[str] = None,
     include_disabled: bool = False
@@ -664,6 +611,101 @@ async def remove_email_rule(rule_id: str) -> dict[str, Any]:
             return {"success": False, "message": f"Rule '{rule_id}' not found"}
     except Exception as e:
         logger.exception("Error in remove_email_rule")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def configure_triage_batching(
+    pool_size: Optional[int] = None,
+    batch_target: Optional[int] = None
+) -> dict[str, Any]:
+    """
+    Configure triage batching settings for email processing.
+
+    Controls how many emails are fetched (pool) and how many are presented
+    to the user at once (batch). The client agent should group emails by
+    similar recommended action and priority when presenting batches.
+
+    Args:
+        pool_size: Number of emails to fetch per triage run (default 25).
+            Larger pools provide more context but increase processing time.
+        batch_target: Suggested batch size for user presentation (default 5).
+            The agent groups similar items together, so actual batch sizes
+            may vary (4-6 items) to keep related emails in the same batch.
+
+    Returns:
+        Current batching settings after any updates.
+    """
+    from agentic_consult.mcp.email_processing import get_triage_batching, set_triage_batching
+
+    try:
+        if pool_size is not None or batch_target is not None:
+            return set_triage_batching(pool_size=pool_size, batch_target=batch_target)
+        return get_triage_batching()
+    except Exception as e:
+        logger.exception("Error in configure_triage_batching")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def configure_email_rules(
+    rule_changes: list[dict]
+) -> dict[str, Any]:
+    """
+    Apply batch changes to email processing rules.
+
+    Use this to add, update, or delete user rules, and to manage enable/disable
+    patterns that control which rules are active. Rules represent an investment
+    of prompt engineering effort - use this tool carefully.
+
+    Args:
+        rule_changes: Array of change objects. Each must have 'change_type' and
+            relevant fields:
+
+            **add_user_rule**: Create a new rule
+                - rule_id: Unique identifier (required)
+                - action: 'archive', 'review', or 'track_as_task' (default: 'review')
+                - condition: Natural language condition for LLM evaluation
+                - match_from: Sender pattern (regex)
+                - match_subject: Subject pattern (regex)
+                - instructions: Custom handling instructions
+
+            **update_user_rule**: Modify an existing rule
+                - rule_id: Rule to update (required)
+                - Plus any fields to change (action, condition, etc.)
+
+            **delete_user_rule**: Remove a rule
+                - rule_id: Rule to delete (required)
+
+            **add_disable_pattern**: Disable rules matching glob pattern
+                - pattern: Glob pattern like "sys-*" or "work-*"
+
+            **remove_disable_pattern**: Re-enable rules by removing pattern
+                - pattern: Pattern to remove from disable list
+
+            **add_enable_pattern**: Enable rules matching glob pattern
+                - pattern: Glob pattern like "home-*"
+
+            **remove_enable_pattern**: Remove from enable list
+                - pattern: Pattern to remove
+
+    Returns:
+        Summary with 'applied' (successful changes), 'errors' (failed changes),
+        and current state (rules_count, disable_patterns, enable_patterns).
+
+    Example:
+        rule_changes=[
+            {"change_type": "add_disable_pattern", "pattern": "sys-important-direct"},
+            {"change_type": "add_user_rule", "rule_id": "my-receipts",
+             "action": "archive", "condition": "Receipt email older than 3 days"}
+        ]
+    """
+    from agentic_consult.mcp.email_processing import apply_rule_changes
+
+    try:
+        return apply_rule_changes(rule_changes)
+    except Exception as e:
+        logger.exception("Error in configure_email_rules")
         return {"error": str(e)}
 
 
@@ -889,7 +931,7 @@ async def email_triage_stats(
     Get email triage statistics from the email archive.
 
     Uses EmailStore SDK for disk I/O. Returns counts and date ranges
-    plus a sampled breakdown of active emails by recommended_action.
+    plus a sampled breakdown of active emails by (action, rule_id) pairs.
 
     Use this for health checks to verify the MCP server can access email data.
 
@@ -906,11 +948,9 @@ async def email_triage_stats(
                     "count": N,
                     "sample": {
                         "size": M,
-                        "archive_now": X,
-                        "archive_later": Y,
-                        "review": Z,
-                        "track_as_task": W,
-                        "ask_user": V
+                        "archive_now": {"retail-receipts": 3, "shipping-delivered": 2},
+                        "review": {"k12-grades-testing": 1, "unmatched": 2},
+                        ...
                     }
                 }
             }

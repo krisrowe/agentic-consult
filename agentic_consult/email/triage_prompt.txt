@@ -70,32 +70,59 @@ Separate any emails that are Calendar Invites or specific scheduling requests in
 
 Respond with valid JSON only. No markdown, no explanation outside the JSON.
 
+User's current datetime: {user_datetime}
+
 ```json
 {{
   "emails": [
     {{
-      "id": "message_id_here",
-      "date": "YYYY-MM-DD",
-      "from": "sender@example.com",
-      "subject": "Subject line",
-      "recommended_action": "archive_now|archive_later|track_as_task|review|ask_user",
-      "rule_id": "matching-rule-id-or-null",
-      "audience": "DIRECT|GROUP|MENTION|BROADCAST",
-      "sender_class": "HUMAN|SYSTEM|NEWS|SOCIAL|MARKETING",
-      "reason": "Brief explanation (1 sentence)"
+      "id": "msg_001",
+      "display_date": "yesterday 7:06 pm",
+      "sender": "Google Play",
+      "summary": "$32.46 Predator: Badlands",
+      "recommended_action": "archive_now",
+      "rule_or_reason": "receipts",
+      "audience": "DIRECT",
+      "sender_class": "SYSTEM",
+      "original": {{
+        "date": "Tue, 20 Jan 2026 19:06:30 -0800",
+        "from": "Google Play <noreply@google.example.com>",
+        "subject": "Your Google Play Order Receipt from Jan 20, 2026",
+        "rule_id": "major-business-receipts"
+      }}
+    }},
+    {{
+      "id": "msg_002",
+      "display_date": "today 3:17 am",
+      "sender": "LinkedIn",
+      "summary": "We think you've got this 🏆",
+      "recommended_action": "archive_now",
+      "rule_or_reason": "promoting LinkedIn games, no actionable content",
+      "audience": "DIRECT",
+      "sender_class": "SOCIAL",
+      "original": {{
+        "date": "Wed, 21 Jan 2026 03:17:56 -0600",
+        "from": "LinkedIn <noreply@linkedin.example.com>",
+        "subject": "We think you've got this 🏆",
+        "rule_id": "social-notification"
+      }}
     }}
   ],
   "invites": [
     {{
       "id": "message_id_here",
-      "date": "YYYY-MM-DD",
-      "from": "sender@example.com",
-      "subject": "Meeting Subject",
-      "event_date": "Jan 9, 4-5pm ET",
+      "display_date": "1/22 4:00 pm",
+      "sender": "Jane Smith",
+      "summary": "Project sync - 30 min",
+      "event_date": "Jan 22, 4-4:30 pm CT",
       "status": "PROPOSED|CONFIRMED|CANCELED",
       "attendee_status": "needsAction|accepted|declined",
       "vip_status": "VIP|CUSTOMER|INTERNAL|EXTERNAL",
-      "reason": "Discuss Project X"
+      "original": {{
+        "date": "Mon, 20 Jan 2026 10:00:00 -0600",
+        "from": "Jane Smith <jane.smith@acme.com>",
+        "subject": "Meeting Request: Project sync"
+      }}
     }}
   ]
 }}
@@ -104,9 +131,31 @@ Respond with valid JSON only. No markdown, no explanation outside the JSON.
 ## Guidelines
 
 - Include ALL emails in your response (either in `emails` or `invites`, but NOT both)
-- Keep reasons extremely concise (max 10-12 words).
-- Start directly with the core event (e.g., 'Updates ticket status', 'Requests access').
-- DO NOT start with "The email", "Email is", or "This message".
-- The `reason` field should explain WHY this matched the rule - cite specific content.
-- This helps the client agent decide whether to load the full email or act on the summary alone
 - Do not invent rules - only apply the rules provided
+- `rule_or_reason`: If summary makes the match obvious (e.g. "$32.46 Predator" → receipts), just use rule name. If not obvious, briefly explain what triggered the match.
+
+### summary Field
+
+ALWAYS provide a `summary`. Extract the useful content from the email - what the user needs to know at a glance.
+
+**For financial emails**, summary MUST include the dollar amount:
+- "$32.46 Predator: Badlands"
+- "$21.31 Google AI Pro subscription"
+- "$142.50 electric bill due"
+- "$23.54 DoorDash - Market Street"
+
+**For non-financial emails**, summarize what matters:
+- "AirPods Pro shipped, arriving Thu"
+- "Password reset requested"
+- "Weekly fitness stats"
+
+The original subject is preserved in `original.subject` for reference.
+
+### sender Field
+
+Make the sender clear and recognizable. Use intelligence - combine display name and domain when needed.
+
+- `"Security Center Alerts" <security-noreply@acme.com>` → "Acme Security" (display name is generic garbage, domain tells you who)
+- `"John Smith" <newsletter@acme.com>` → "Acme Newsletter" (it's a company newsletter, not some guy)
+- `noreply@acme.com` → "Acme" (no display name, use domain)
+- `"Springfield High Athletics" <athletics@springfield.k12.example.org>` → "Springfield High Athletics" (already clear, just drop the email)

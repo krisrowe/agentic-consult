@@ -82,20 +82,28 @@ def get_gcr_image_info(project_id: str, image_name: str) -> dict:
 
 # --- Commands as data (for dry-run support) ---
 
-def get_build_commands(info: dict, project_id: str, tmp_dir: str) -> list:
+def get_build_commands(info: dict, project_id: str, tmp_dir: str, no_cache: bool = False) -> list:
     """Get build commands as list of command arrays."""
     commands = []
     img = f"gcr.io/{project_id}/{info['image']}:latest"
 
     if is_internal(info):
-        commands.append(["docker", "build", "--target", info["target"], "-t", img, "."])
+        cmd = ["docker", "build"]
+        if no_cache:
+            cmd.append("--no-cache")
+        cmd.extend(["--target", info["target"], "-t", img, "."])
+        commands.append(cmd)
     else:
         clone = ["git", "clone", "--depth", "1"]
         if info.get("ref"):
             clone.extend(["--branch", info["ref"]])
         clone.extend([info["repo"], tmp_dir])
         commands.append(clone)
-        commands.append(["docker", "build", "-t", img, tmp_dir])
+        cmd = ["docker", "build"]
+        if no_cache:
+            cmd.append("--no-cache")
+        cmd.extend(["-t", img, tmp_dir])
+        commands.append(cmd)
 
     return commands
 
@@ -213,13 +221,14 @@ def cmd_build(args):
     images = load_images_config()
     name, info = get_image_or_exit(args, images)
     project_id = get_project_or_exit(args)
+    no_cache = getattr(args, 'no_cache', False)
 
     tmp_dir = tempfile.mkdtemp(prefix="cloud-build-")
     try:
-        commands = get_build_commands(info, project_id, tmp_dir)
+        commands = get_build_commands(info, project_id, tmp_dir, no_cache=no_cache)
         cwd = REPO_ROOT if is_internal(info) else None
 
-        print(f"Building {info['image']}...")
+        print(f"Building {info['image']}{'(no cache)' if no_cache else ''}...")
         execute_commands(commands, cwd=cwd)
         success(f"Built: gcr.io/{project_id}/{info['image']}:latest")
     finally:
@@ -240,13 +249,13 @@ def cmd_push(args):
     success(f"Pushed: {img}")
 
 
-def deploy_single_image(name: str, info: dict, project_id: str, dry_run: bool) -> bool:
+def deploy_single_image(name: str, info: dict, project_id: str, dry_run: bool, no_cache: bool = False) -> bool:
     """Deploy a single image. Returns True if deployed, False if skipped."""
     tmp_dir = f"/tmp/cloud-build-{name}"
 
     # Gather all commands
     commands = []
-    commands.extend(get_build_commands(info, project_id, tmp_dir))
+    commands.extend(get_build_commands(info, project_id, tmp_dir, no_cache=no_cache))
     commands.extend(get_push_commands(info, project_id))
     commands.extend(get_cleanup_commands(info, tmp_dir))
 
@@ -257,11 +266,11 @@ def deploy_single_image(name: str, info: dict, project_id: str, dry_run: bool) -
 
     # Execute
     img = f"gcr.io/{project_id}/{info['image']}:latest"
-    print(f"Deploying {name}...")
+    print(f"Deploying {name}{'(no cache)' if no_cache else ''}...")
 
     try:
         cwd = REPO_ROOT if is_internal(info) else None
-        build_cmds = get_build_commands(info, project_id, tmp_dir)
+        build_cmds = get_build_commands(info, project_id, tmp_dir, no_cache=no_cache)
         execute_commands(build_cmds, cwd=cwd)
 
         push_cmds = get_push_commands(info, project_id)
@@ -309,8 +318,9 @@ def cmd_deploy(args):
         return
 
     # Deploy each target
+    no_cache = getattr(args, 'no_cache', False)
     for name, info in targets:
-        deploy_single_image(name, info, project_id, args.dry_run)
+        deploy_single_image(name, info, project_id, args.dry_run, no_cache=no_cache)
 
 
 def main(args=None):
@@ -328,6 +338,8 @@ def main(args=None):
     build_parser = subparsers.add_parser("build", help="Build a Docker image")
     build_parser.add_argument("name", nargs="?", help=f"Image name: {image_names}")
     build_parser.add_argument("--project", help="GCP Project ID (overrides config)")
+    build_parser.add_argument("--no-cache", dest="no_cache", action="store_true",
+                              help="Force rebuild without using Docker cache")
 
     # push
     push_parser = subparsers.add_parser("push", help="Push image to GCR")
@@ -342,6 +354,8 @@ def main(args=None):
                                help="Only deploy images not already in GCR")
     deploy_parser.add_argument("--dry-run", action="store_true",
                                help="Show manual steps without executing")
+    deploy_parser.add_argument("--no-cache", dest="no_cache", action="store_true",
+                               help="Force rebuild without using Docker cache")
 
     parsed = parser.parse_args(args)
 

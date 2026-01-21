@@ -588,3 +588,140 @@ For deeper debugging, use `LOG_LEVEL=DEBUG`. DEBUG logs contain PII by default a
 ### Structured JSON Logging
 
 For GCP Cloud Logging compatibility, use `log_json()` from `agentic_consult.logging` for logs that need to be queryable/metrics-ready. Raw JSON to stdout is parsed by Cloud Logging as structured data.
+
+## 14. CLI Cloud-Agnosticism
+
+### Design Principle
+
+CLI commands (e.g., `consult client`, `consult remote`) are intentionally unaware of GCP or any specific cloud provider. They interact only with the `.remote` settings section (URL + token) and communicate via HTTP REST API.
+
+**Cloud-agnostic (installed CLI):**
+- `consult client email-rules push/pull` - Uses REST API, not gsutil
+- `consult remote auth/test/show` - URL + token based
+- All SDK modules under `agentic_consult/sdk/`
+
+**GCP-aware (deployment tooling only):**
+- `./cloud` utility - Non-installed, stdlib-only helper for deployment
+- `deploy/` directory - Terraform, scripts, GCP-specific configuration
+
+### Rationale
+
+This separation ensures:
+1. The installed CLI can work with **any backend** implementation (GCP, AWS, self-hosted)
+2. Cloud-specific logic is **isolated** to deployment tooling
+3. Users don't need `gcloud` or cloud SDKs to use the CLI
+4. Testing is simpler (mock HTTP endpoints, not cloud APIs)
+
+### Implementation
+
+- REST endpoints on the MCP HTTP server handle config sync (e.g., `/user/email-rules`)
+- CLI commands call REST APIs using stdlib `urllib.request`
+- SDK functions (`sdk/email/rules_config.py`) contain pure business logic
+- HTTP layer (`mcp/http.py`) wraps SDK functions with auth and error handling
+
+## 15. Overridable Config Resources
+
+### Overview
+
+Certain config resources (prompt templates, tool docstrings, etc.) can be overridden at
+runtime via GCS without rebuilding Docker images. This enables emergency hotfixes while
+maintaining package-bundled defaults as the source of truth.
+
+### File Location: Co-locate with Code
+
+Config resources live alongside the code that uses them, not in a separate folder:
+
+```
+agentic_consult/
+  email/
+    triage.py              # code
+    triage_prompt.txt      # its config (prompt template)
+  mcp/
+    server.py              # code
+    tool-docstrings.json   # its config (MCP tool descriptions)
+```
+
+**Benefits:**
+- Modular: config lives with its code
+- Easy path building: `Path(__file__).parent / "triage_prompt.txt"`
+- Unique filenames naturally (no namespace prefix needed)
+- Flat GCS config folder: `config/triage_prompt.txt`, `config/tool-docstrings.json`
+
+### Loading with `load_updateable()`
+
+All updateable resources use `config.load_updateable(default_path)`:
+
+```python
+from pathlib import Path
+from agentic_consult.config import load_updateable
+
+def load_triage_prompt_template() -> str:
+    return load_updateable(Path(__file__).parent / "triage_prompt.txt")
+```
+
+**Loading priority:**
+1. Check `$CONSULT_CONFIG_DIR/app/{filename}` for updated version
+2. Fall back to package-bundled file at `default_path`
+
+**GCS folder structure:**
+```
+config/
+  app/                    # Updateable app resources (terraform-deployed)
+    triage_prompt.txt
+    tool-docstrings.json
+  email.yaml              # User configuration
+  contacts.yaml           # User configuration
+```
+
+**Note on `config/app/`:**
+This folder is essentially a cache, not user data. It can be safely cleared when the
+deployed image is known to be current - the package-bundled versions are authoritative.
+Unlike `email.yaml` and other user config, losing `config/app/` does not lose user data.
+Different backup/retention policies may apply.
+
+**Logging:**
+- `WARN`: Updated version differs from package (drift detected)
+- `DEBUG`: Updated version matches package, or no update (normal)
+
+### Terraform Sync
+
+The manifest `deploy/config-resources.json` declares what gets synced to GCS.
+
+**Important:** Nothing outside `deploy/` uses deploy resources, except the `./cloud`
+shebang script at repo root (a convenience wrapper). The `config-resources.json` is
+only read by terraform - it describes/reflects what's in the codebase but the Python
+code never reads it. The code uses `load_updateable()` with package-relative paths;
+terraform uses the manifest to know which files to sync to GCS.
+
+```json
+{
+  "resources": [
+    {"path": "agentic_consult/email/triage_prompt.txt", "restart": false},
+    {"path": "agentic_consult/mcp/tool-docstrings.json", "restart": true}
+  ]
+}
+```
+
+**The `restart` flag:**
+- `true`: Resource is cached at startup (e.g., MCP docstrings). Changes require restart.
+- `false`: Resource is read on demand (e.g., templates). Changes picked up immediately.
+
+Terraform computes a combined MD5 hash of all `restart: true` files and passes it as
+a single env var (`CONFIG_RESOURCES_MD5`). Any change triggers Cloud Run restart.
+
+### Design Principle: Package is Source of Truth
+
+**Normal workflow:**
+```
+Edit config → commit → build image → deploy
+(Terraform syncs same content to GCS, no drift, DEBUG log)
+```
+
+**Emergency workflow:**
+```
+Push to GCS directly → WARN log (drift detected)
+Later: merge fix to repo → rebuild → deploy → back to normal
+```
+
+Config-only deploys to GCS are an escape hatch for emergencies, not the normal workflow.
+The WARN logging alerts when drift exists so it can be resolved.

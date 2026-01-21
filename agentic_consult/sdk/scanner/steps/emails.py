@@ -10,6 +10,7 @@ from ..utils import CheckResult, run_cmd, DIFF_METADATA_FILTER
 DEFAULT_ACCEPTABLE_DOMAINS = [
     'example.com', 'example.org', 'example.net', 'test.com',
     'users.noreply.github.com',
+    'acme.com',  # Classic placeholder company (Looney Tunes)
 ]
 
 # Python decorator modules that look like email domains

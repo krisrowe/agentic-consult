@@ -4,7 +4,9 @@ import yaml
 import re
 import click
 import logging
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from agentic_consult.schema import validate_yaml
 from agentic_consult.paths import (
     get_settings_dir,
@@ -364,5 +366,124 @@ def get_model_help_text() -> str:
         
     # 4. Tip
     parts.append("Tip: Use 'consult models set-default' to change the default.")
-        
+
     return " ".join(parts)
+
+
+def get_user_datetime() -> datetime:
+    """Get current datetime in user's configured timezone.
+
+    Reads timezone from email.yaml settings. Falls back to system time
+    if not configured or if timezone is invalid.
+
+    Returns:
+        datetime: Current datetime in user's timezone (or system default).
+    """
+    try:
+        email_config_path = get_config_path("email.yaml")
+        if email_config_path.exists():
+            with open(email_config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+                tz_name = data.get('settings', {}).get('timezone')
+                if tz_name:
+                    from zoneinfo import ZoneInfo
+                    return datetime.now(ZoneInfo(tz_name))
+    except Exception as e:
+        logger.debug(f"Failed to load timezone from email.yaml: {e}")
+
+    return datetime.now()
+
+
+def backup_config_file(file_path: Path) -> Optional[Path]:
+    """Create a timestamped backup of a config file.
+
+    Backup filename includes timezone offset for clarity:
+    - email.yaml.replaced-2026-01-21-14-30-00-0600 (CST)
+    - email.yaml.replaced-2026-01-21-20-30-00Z (UTC)
+
+    Args:
+        file_path: Path to the config file to backup.
+
+    Returns:
+        Path to backup file, or None if source doesn't exist.
+
+    Note:
+        This manual backup logic can be removed once GCS bucket versioning
+        is implemented for the config bucket. See GitHub issue #31.
+    """
+    if not file_path.exists():
+        return None
+
+    now = get_user_datetime()
+
+    # Format timezone offset
+    offset = now.strftime("%z")  # e.g., "-0600" or "+0000"
+    if offset in ("", "+0000", "-0000"):
+        tz_suffix = "Z"
+    else:
+        tz_suffix = offset  # e.g., "-0600"
+
+    timestamp = now.strftime("%Y-%m-%d-%H-%M-%S") + tz_suffix
+    backup_path = file_path.with_suffix(f".yaml.replaced-{timestamp}")
+
+    import shutil
+    shutil.copy2(file_path, backup_path)
+
+    return backup_path
+
+
+def load_updateable(default_path: Path) -> str:
+    """
+    Load an updateable app resource with GCS hot-patch support.
+
+    Loads from the package-bundled default first, then checks if the same
+    filename exists in the app subfolder of config dir. If an updated version
+    exists and differs, logs WARN and returns it. Otherwise logs DEBUG.
+
+    This enables hot-patching app resources (templates, docstrings) via
+    GCS without image rebuilds, while alerting when drift is detected.
+
+    Args:
+        default_path: Absolute path to the package-bundled default file.
+                      Caller resolves this (e.g., Path(__file__).parent / "template.txt").
+
+    Returns:
+        File content as string. Returns updated content if it exists and differs,
+        otherwise returns package content.
+
+    Raises:
+        FileNotFoundError: If the default_path doesn't exist.
+
+    Logging:
+        - WARN: Updated version differs from package (drift detected)
+        - DEBUG: Updated version matches package, or no update (normal operation)
+
+    Note:
+        No caching - caller caches if needed. This allows templates to be
+        hot-reloaded while docstrings can cache at import time.
+
+        Updated resources live in config/app/ subfolder to separate them from
+        user configuration (email.yaml, contacts.yaml, etc.).
+
+        Future: TTL per resource could be added to config-resources.json (YAGNI for now).
+    """
+    if not default_path.exists():
+        raise FileNotFoundError(f"Package default not found: {default_path}")
+
+    package_content = default_path.read_text(encoding='utf-8')
+    filename = default_path.name
+
+    # Updateable app resources live in config/app/ subfolder
+    update_path = get_consult_config_dir() / "app" / filename
+
+    if update_path.exists():
+        updated_content = update_path.read_text(encoding='utf-8')
+        if updated_content != package_content:
+            logger.warning(f"App resource '{filename}': updated version differs from package")
+            return updated_content
+        else:
+            logger.debug(f"App resource '{filename}': updated version matches package")
+            return package_content
+    else:
+        logger.debug(f"App resource '{filename}': using package default")
+        return package_content

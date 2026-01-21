@@ -1,0 +1,16 @@
+{
+  "_comment": "Updateable app resources synced to GCS config/app/ folder. See DESIGN.md section 15.",
+  "_future": "TTL per resource could be added (YAGNI for now)",
+  "resources": [
+    {
+      "path": "agentic_consult/email/triage_prompt.txt",
+      "restart": false,
+      "_comment": "Template read on demand, hot-reloadable"
+    },
+    {
+      "path": "agentic_consult/mcp/tool-docstrings.json",
+      "restart": true,
+      "_comment": "Cached by MCP at registration, requires restart"
+    }
+  ]
+}

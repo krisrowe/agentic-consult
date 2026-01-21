@@ -3,8 +3,11 @@
 NOTE: conftest.py auto-sets CONSULT_CONFIG_DIR for every test.
 """
 import pytest
+import re
+import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 from email_archive import EmailStore
 from agentic_consult.email.analyzer import EmailAnalyzer
 
@@ -18,6 +21,21 @@ class DummyProvider:
             "id": email["id"],
             "recommended_action": "review",
             "reason": f"Dummy processed: {email['subject']}",
+            "audience": "DIRECT"
+        }
+
+
+class PromptCapturingProvider:
+    """Provider that captures prompts for inspection."""
+    def __init__(self):
+        self.captured_prompts = []
+
+    def analyze(self, email, prompt):
+        self.captured_prompts.append(prompt)
+        return {
+            "id": email["id"],
+            "recommended_action": "review",
+            "reason": "Captured",
             "audience": "DIRECT"
         }
 
@@ -124,3 +142,77 @@ def test_all_via_multiple_cycles(test_env):
     # Leak Check: Exactly 6 total sidecars should exist
     sidecars = list(data_dir.glob("*.analysis.json"))
     assert len(sidecars) == 6
+
+
+# --- Timezone Tests ---
+
+def test_analyzer_uses_configured_timezone(config_dir, tmp_path):
+    """
+    Proof: The user_datetime in the prompt reflects the timezone from email.yaml.
+
+    Tests two timezones 2 hours apart (UTC and Europe/Athens) by configuring
+    each in email.yaml and verifying the prompt contains the correctly
+    timezone-adjusted time.
+    """
+    from zoneinfo import ZoneInfo
+    from unittest.mock import patch
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    store = EmailStore(data_dir)
+
+    # Create a test email
+    ref_date = datetime(2026, 1, 15, 12, 0, 0)
+    store.save("tz-test", ref_date, {"Subject": "TZ Test", "From": "user@example.com"}, {"body_text": "Test body"})
+
+    # Fixed UTC instant: 2026-01-15 18:30:00 UTC
+    fixed_utc = datetime(2026, 1, 15, 18, 30, 0)
+
+    def run_with_timezone(tz_name: str) -> str:
+        """Run analyzer with given timezone and return captured prompt."""
+        # Write email.yaml with timezone
+        email_config = {
+            "settings": {"timezone": tz_name},
+            "rules": []
+        }
+        (config_dir / "email.yaml").write_text(yaml.dump(email_config))
+
+        # Create timezone-aware datetime for the mock
+        tz = ZoneInfo(tz_name)
+        # Convert UTC instant to the target timezone
+        aware_dt = fixed_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+
+        provider = PromptCapturingProvider()
+
+        # Remove sidecar so email is processed again
+        for sidecar in data_dir.rglob("*.analysis.json"):
+            sidecar.unlink()
+
+        # Patch get_user_datetime to return our controlled time
+        with patch('agentic_consult.email.analyzer.get_user_datetime', return_value=aware_dt):
+            analyzer = EmailAnalyzer(store, provider=provider)
+            analyzer.process_queue(lookback_days=7, limit=1, reference_date=ref_date)
+
+        assert len(provider.captured_prompts) == 1
+        return provider.captured_prompts[0]
+
+    # Test with UTC (should show 18:30)
+    prompt_utc = run_with_timezone("UTC")
+
+    # Test with Europe/Athens (UTC+2, should show 20:30)
+    prompt_athens = run_with_timezone("Europe/Athens")
+
+    # Extract user_datetime from prompts
+    utc_match = re.search(r"User's current datetime: (.+)", prompt_utc)
+    athens_match = re.search(r"User's current datetime: (.+)", prompt_athens)
+
+    assert utc_match, "Could not find user_datetime in UTC prompt"
+    assert athens_match, "Could not find user_datetime in Athens prompt"
+
+    utc_time = utc_match.group(1)
+    athens_time = athens_match.group(1)
+
+    # Verify they're different (2 hour difference)
+    assert "18:30" in utc_time, f"Expected 18:30 in UTC time, got: {utc_time}"
+    assert "20:30" in athens_time, f"Expected 20:30 in Athens time, got: {athens_time}"
+    assert utc_time != athens_time, "Timezone should affect the datetime in prompt"

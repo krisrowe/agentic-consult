@@ -44,7 +44,7 @@ def test_end_to_end(config_dir, tmp_path, monkeypatch):
     }
     (config_dir / "email.yaml").write_text(yaml.dump(email_config))
 
-    from agentic_consult.email.triage import triage_emails, get_cached_emails
+    from agentic_consult.email.triage import fetch_triage_pool, get_cached_emails
 
     # 1. Populate Store (Mocking the background analyzer)
     store = EmailStore(data_dir)
@@ -80,7 +80,7 @@ def test_end_to_end(config_dir, tmp_path, monkeypatch):
     })
 
     # Run full triage
-    result = triage_emails(review_status="all", limit=10)
+    result = fetch_triage_pool(review_status="all", limit=10)
 
     # Verify
     assert "error" not in result, f"Error: {result.get('error')}"

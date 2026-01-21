@@ -64,8 +64,36 @@ resource "google_storage_bucket" "data_bucket" {
   uniform_bucket_level_access = true
 }
 
-# 2b. Config sync handled via gsutil (see deploy/scripts/deploy.py)
-# Terraform bucket object has permission issues with user credentials.
+# 2b. Updateable App Resources
+# Syncs app resources to GCS config/app/ folder for hot-patching without image rebuilds.
+# See DESIGN.md section 15 and deploy/config-resources.json for manifest.
+
+locals {
+  repo_root        = "${path.module}/../.."
+  config_resources = jsondecode(file("${path.module}/../config-resources.json"))
+
+  # Build map of resources for for_each
+  resource_map = {
+    for r in local.config_resources.resources : basename(r.path) => {
+      path    = r.path
+      restart = r.restart
+    }
+  }
+
+  # Files requiring restart - compute combined hash
+  restart_files = [for name, r in local.resource_map : "${local.repo_root}/${r.path}" if r.restart]
+}
+
+resource "google_storage_bucket_object" "app_resource" {
+  for_each = local.resource_map
+
+  name   = "config/app/${each.key}"
+  bucket = google_storage_bucket.data_bucket.name
+  source = "${local.repo_root}/${each.value.path}"
+
+  # Infer content type from extension
+  content_type = endswith(each.key, ".json") ? "application/json" : "text/plain"
+}
 
 # 3. Service Account
 resource "google_service_account" "analyzer_sa" {
@@ -232,13 +260,35 @@ resource "google_cloud_run_v2_service" "mcp_service" {
         }
       }
 
+      env {
+        name = "MCP_PERSONAL_ACCESS_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = "mcp-access-token"
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name  = "TRIAGE_DISABLE_CHAT"
+        value = "true"
+      }
+
+      # Combined hash of restart-required app resources (see DESIGN.md section 15)
+      # Changes to restart:true resources in config-resources.json trigger Cloud Run restart
+      env {
+        name  = "CONFIG_RESOURCES_MD5"
+        value = md5(join("", [for f in local.restart_files : filemd5(f)]))
+      }
+
       volume_mounts {
         name       = "gcs-volume"
         mount_path = "/mnt/gcs"
       }
 
       ports {
-        container_port = 8000
+        container_port = 8080
       }
     }
 
@@ -249,6 +299,14 @@ resource "google_cloud_run_v2_service" "mcp_service" {
       }
     }
   }
+}
+
+# Allow unauthenticated access to MCP service (app handles token auth)
+resource "google_cloud_run_service_iam_member" "mcp_public" {
+  service  = google_cloud_run_v2_service.mcp_service.name
+  location = google_cloud_run_v2_service.mcp_service.location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
 }
 
 # 5a. Trigger: Fetcher (runs every 30 mins at :00, :30)

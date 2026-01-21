@@ -1,3 +1,40 @@
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-consult"
+version = "0.0.9"
+description = "Email scan + TickTick refresh tooling"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "google-genai",
+    "jsonschema",
+    "google-api-python-client",
+    "google-auth",
+    "mcp>=1.0.0",
+    "pathspec",
+    "gwsa @ git+https://github.com/krisrowe/gworkspace-access.git",
+    "email-archive @ git+https://github.com/krisrowe/gmail-extractor.git#subdirectory=email-archive",
+    "rich",
+]
+
+[project.optional-dependencies]
+http = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "starlette>=0.27.0",
+]
+dev = [
+    "pytest>=7.0",
+    "jsonschema>=4.0",
+]
+
+[project.scripts]
+consult = "agentic_consult.cli.main:main"
+consult-mcp = "agentic_consult.mcp.stdio:run_server"
+
+[tool.setuptools.packages.find]
+exclude = ["tests", "tests.*"]

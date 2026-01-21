@@ -34,6 +34,10 @@ EMAIL_CONFIG_FILE = "email.yaml"
 TEMPLATE_FILE = "templates/process_email.md"
 ARCHIVE_LOG_FILE = "email-archive-log.jsonl"
 
+# Default triage batching settings
+DEFAULT_POOL_SIZE = 25
+DEFAULT_BATCH_TARGET = 5
+
 
 def get_cache_dir() -> Path:
     """Get XDG cache directory for agentic-consult."""
@@ -495,3 +499,207 @@ def mark_email_in_review_with_gwsa(
         return {'success': True, 'message_id': message_id, 'action': 'removed' if reverse else 'applied'}
     except Exception as e:
         return {'success': False, 'message_id': message_id, 'error': str(e)}
+
+
+# --- Triage Batching Configuration ---
+
+def get_triage_batching() -> dict[str, int]:
+    """Get current triage batching settings from user config."""
+    user_config_path = get_email_config_path()
+    if user_config_path.exists():
+        try:
+            with open(user_config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+                batching = data.get('batching', {})
+                return {
+                    'pool_size': batching.get('pool_size', DEFAULT_POOL_SIZE),
+                    'batch_target': batching.get('batch_target', DEFAULT_BATCH_TARGET)
+                }
+        except Exception:
+            pass
+    return {'pool_size': DEFAULT_POOL_SIZE, 'batch_target': DEFAULT_BATCH_TARGET}
+
+
+def set_triage_batching(
+    pool_size: Optional[int] = None,
+    batch_target: Optional[int] = None
+) -> dict[str, int]:
+    """Set triage batching settings in user config. Returns updated settings."""
+    user_config_path = get_email_config_path()
+    user_config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {}
+    if user_config_path.exists():
+        try:
+            with open(user_config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            pass
+
+    batching = data.get('batching', {})
+    if pool_size is not None:
+        batching['pool_size'] = pool_size
+    if batch_target is not None:
+        batching['batch_target'] = batch_target
+
+    if batching:
+        data['batching'] = batching
+
+    with open(user_config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+    return get_triage_batching()
+
+
+# --- Rule Configuration ---
+
+def apply_rule_changes(changes: list[dict]) -> dict[str, Any]:
+    """
+    Apply a batch of rule changes to user config.
+
+    Each change dict has 'change_type' and relevant fields:
+    - add_user_rule: rule_id, action, condition, match_from, match_subject, instructions
+    - update_user_rule: rule_id, plus any fields to update
+    - delete_user_rule: rule_id
+    - add_disable_pattern: pattern (glob pattern like "sys-*")
+    - remove_disable_pattern: pattern
+
+    Returns summary of applied changes and any errors.
+    """
+    user_config_path = get_email_config_path()
+    user_config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    data = {}
+    if user_config_path.exists():
+        try:
+            with open(user_config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            pass
+
+    rules = data.get('rules') or []
+    disable_patterns = data.get('disable') or []
+    enable_patterns = data.get('enable') or []
+
+    results = {'applied': [], 'errors': []}
+
+    for change in changes:
+        change_type = change.get('change_type')
+        try:
+            if change_type == 'add_user_rule':
+                rule_id = change.get('rule_id')
+                if not rule_id:
+                    results['errors'].append({'change': change, 'error': 'rule_id required'})
+                    continue
+                if any(r.get('id') == rule_id for r in rules):
+                    results['errors'].append({'change': change, 'error': f'rule {rule_id} already exists'})
+                    continue
+                new_rule = {'id': rule_id}
+                for field in ['action', 'condition', 'instructions', 'shareable']:
+                    if change.get(field):
+                        new_rule[field] = change[field]
+                if change.get('match_from') or change.get('match_subject'):
+                    new_rule['match'] = {}
+                    if change.get('match_from'):
+                        new_rule['match']['from'] = change['match_from']
+                    if change.get('match_subject'):
+                        new_rule['match']['subject'] = change['match_subject']
+                rules.append(new_rule)
+                results['applied'].append({'change_type': change_type, 'rule_id': rule_id})
+
+            elif change_type == 'update_user_rule':
+                rule_id = change.get('rule_id')
+                if not rule_id:
+                    results['errors'].append({'change': change, 'error': 'rule_id required'})
+                    continue
+                rule = next((r for r in rules if r.get('id') == rule_id), None)
+                if not rule:
+                    results['errors'].append({'change': change, 'error': f'rule {rule_id} not found'})
+                    continue
+                for field in ['action', 'condition', 'instructions', 'shareable']:
+                    if field in change:
+                        rule[field] = change[field]
+                if 'match_from' in change or 'match_subject' in change:
+                    rule['match'] = rule.get('match', {})
+                    if 'match_from' in change:
+                        rule['match']['from'] = change['match_from']
+                    if 'match_subject' in change:
+                        rule['match']['subject'] = change['match_subject']
+                results['applied'].append({'change_type': change_type, 'rule_id': rule_id})
+
+            elif change_type == 'delete_user_rule':
+                rule_id = change.get('rule_id')
+                if not rule_id:
+                    results['errors'].append({'change': change, 'error': 'rule_id required'})
+                    continue
+                original_count = len(rules)
+                rules = [r for r in rules if r.get('id') != rule_id]
+                if len(rules) == original_count:
+                    results['errors'].append({'change': change, 'error': f'rule {rule_id} not found'})
+                else:
+                    results['applied'].append({'change_type': change_type, 'rule_id': rule_id})
+
+            elif change_type == 'add_disable_pattern':
+                pattern = change.get('pattern')
+                if not pattern:
+                    results['errors'].append({'change': change, 'error': 'pattern required'})
+                    continue
+                if pattern not in disable_patterns:
+                    disable_patterns.append(pattern)
+                results['applied'].append({'change_type': change_type, 'pattern': pattern})
+
+            elif change_type == 'remove_disable_pattern':
+                pattern = change.get('pattern')
+                if not pattern:
+                    results['errors'].append({'change': change, 'error': 'pattern required'})
+                    continue
+                if pattern in disable_patterns:
+                    disable_patterns.remove(pattern)
+                    results['applied'].append({'change_type': change_type, 'pattern': pattern})
+                else:
+                    results['errors'].append({'change': change, 'error': f'pattern {pattern} not found'})
+
+            elif change_type == 'add_enable_pattern':
+                pattern = change.get('pattern')
+                if not pattern:
+                    results['errors'].append({'change': change, 'error': 'pattern required'})
+                    continue
+                if pattern not in enable_patterns:
+                    enable_patterns.append(pattern)
+                results['applied'].append({'change_type': change_type, 'pattern': pattern})
+
+            elif change_type == 'remove_enable_pattern':
+                pattern = change.get('pattern')
+                if not pattern:
+                    results['errors'].append({'change': change, 'error': 'pattern required'})
+                    continue
+                if pattern in enable_patterns:
+                    enable_patterns.remove(pattern)
+                    results['applied'].append({'change_type': change_type, 'pattern': pattern})
+                else:
+                    results['errors'].append({'change': change, 'error': f'pattern {pattern} not found'})
+
+            else:
+                results['errors'].append({'change': change, 'error': f'unknown change_type: {change_type}'})
+
+        except Exception as e:
+            results['errors'].append({'change': change, 'error': str(e)})
+
+    # Save updated config
+    data['rules'] = rules
+    if disable_patterns:
+        data['disable'] = disable_patterns
+    elif 'disable' in data:
+        del data['disable']
+    if enable_patterns:
+        data['enable'] = enable_patterns
+    elif 'enable' in data:
+        del data['enable']
+
+    with open(user_config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+    results['rules_count'] = len(rules)
+    results['disable_patterns'] = disable_patterns
+    results['enable_patterns'] = enable_patterns
+    return results

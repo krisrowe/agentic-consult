@@ -16,14 +16,12 @@ from typing import Any, Callable, Literal, Optional, Union
 
 import yaml
 
-from agentic_consult.config import load_app_config, get_consult_config_dir
+from agentic_consult.config import load_app_config, get_consult_config_dir, get_user_datetime, load_updateable
 from agentic_consult.gemini import GeminiAPIClient, GeminiJSONParseError, GeminiJSONExtractionError
 from agentic_consult.mcp.email_processing import load_email_rules, get_cache_dir
 from agentic_consult.chat.triage import get_chat_mentions
 
 logger = logging.getLogger(__name__)
-
-TRIAGE_TEMPLATE_FILE = "templates/email_triage.txt"
 EMAIL_CACHE_SUBDIR = "emails"
 CONTACTS_CONFIG_FILE = "contacts.yaml"
 REF_MAP_FILE = "ref_map.json"
@@ -137,12 +135,16 @@ def _inject_config_into_rules(rules: list[dict], config: dict) -> list[dict]:
     return processed_rules
 
 
-def load_triage_template() -> str:
-    """Load the Gemini triage prompt template."""
-    template_path = _get_package_dir() / TRIAGE_TEMPLATE_FILE
-    if not template_path.exists():
-        raise FileNotFoundError(f"Triage template not found: {template_path}")
-    return template_path.read_text(encoding='utf-8')
+def load_triage_prompt_template() -> str:
+    """Load the Gemini triage prompt template.
+
+    Uses load_updateable() for GCS hot-patch support:
+    1. Check $CONSULT_CONFIG_DIR/app/triage_prompt.txt (GCS on Cloud Run)
+    2. Fall back to package-bundled template
+
+    See DESIGN.md section 15 for details.
+    """
+    return load_updateable(Path(__file__).parent / "triage_prompt.txt")
 
 
 def _get_shortcode_pool() -> list[str]:
@@ -317,7 +319,7 @@ def _prepare_emails_for_prompt(emails: list[dict]) -> str:
         truncated_emails.append(email_copy)
     return json.dumps(truncated_emails, indent=2, default=str)
 
-def triage_emails(
+def fetch_triage_pool(
     review_status: Literal["new", "reviewing", "all"] = "all",
     limit: int = 5,
     profile: Optional[str] = None,
@@ -326,12 +328,37 @@ def triage_emails(
     progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict[str, Any]:
     """
-    Unified triage discovery: HAS analysis.json AND NO triage.json.
+    Fetch pool of emails ready for triage (has analysis.json, no triage.json).
+
+    Returns:
+        Dict containing:
+        - emails: List of email recommendations
+        - invites: List of calendar invite recommendations
+        - chat_mentions: List of chat mentions requiring attention
+        - instructions: Agent instructions for processing
+        - stats: Counts of each category
+        - current_datetime: ISO 8601 timestamp with timezone offset indicating
+          the user's current date/time. This is the reference point used for
+          all time-sensitive operations (fetching, analyzing, triaging) on both
+          server and client. Configured via email.yaml settings.timezone.
     """
+    messages = []  # User-facing messages with severity
+
     try:
-        # 1. Fetch Chat Mentions
-        chat_results = get_chat_mentions()
-        chat_mentions = chat_results.get('mentions', [])
+        # 1. Fetch Chat Mentions (optional, can be disabled or fail gracefully)
+        chat_mentions = []
+        if os.environ.get("TRIAGE_DISABLE_CHAT"):
+            logger.info("Chat mentions disabled via TRIAGE_DISABLE_CHAT")
+        else:
+            try:
+                chat_results = get_chat_mentions()
+                chat_mentions = chat_results.get('mentions', [])
+            except Exception as e:
+                logger.warning(f"Failed to retrieve chat mentions: {e}")
+                messages.append({
+                    "severity": "warning",
+                    "text": "Failed to retrieve chat messages."
+                })
 
         # 2. Discover Ready-to-Triage Emails via SDK
         from email_archive import EmailStore
@@ -386,8 +413,13 @@ def triage_emails(
             
         # 4. Instructions
         instructions = _build_agent_instructions(review_status, emails, invites, width=width, chat_mentions=chat_mentions)
-        
-        return {
+
+        # 5. Current datetime (reference point for all time-sensitive operations)
+        user_dt = get_user_datetime()
+        current_datetime = user_dt.isoformat()
+
+        result = {
+            'current_datetime': current_datetime,
             'emails': emails,
             'invites': invites,
             'chat_mentions': chat_mentions,
@@ -398,90 +430,52 @@ def triage_emails(
                 'chat_count': len(chat_mentions)
             }
         }
+        if messages:
+            result['messages'] = messages
+        return result
     except Exception as e:
-        logger.exception("Error in triage_emails")
+        logger.exception("Error in fetch_triage_pool")
         return {'error': str(e)}
 
-def suggest_email_action(message_id: str, profile: Optional[str] = None, model: Optional[str] = None) -> dict[str, Any]:
-    try:
-        result = analyze_emails([message_id], profile=profile, model=model)
-        if 'error' in result: return result
-        
-        recs = result.get('emails', [])
-        invites = result.get('invites', [])
-        
-        if recs: return recs[0]
-        if invites: return invites[0]
-        return {'result': 'no_recommendation'}
-    except Exception as e:
-        logger.exception("Error in suggest_email_action")
-        return {'error': str(e)}
-
-def analyze_emails(message_ids: list[str], profile: Optional[str] = None, model: Optional[str] = None) -> dict[str, Any]:
+def flag_for_reanalysis(message_ids: list[str]) -> dict[str, Any]:
     """
-    Unified analysis pipeline: Fetch (Batched) -> Cache -> Load Rules -> Call Gemini.
+    Flag emails for reanalysis by removing their analysis.json sidecars.
+
+    The background analyzer job will re-process these emails on its next run.
+
+    Args:
+        message_ids: List of message IDs to flag for reanalysis.
+
+    Returns:
+        Dict with 'flagged' count and 'errors' list if any failures.
     """
-    try:
-        from gwsa.sdk.mail.read import read_messages
-        emails = []
-        cleanup_email_cache()
-        
-        # 1. Fetch Full Content for all IDs using efficient batching
-        full_messages = read_messages(message_ids, profile=profile)
-        
-        for msg in full_messages:
-            email = {
-                'id': msg['id'],
-                'date': msg.get('date', ''),
-                'from': msg.get('from', ''),
-                'to': msg.get('to', ''),
-                'subject': msg.get('subject', ''),
-                'body': msg.get('body', {}).get('text') or msg.get('body', {}).get('html') or '',
-                'labels': msg.get('labelIds', [])
-            }
-            emails.append(email)
-            cache_email(email)
+    store = _get_email_store()
+    flagged = 0
+    errors = []
 
-        if not emails: return []
+    for msg_id in message_ids:
+        try:
+            # Get the meta path to derive the sidecar path
+            meta_path, _ = store._get_paths(msg_id)
+            sidecar_path = meta_path.parent / f"{meta_path.stem}.analysis.json"
 
-        # 2. Load Rules & Context
-        all_rules = load_email_rules()
-        raw_active_rules = [r for r in all_rules if not r.get('disabled', False)]
-        
-        # Load full contacts config for injection
-        contacts_config = _load_contacts_config()
-        contacts_context = _format_contacts_context(contacts_config)
-        
-        # Inject dynamic config values into rules
-        active_rules = _inject_config_into_rules(raw_active_rules, contacts_config)
-        
-        # 3. Build Prompt
-        prompt = load_triage_template().format(
-            rules_json=json.dumps(active_rules, indent=2),
-            emails_json=_prepare_emails_for_prompt(emails),
-            contacts_context=contacts_context
-        )
-        
-        # 4. Call Gemini (or Mock)
-        user_config = _load_user_email_config()
-        if user_config.get('use_mock_gemini', False):
-            mock_file = _get_email_cache_dir() / 'mock-triage-response.json'
-            if mock_file.exists():
-                with open(mock_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return {'emails': data.get('emails', []), 'invites': data.get('invites', [])}
-            return {'emails': [], 'invites': []}
-            
-        client = GeminiAPIClient(model_name=model)
-        result = client.generate_prompt_driven_json(prompt)
-        
-        recs = result.get('emails', [])
-        invites = result.get('invites', [])
-        
-        return {'emails': recs, 'invites': invites}
-    except Exception as e:
-        logger.error(f"Analysis Failed: {e}")
-        return {'error': str(e)}
+            if sidecar_path.exists():
+                sidecar_path.unlink()
+                flagged += 1
+                logger.info(f"Flagged {msg_id} for reanalysis (removed analysis.json)")
+            else:
+                logger.debug(f"No analysis.json found for {msg_id}, nothing to remove")
+        except ValueError as e:
+            # Email not found in store
+            errors.append({"id": msg_id, "error": str(e)})
+        except Exception as e:
+            errors.append({"id": msg_id, "error": str(e)})
+            logger.exception(f"Error flagging {msg_id} for reanalysis")
+
+    result = {"flagged": flagged}
+    if errors:
+        result["errors"] = errors
+    return result
 
 def _truncate(text: str, width: int) -> str:
     """Truncate text to width, appending '..' if truncated."""
@@ -808,22 +802,25 @@ def get_triage_stats(sample_size: int = 20) -> dict:
         "end": format_date(active_end)
     }
 
-    # Sample active emails to break down by recommended_action
+    # Sample active emails to break down by (action, rule_id) pairs
     if active_ids and sample_size > 0:
         sample_ids = list(active_ids)[:sample_size]
-        action_counts = {}
+        by_action_rule: dict[str, dict[str, int]] = {}
         loaded = 0
 
         for msg_id in sample_ids:
             analysis = store.get_sidecar(msg_id, "analysis.json")
             if analysis:
                 action = analysis.get("recommended_action", "unknown")
-                action_counts[action] = action_counts.get(action, 0) + 1
+                rule_id = analysis.get("rule_id") or "unmatched"
+                if action not in by_action_rule:
+                    by_action_rule[action] = {}
+                by_action_rule[action][rule_id] = by_action_rule[action].get(rule_id, 0) + 1
                 loaded += 1
 
         active_result["sample"] = {
             "size": loaded,
-            **action_counts
+            **by_action_rule
         }
 
     return {

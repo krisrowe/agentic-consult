@@ -2,6 +2,14 @@
 # Standard rules for professional email management.
 
 rules:
+  # Too broad for personal email (flags everything) - discovered in testing.
+  - id: work-important-direct
+    action: review
+    condition: >
+      Email contains a message, request, or activity originating from or regarding
+      a known Customer or VIP (including proxied notifications from Slack, Jira,
+      or Docs), or is addressed directly to the user.
+
   - id: work-calendar-invite
     action: review
     condition: >
