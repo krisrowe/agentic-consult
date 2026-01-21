@@ -285,24 +285,11 @@ def mark_email_in_review(message_id: str, reverse: bool = False, profile: Option
     except Exception as e:
         return {'success': False, 'message_id': message_id, 'error': str(e)}
 
-def mark_email_archivable(message_id: str, reverse: bool = False, profile: Optional[str] = None) -> dict[str, Any]:
-    from gwsa.sdk.mail.label import add_label, remove_label
-    label = _load_app_email_config().get('archivable_label', 'Archivable')
-    try:
-        if reverse:
-            remove_label(message_id, label, profile=profile)
-        else:
-            add_label(message_id, label, profile=profile)
-        return {'success': True, 'message_id': message_id, 'action': 'removed' if reverse else 'applied'}
-    except Exception as e:
-        return {'success': False, 'message_id': message_id, 'error': str(e)}
-
 def _build_gmail_query(review_status: str) -> str:
     config = _load_app_email_config()
     review_label = config.get('review_label', 'Reviewing')
-    archivable_label = config.get('archivable_label', 'Archivable')
     if review_status == "new":
-        return f"in:inbox -label:{review_label} -label:{archivable_label}"
+        return f"in:inbox -label:{review_label}"
     elif review_status == "reviewing":
         return f"in:inbox label:{review_label}"
     return "in:inbox"
@@ -571,12 +558,11 @@ def _build_agent_instructions(
     cmd_map = {
         'review': 'do rev',
         'track_as_task': 'do task',
-        'archive_now': 'do arc',
-        'archive_later': 'do later',
-        'ask_user': 'do rev' 
+        'archive': 'do arc',
+        'ask_user': 'do rev'
     }
 
-    display_order = ['review', 'track_as_task', 'ask_user', 'archive_now', 'archive_later']
+    display_order = ['review', 'track_as_task', 'ask_user', 'archive']
     
     for action in display_order:
         if action in grouped and grouped[action]:
@@ -659,25 +645,14 @@ def _build_agent_instructions(
                      
     lines.append("```")
     
-    lines.append("\n**Agent Instructions:**")
-    lines.append("1. **Display the Table:** You MUST present the table above exactly as shown, but FILL IN the 'Avail' column for invites.")
-    lines.append("   - Check your calendar for the 'Event' times.")
-    lines.append("   - Replace ❓ with ✅ (Free) or ❌ (Conflict).")
-    lines.append("2. **Execute Commands:**")
-    lines.append("   - `do accept <refs>` -> (Agent Logic) Check calendar -> Create Event -> Reply to email -> Archive.")
-    lines.append("   - `do rev <refs>` -> Call `mark_email_in_review(message_id=...)`")
-    lines.append("   - `do task <refs>` -> Create task, then `archive_email(message_id=...)`")
-    lines.append("   - `do arc <refs>` -> Call `archive_email(message_id=..., reason='ad-hoc')`")
-    lines.append("   - `do later <refs>` -> Call `mark_email_archivable(message_id=...)`")
-    lines.append("   - `do sum <refs>` -> Call `get_cached_emails(message_ids=[...])` and summarize")
-    lines.append("   - `do show <refs>` -> Call `get_cached_emails(message_ids=[...])` and display full content")
-    lines.append("   - `do relist` -> Redisplay table with only unprocessed items from this batch")
-    lines.append("3. **Loop:** After executing actions, check if inbox is empty. If not, call `triage_emails(review_status='new')` to fetch the next batch.")
+    # Brief guidance - the docstring teaches the full workflow, this just reminds
+    lines.append("\n**Response options:** `agree` | `agree except do rev A1` | `do <cmd> <refs>` | other guidance")
     
     return "\n".join(lines)
 
 # Missing helpers from original file that I need to keep/restore
 def _format_short_date(raw_date: str) -> str:
+    """Format date as 'W 21JA' (weekday + day + 2-char month). 6 chars."""
     month_map = {
         "01": "JA", "02": "FE", "03": "MR", "04": "AP",
         "05": "MY", "06": "JN", "07": "JL", "08": "AU",
@@ -693,6 +668,65 @@ def _format_short_date(raw_date: str) -> str:
         except Exception:
             return "??"
     return "??"
+
+
+def format_display_date(email_date: datetime, now: datetime = None) -> str:
+    """
+    Format email date for display in triage table. Always 6 chars.
+
+    - < 24 hours ago: "10:03A" or " 9:15P" (time with A/P suffix)
+    - Yesterday: "Yester"
+    - Older: "W 21JA" (weekday + day + 2-char month)
+
+    Args:
+        email_date: The email's datetime (should be timezone-aware or naive UTC)
+        now: Current datetime for comparison (defaults to utcnow)
+
+    Returns:
+        6-character display string
+    """
+    from agentic_consult.config import get_user_datetime
+
+    if now is None:
+        now = get_user_datetime()
+
+    # Make both naive for comparison if needed
+    if email_date.tzinfo is not None and now.tzinfo is None:
+        email_date = email_date.replace(tzinfo=None)
+    elif email_date.tzinfo is None and now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+
+    # Calculate time difference
+    diff = now - email_date
+    hours_ago = diff.total_seconds() / 3600
+
+    # < 24 hours: show time "10:03A" or " 9:15P"
+    if hours_ago < 24:
+        hour = email_date.hour
+        minute = email_date.minute
+        am_pm = "A" if hour < 12 else "P"
+        hour_12 = hour % 12
+        if hour_12 == 0:
+            hour_12 = 12
+        # Pad to 6 chars: " 9:15P" or "10:03A"
+        return f"{hour_12:2d}:{minute:02d}{am_pm}"
+
+    # Yesterday check (same calendar day - 1)
+    email_day = email_date.date()
+    now_day = now.date()
+    if (now_day - email_day).days == 1:
+        return "Yester"
+
+    # Older: use W 21JA format
+    month_map = {
+        1: "JA", 2: "FE", 3: "MR", 4: "AP",
+        5: "MY", 6: "JN", 7: "JL", 8: "AU",
+        9: "SE", 10: "OC", 11: "NV", 12: "DE"
+    }
+    day_code = ["M", "T", "W", "R", "F", "S", "U"][email_date.weekday()]
+    dd = email_date.day
+    month_abbr = month_map.get(email_date.month, "??")
+    return f"{day_code} {dd:02d}{month_abbr}"
 
 def _format_sender(sender: str) -> str:
     return str(sender).split('<')[0].strip()[:12]
@@ -719,7 +753,7 @@ def get_triage_stats(sample_size: int = 20) -> dict:
                 "resolved": {"count": N, "start": "...", "end": "..."},
                 "active": {
                     "count": N,
-                    "sample": {"size": M, "archive_now": X, ...}
+                    "sample": {"size": M, "archive": X, ...}
                 }
             }
         }

@@ -23,7 +23,8 @@ from .triage import (
     _load_contacts_config,
     _format_contacts_context,
     _inject_config_into_rules,
-    _prepare_emails_for_prompt
+    _prepare_emails_for_prompt,
+    format_display_date
 )
 
 logger = logging.getLogger(__name__)
@@ -144,17 +145,37 @@ class EmailAnalyzer:
         )
 
         # 4. Invoke Provider
-        # Format email date for logging (preserve original timezone from email)
-        from email.utils import parsedate_to_datetime
-        try:
-            email_dt = parsedate_to_datetime(email_data["date"])
-            email_date_str = email_dt.strftime("%Y-%m-%d %I:%M %p (%Z)")
-        except Exception:
-            email_date_str = email_data["date"]  # Fallback to raw date
+        # Parse email date (handles both RFC 2822 and ISO 8601 formats)
+        def parse_email_date(date_str):
+            """Parse date from RFC 2822 or ISO 8601 format."""
+            from email.utils import parsedate_to_datetime
+            # Try RFC 2822 first (e.g., "Tue, 21 Jan 2026 13:00:00 -0600")
+            try:
+                return parsedate_to_datetime(date_str)
+            except Exception:
+                pass
+            # Try ISO 8601 (e.g., "2026-01-21T13:00:00")
+            try:
+                return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            except Exception:
+                pass
+            return None
+
+        email_dt = parse_email_date(email_data["date"])
+        if email_dt:
+            email_date_str = email_dt.strftime("%Y-%m-%d %I:%M %p")
+        else:
+            email_date_str = email_data["date"]
         logger.info(f"Asking Gemini (via API) about message {msg_id} from {email_date_str}...")
         result = self.provider.analyze(email_payload[0], prompt)
 
-        # 5. Save Sidecar via SDK
+        # 5. Compute display_date (SDK responsibility, not Gemini)
+        if email_dt:
+            result["display_date"] = format_display_date(email_dt)
+        else:
+            result["display_date"] = "??"
+
+        # 6. Save Sidecar via SDK
         self.store.save_sidecar(msg_id, "analysis.json", result)
 
         # 6. Structured logging for metrics/debugging

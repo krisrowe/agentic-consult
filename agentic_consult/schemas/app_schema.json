@@ -33,7 +33,6 @@
         "max_email_chars": { "type": "integer" },
         "archive_log_retention_days": { "type": "integer" },
         "review_label": { "type": "string" },
-        "archivable_label": { "type": "string" },
         "cache": {
           "type": "object",
           "additionalProperties": false,

@@ -34,6 +34,22 @@ rules:
       Email is a routine confirmation of a user-initiated action (subscription confirmed,
       settings updated, preferences saved) with no issues or action needed
 
+  - id: home-school-student
+    action: review
+    condition: >
+      Email from a school, teacher, or school administrator about a specific issue
+      involving the recipient's child: discipline incident, health concern, injury,
+      behavioral issue, absence, tardiness, grades dropping, missing assignments,
+      or anything requiring individual parent attention or response
+
+  - id: home-school-general
+    action: archive
+    condition: >
+      Email from a school that is general communication to all parents:
+      newsletters, weekly updates, curriculum info, upcoming tests, study guides,
+      school events, lunch menus, PTA announcements, fundraiser info, or broadcast
+      updates not about a specific child or requiring payment/signature/action
+
 # DEFAULT STATE: DISABLED
 # To enable these rules, add "home-*" to the 'enable' list in your 
 # user configuration file (e.g. config://email.yaml).

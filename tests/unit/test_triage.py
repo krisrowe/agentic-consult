@@ -58,7 +58,7 @@ def test_end_to_end(config_dir, tmp_path, monkeypatch):
     )
     store.save_sidecar("msg-001", "analysis.json", {
         "id": "msg-001",
-        "recommended_action": "archive_now",
+        "recommended_action": "archive",
         "rule_id": "test-archive",
         "reason": "Newsletter matches archive rule",
         "audience": "BROADCAST"
@@ -88,7 +88,7 @@ def test_end_to_end(config_dir, tmp_path, monkeypatch):
 
     recs = {r["id"]: r for r in result["emails"]}
 
-    assert recs["msg-001"]["recommended_action"] == "archive_now"
+    assert recs["msg-001"]["recommended_action"] == "archive"
     assert recs["msg-002"]["recommended_action"] == "review"
 
     # Verify instructions were generated

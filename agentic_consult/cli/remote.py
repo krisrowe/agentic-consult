@@ -313,9 +313,9 @@ def test():
         sample = active_data.get("sample", {})
         sample_info = ""
         if sample:
-            archive_now = sample.get("archive_now", 0)
+            archive = sample.get("archive", 0)
             review = sample.get("review", 0)
-            sample_info = f" (sample: {archive_now} archive, {review} review)"
+            sample_info = f" (sample: {archive} archive, {review} review)"
         click.echo(f"Stats:  ✓ {fetched} fetched, {analyzed} analyzed, {active} active{sample_info}")
     elif remote_status.tool_error:
         click.secho(f"Stats:  ✗ {remote_status.tool_error}", fg="yellow")

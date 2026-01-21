@@ -8,7 +8,7 @@
       "_comment": "Template read on demand, hot-reloadable"
     },
     {
-      "path": "agentic_consult/mcp/tool-docstrings.json",
+      "path": "agentic_consult/mcp/triage_emails.md",
       "restart": true,
       "_comment": "Cached by MCP at registration, requires restart"
     }
