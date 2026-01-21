@@ -37,6 +37,22 @@ LIMITATIONS
 """
 import pytest
 from agentic_consult.paths import APP_SLUG
+from agentic_consult.config import load_main_config
+
+# Read REAL config at module load time, BEFORE any test isolation kicks in.
+# This allows integration tests to access credentials via Secret Manager.
+_real_settings = load_main_config()
+_real_project_id = _real_settings.get("project_id")
+
+
+@pytest.fixture
+def real_project_id():
+    """Project ID from real settings.json (read before test isolation).
+
+    Use this in integration tests that need to access Secret Manager.
+    Returns None if no project_id configured.
+    """
+    return _real_project_id
 
 
 @pytest.fixture(autouse=True)

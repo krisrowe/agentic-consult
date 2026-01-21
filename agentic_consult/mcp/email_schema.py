@@ -20,7 +20,7 @@ class EmailRule(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    action: str = "review"  # archive, review, track_as_task, archive_now
+    action: str = "review"  # archive, review, track_as_task
     match: Optional[RuleMatch] = None
     condition: Optional[str] = None
     instructions: Optional[str] = None

@@ -16,7 +16,7 @@ rules:
       password reset request not initiated by user, new device login, or similar
 
   - id: sys-mailing-list-archive
-    action: archive_now
+    action: archive
     condition: >
       Email is addressed to one of the following Mailing Lists: {{contacts.auto_archive_lists}}
       AND the user is NOT explicitly in the To/Cc fields

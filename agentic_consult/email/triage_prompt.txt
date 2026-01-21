@@ -23,14 +23,12 @@ For each email, determine which rule (if any) matches based on the FULL email co
 
 - Evaluate each rule's `condition` or `match` criteria against the full email content
 - Rules may have age/time conditions (e.g., "3+ days old", "5+ days old")
-- For rules with `action: archive`:
-  - All conditions met (including age) → respond with `archive_now`
-  - All conditions except age met → respond with `archive_later`
+- For rules with `action: archive`, respond with `archive` when matched
 - For rules with `action: review` or `action: track_as_task`, use that action when matched
 - When multiple rules match, apply the one with highest-priority action:
   - `review` (highest - especially for VIP/Customer direct messages)
   - `track_as_task` (medium)
-  - `archive_now` / `archive_later` (lowest)
+  - `archive` (lowest)
 - Set `rule_id` to the matching rule's ID (include rule_id even when age not met)
 - If NO rule matches, use action `ask_user` with `rule_id: null`
 
@@ -62,8 +60,7 @@ Separate any emails that are Calendar Invites or specific scheduling requests in
 
 - **track_as_task** - Email requires follow-up action
 - **review** - Email needs human attention
-- **archive_now** - Archive immediately (routine email, aged enough for user visibility)
-- **archive_later** - Archivable per rules, but kept visible a bit longer for user awareness
+- **archive** - Archive immediately (routine email)
 - **ask_user** - No rule matched; client agent decides with human-in-the-loop
 
 ## Response Format
@@ -72,59 +69,107 @@ Respond with valid JSON only. No markdown, no explanation outside the JSON.
 
 User's current datetime: {user_datetime}
 
+### Example 1: Receipt email → archive
+
+**Input:**
 ```json
 {{
-  "emails": [
-    {{
-      "id": "msg_001",
-      "display_date": "yesterday 7:06 pm",
-      "sender": "Google Play",
-      "summary": "$32.46 Predator: Badlands",
-      "recommended_action": "archive_now",
-      "rule_or_reason": "receipts",
-      "audience": "DIRECT",
-      "sender_class": "SYSTEM",
-      "original": {{
-        "date": "Tue, 20 Jan 2026 19:06:30 -0800",
-        "from": "Google Play <noreply@google.example.com>",
-        "subject": "Your Google Play Order Receipt from Jan 20, 2026",
-        "rule_id": "major-business-receipts"
-      }}
-    }},
-    {{
-      "id": "msg_002",
-      "display_date": "today 3:17 am",
-      "sender": "LinkedIn",
-      "summary": "We think you've got this 🏆",
-      "recommended_action": "archive_now",
-      "rule_or_reason": "promoting LinkedIn games, no actionable content",
-      "audience": "DIRECT",
-      "sender_class": "SOCIAL",
-      "original": {{
-        "date": "Wed, 21 Jan 2026 03:17:56 -0600",
-        "from": "LinkedIn <noreply@linkedin.example.com>",
-        "subject": "We think you've got this 🏆",
-        "rule_id": "social-notification"
-      }}
+  "id": "msg_001",
+  "date": "Tue, 20 Jan 2026 19:06:30 -0800",
+  "from": "Google Play <noreply@google.example.com>",
+  "subject": "Your Google Play Order Receipt from Jan 20, 2026",
+  "body": "Thank you for your purchase!\n\nOrder total: $32.46\nItem: Predator: Badlands (movie rental)"
+}}
+```
+
+**Output:**
+```json
+{{
+  "emails": [{{
+    "id": "msg_001",
+    "sender": "Google Play",
+    "summary": "$32.46 Predator: Badlands",
+    "recommended_action": "archive",
+    "rule_or_reason": "receipts",
+    "audience": "DIRECT",
+    "sender_class": "SYSTEM",
+    "original": {{
+      "date": "Tue, 20 Jan 2026 19:06:30 -0800",
+      "from": "Google Play <noreply@google.example.com>",
+      "subject": "Your Google Play Order Receipt from Jan 20, 2026",
+      "rule_id": "major-business-receipts"
     }}
-  ],
-  "invites": [
-    {{
-      "id": "message_id_here",
-      "display_date": "1/22 4:00 pm",
-      "sender": "Jane Smith",
-      "summary": "Project sync - 30 min",
-      "event_date": "Jan 22, 4-4:30 pm CT",
-      "status": "PROPOSED|CONFIRMED|CANCELED",
-      "attendee_status": "needsAction|accepted|declined",
-      "vip_status": "VIP|CUSTOMER|INTERNAL|EXTERNAL",
-      "original": {{
-        "date": "Mon, 20 Jan 2026 10:00:00 -0600",
-        "from": "Jane Smith <jane.smith@acme.com>",
-        "subject": "Meeting Request: Project sync"
-      }}
+  }}],
+  "invites": []
+}}
+```
+
+### Example 2: School issue about specific child → review
+
+**Input:**
+```json
+{{
+  "id": "msg_002",
+  "date": "Wed, 21 Jan 2026 14:30:00 -0600",
+  "from": "Mr. Davis <tom.davis@lincoln.k12.example.org>",
+  "subject": "Quick note from school",
+  "body": "Hi,\n\nI need to discuss Emma's behavior during art class today. She had trouble sharing supplies with classmates.\n\nCould you give me a call when you have a moment?\n\nTom Davis\n4th Grade"
+}}
+```
+
+**Output:**
+```json
+{{
+  "emails": [{{
+    "id": "msg_002",
+    "sender": "Mr. Davis",
+    "summary": "Emma: sharing issue in art, call requested",
+    "recommended_action": "review",
+    "rule_or_reason": "school-student",
+    "audience": "DIRECT",
+    "sender_class": "HUMAN",
+    "original": {{
+      "date": "Wed, 21 Jan 2026 14:30:00 -0600",
+      "from": "Mr. Davis <tom.davis@lincoln.k12.example.org>",
+      "subject": "Quick note from school",
+      "rule_id": "home-school-student"
     }}
-  ]
+  }}],
+  "invites": []
+}}
+```
+
+### Example 3: Calendar invite → invites list
+
+**Input:**
+```json
+{{
+  "id": "msg_003",
+  "date": "Mon, 20 Jan 2026 10:00:00 -0600",
+  "from": "Jane Smith <jane.smith@acme.com>",
+  "subject": "Meeting Request: Project sync",
+  "body": "You have been invited to: Project sync\nWhen: Jan 22, 4:00 PM - 4:30 PM CT\nWhere: Conference Room B"
+}}
+```
+
+**Output:**
+```json
+{{
+  "emails": [],
+  "invites": [{{
+    "id": "msg_003",
+    "sender": "Jane Smith",
+    "summary": "Project sync - 30 min",
+    "event_date": "Jan 22, 4-4:30 pm CT",
+    "status": "PROPOSED",
+    "attendee_status": "needsAction",
+    "vip_status": "EXTERNAL",
+    "original": {{
+      "date": "Mon, 20 Jan 2026 10:00:00 -0600",
+      "from": "Jane Smith <jane.smith@acme.com>",
+      "subject": "Meeting Request: Project sync"
+    }}
+  }}]
 }}
 ```
 
@@ -136,26 +181,24 @@ User's current datetime: {user_datetime}
 
 ### summary Field
 
-ALWAYS provide a `summary`. Extract the useful content from the email - what the user needs to know at a glance.
+ALWAYS provide a `summary`. Extract the useful content - what the user needs to know at a glance.
 
-**For financial emails**, summary MUST include the dollar amount:
+**MAX 50 CHARACTERS.** Be concise. The original subject is in `original.subject` if needed.
+
+**For financial emails**, include the dollar amount:
 - "$32.46 Predator: Badlands"
-- "$21.31 Google AI Pro subscription"
 - "$142.50 electric bill due"
-- "$23.54 DoorDash - Market Street"
 
 **For non-financial emails**, summarize what matters:
-- "AirPods Pro shipped, arriving Thu"
+- "Johnny: recess incident, call req"
+- "AirPods shipped, arriving Thu"
 - "Password reset requested"
-- "Weekly fitness stats"
-
-The original subject is preserved in `original.subject` for reference.
 
 ### sender Field
 
-Make the sender clear and recognizable. Use intelligence - combine display name and domain when needed.
+Simplify to brand, organization (or division if important), or person name. No domain names (e.g. Acme not Acme.com).
 
-- `"Security Center Alerts" <security-noreply@acme.com>` → "Acme Security" (display name is generic garbage, domain tells you who)
-- `"John Smith" <newsletter@acme.com>` → "Acme Newsletter" (it's a company newsletter, not some guy)
-- `noreply@acme.com` → "Acme" (no display name, use domain)
-- `"Springfield High Athletics" <athletics@springfield.k12.example.org>` → "Springfield High Athletics" (already clear, just drop the email)
+- `"Security Center Alerts" <security-noreply@acme.com>` → "Acme Security"
+- `"John Smith" <newsletter@acme.com>` → "Acme Newsletter"
+- `noreply@acme.com` → "Acme"
+- `"Springfield High Athletics" <athletics@springfield.k12.example.org>` → "Springfield Athletics"

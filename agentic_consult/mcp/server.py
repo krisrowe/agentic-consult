@@ -36,7 +36,6 @@ from agentic_consult.email.triage import (
     fetch_triage_pool as sdk_fetch_triage_pool,
     get_cached_emails as sdk_get_cached_emails,
     mark_email_in_review as sdk_mark_email_in_review,
-    mark_email_archivable as sdk_mark_email_archivable,
     flag_for_reanalysis as sdk_flag_for_reanalysis
 )
 from agentic_consult.chat.triage import get_chat_mentions as sdk_get_chat_mentions
@@ -449,37 +448,6 @@ async def mark_email_in_review(
         )
     except Exception as e:
         logger.exception("Error in mark_email_in_review")
-        return {"error": str(e)}
-
-
-@mcp.tool()
-async def mark_email_archivable(
-    message_id: str,
-    reverse: bool = False,
-    profile: Optional[str] = None
-) -> dict[str, Any]:
-    """
-    Apply or remove the Archivable label from an email.
-
-    Use this for emails with recommended_action="archive_later" from triage_emails.
-    The Archivable label marks emails that can be archived later (age threshold not yet met).
-
-    Args:
-        message_id: Gmail message ID
-        reverse: If True, remove the Archivable label (default False = add label)
-        profile: Optional gwsa profile name
-
-    Returns:
-        Success status with label action taken.
-    """
-    try:
-        return sdk_mark_email_archivable(
-            message_id=message_id,
-            reverse=reverse,
-            profile=profile
-        )
-    except Exception as e:
-        logger.exception("Error in mark_email_archivable")
         return {"error": str(e)}
 
 
@@ -948,7 +916,7 @@ async def email_triage_stats(
                     "count": N,
                     "sample": {
                         "size": M,
-                        "archive_now": {"retail-receipts": 3, "shipping-delivered": 2},
+                        "archive": {"retail-receipts": 3, "shipping-delivered": 2},
                         "review": {"k12-grades-testing": 1, "unmatched": 2},
                         ...
                     }

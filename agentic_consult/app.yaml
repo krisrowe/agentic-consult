@@ -20,8 +20,6 @@ email:
   archive_log_retention_days: 90    # How long to keep archive logs
   # Review label for emails needing human attention
   review_label: Reviewing           # Gmail label applied by mark_email_in_review
-  # Archivable label for emails pending age-based archive
-  archivable_label: Archivable      # Gmail label for archive_later emails
   # Cache settings for email processing
   cache:
     email_max_age_days: 30          # Emails older than this + 1 week cache age get cleaned
