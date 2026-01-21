@@ -13,6 +13,7 @@ from .config import (
     set_remote_url,
     get_access_token,
     set_access_token,
+    get_registration_info,
     RemoteConfig,
 )
 
@@ -32,6 +33,7 @@ __all__ = [
     "set_remote_url",
     "get_access_token",
     "set_access_token",
+    "get_registration_info",
     "RemoteConfig",
     # Client
     "check_health",

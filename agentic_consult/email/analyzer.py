@@ -15,11 +15,12 @@ from typing import Any, Dict, List, Optional, Protocol
 from email_archive import EmailStore
 from agentic_consult.gemini import GeminiAPIClient
 from agentic_consult.mcp.email_processing import load_email_rules
+from agentic_consult.config import get_user_datetime
 
 # Shared Triage Helpers
 from .triage import (
-    load_triage_template, 
-    _load_contacts_config, 
+    load_triage_prompt_template,
+    _load_contacts_config,
     _format_contacts_context,
     _inject_config_into_rules,
     _prepare_emails_for_prompt
@@ -135,10 +136,11 @@ class EmailAnalyzer:
             "labels": email_data.get("labels", [])
         }]
 
-        prompt = load_triage_template().format(
+        prompt = load_triage_prompt_template().format(
             rules_json=json.dumps(active_rules, indent=2),
             emails_json=_prepare_emails_for_prompt(email_payload),
-            contacts_context=contacts_context
+            contacts_context=contacts_context,
+            user_datetime=get_user_datetime().strftime("%Y-%m-%d %H:%M:%S %Z").strip()
         )
 
         # 4. Invoke Provider

@@ -3,13 +3,6 @@
 # They catch urgent issues that should never be auto-archived.
 
 rules:
-  - id: sys-important-direct
-    action: review
-    condition: >
-      Email contains a message, request, or activity originating from or regarding 
-      a known Customer or VIP (including proxied notifications from Slack, Jira, 
-      or Docs), or is addressed directly to the user.
-
   - id: sys-urgent-action
     action: review
     condition: >

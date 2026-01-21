@@ -18,13 +18,12 @@ See also:
 import click
 import json
 import sys
-import subprocess
-import shutil
 
 from agentic_consult.sdk.remote import (
     get_remote_config,
     set_remote_config,
     get_full_status,
+    get_registration_info,
     RemoteConfig,
 )
 from agentic_consult.sdk.remote.config import migrate_legacy_config
@@ -42,7 +41,7 @@ def remote():
     Quick Start:
         1. Get config from admin: cat config.yaml | consult remote auth import
         2. Verify connection:      consult remote test
-        3. Register with Claude:   consult remote register claude
+        3. View registration cmds: consult remote show --include-token
     """
     pass
 
@@ -190,42 +189,66 @@ def config_show():
 # --- Show command ---
 
 @remote.command("show")
-def show():
-    """Show remote server configuration.
+@click.option("--include-token", is_flag=True, help="Show full token (masked by default)")
+@click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text")
+def show(include_token: bool, output_format: str):
+    """Show remote server configuration and registration commands.
 
     \b
-    Displays the current URL and token (masked) without making network calls.
-    Use 'consult remote test' to verify connectivity.
+    Displays:
+    - Current URL and token (masked by default)
+    - Commands to register with Claude and Gemini
+    - Manual registration info for other MCP clients
 
     \b
     Examples:
         consult remote show
-        consult remote show && consult remote test
+        consult remote show --include-token
+        consult remote show --format json
     """
     # Check for legacy config and migrate
     if migrate_legacy_config():
         click.echo("Migrated legacy config to new format.")
         click.echo()
 
-    cfg = get_remote_config()
+    info = get_registration_info(include_token=include_token)
+
+    if output_format == "json":
+        click.echo(json.dumps(info, indent=2))
+        if not info["configured"]:
+            sys.exit(1)
+        return
+
+    # Text output
+    if not info["configured"]:
+        click.secho(info["error"], fg="red")
+        sys.exit(1)
 
     click.echo("Remote Configuration")
     click.echo("────────────────────")
+    click.echo(f"URL:   {info['config']['url']}")
+    click.echo(f"Token: {info['config']['token_masked']} ✓")
 
-    if not cfg.url:
-        click.echo("URL:   (not configured)")
-    else:
-        click.echo(f"URL:   {cfg.url}")
+    click.echo()
+    click.echo("Register with Claude:")
+    click.echo(f"  {info['commands']['claude']}")
 
-    if not cfg.access_token:
-        click.echo("Token: (not configured)")
-    else:
-        click.echo(f"Token: {cfg.masked_token} ✓")
+    click.echo()
+    click.echo("Register with Gemini:")
+    click.echo(f"  {info['commands']['gemini']}")
 
-    if not cfg.is_configured:
+    click.echo()
+    click.echo("Other MCP clients:")
+    click.echo("  Option 1 (header auth - preferred):")
+    click.echo(f"    URL:    {info['manual']['header_auth']['url']}")
+    click.echo(f"    Header: {info['manual']['header_auth']['header']}")
+    click.echo()
+    click.echo("  Option 2 (query string auth):")
+    click.echo(f"    URL:    {info['manual']['query_auth']['url']}")
+
+    if not include_token:
         click.echo()
-        click.secho("Run 'consult remote auth import' to configure.", fg="yellow")
-        sys.exit(1)
+        click.secho("Use --include-token to reveal full token in commands.", fg="yellow")
 
 
 # --- Test command ---
@@ -285,8 +308,15 @@ def test():
         emails = remote_status.tool_result.get("emails", {})
         fetched = emails.get("fetched", {}).get("count", 0)
         analyzed = emails.get("analyzed", {}).get("count", 0)
-        active = emails.get("active", {}).get("count", 0)
-        click.echo(f"Stats:  ✓ {fetched} fetched, {analyzed} analyzed, {active} active")
+        active_data = emails.get("active", {})
+        active = active_data.get("count", 0)
+        sample = active_data.get("sample", {})
+        sample_info = ""
+        if sample:
+            archive_now = sample.get("archive_now", 0)
+            review = sample.get("review", 0)
+            sample_info = f" (sample: {archive_now} archive, {review} review)"
+        click.echo(f"Stats:  ✓ {fetched} fetched, {analyzed} analyzed, {active} active{sample_info}")
     elif remote_status.tool_error:
         click.secho(f"Stats:  ✗ {remote_status.tool_error}", fg="yellow")
         # Not fatal - stats are optional
@@ -302,138 +332,5 @@ def _show_connection_guidance():
     click.echo("  1. Deploy MCP service:  ./cloud deploy")
     click.echo("  2. Export credentials:  ./cloud user-auth export | consult remote auth import")
     click.echo()
-    click.echo("  Or use local server:    consult remote register local claude")
-
-
-# --- Register command ---
-
-@remote.command("register")
-@click.argument("target", type=click.Choice(["local", "cloud", "manual"]))
-@click.argument("client", type=click.Choice(["gemini", "claude"]), required=False)
-@click.option("--name", default="consult", help="Server name for registration")
-@click.option("--scope", type=click.Choice(["user", "project"]), default="user", help="Where to save")
-@click.option("--guide-only", is_flag=True, help="Output guidance without exit 1 (for broken combos)")
-@click.option("--include-token", is_flag=True, help="Include full token in output (masked by default)")
-@click.option("--format", "output_format", type=click.Choice(["text", "json"]), default="text")
-def register(target: str, client: str, name: str, scope: str, guide_only: bool, include_token: bool, output_format: str):
-    """Register MCP server with Gemini or Claude.
-
-    \b
-    Targets:
-        local  - Register local stdio server (consult-mcp)
-        cloud  - Register cloud HTTP server (uses configured URL)
-        manual - Show URL and auth info for manual registration
-
-    \b
-    Examples:
-        consult remote register local gemini
-        consult remote register local claude
-        consult remote register cloud claude --name my-consult
-        consult remote register manual
-    """
-    cfg = get_remote_config()
-
-    # Manual target: show URL info
-    if target == "manual":
-        if not cfg.is_configured:
-            click.secho("Error: Not configured. Run 'consult remote auth import' first.", fg="red", err=True)
-            sys.exit(1)
-
-        token_display = cfg.access_token if include_token else "************"
-
-        if output_format == "json":
-            info = {
-                "url": cfg.url,
-                "header_auth": {
-                    "url": cfg.url,
-                    "header": f"Authorization: Bearer {token_display}",
-                },
-                "query_auth": {
-                    "url": f"{cfg.url.rstrip('/')}?token={token_display}",
-                },
-            }
-            click.echo(json.dumps(info, indent=2))
-        else:
-            click.echo("MCP Registration Info")
-            click.echo("─────────────────────")
-            click.echo()
-            click.echo("Option 1 (header auth):")
-            click.echo(f"  URL:    {cfg.url}")
-            click.echo(f"  Header: Authorization: Bearer {token_display}")
-            click.echo()
-            click.echo("Option 2 (query string auth):")
-            click.echo(f"  URL:    {cfg.url.rstrip('/')}?token={token_display}")
-            if not include_token:
-                click.echo()
-                click.echo("Use --include-token to reveal full token.")
-        sys.exit(0)
-
-    # local/cloud require client argument
-    if not client:
-        click.secho("Error: CLIENT argument required for local/cloud targets.", fg="red", err=True)
-        sys.exit(1)
-
-    if target == "cloud":
-        if not cfg.is_configured:
-            click.secho("Error: Not configured. Run 'consult remote auth import' first.", fg="red", err=True)
-            sys.exit(1)
-
-    # Check CLI availability
-    if client == "gemini" and not shutil.which("gemini"):
-        click.secho("Error: 'gemini' CLI not found in PATH.", fg="red", err=True)
-        sys.exit(1)
-    elif client == "claude" and not shutil.which("claude"):
-        click.secho("Error: 'claude' CLI not found in PATH.", fg="red", err=True)
-        sys.exit(1)
-
-    # Build and run command
-    if target == "local":
-        if client == "gemini":
-            cmd = ["gemini", "mcp", "add", name, "consult-mcp", "--scope", scope]
-            result = subprocess.run(cmd)
-            sys.exit(result.returncode)
-        elif client == "claude":
-            subprocess.run(["claude", "mcp", "remove", name, "-s", scope], capture_output=True)
-            cmd = ["claude", "mcp", "add", "-s", scope, name, "consult-mcp"]
-            result = subprocess.run(cmd)
-            sys.exit(result.returncode)
-
-    elif target == "cloud":
-        if client == "gemini":
-            # Check gemini version for HTTP bug
-            version_ok = True
-            try:
-                result = subprocess.run(["gemini", "--version"], capture_output=True, text=True)
-                version_str = result.stdout.strip()
-                parts = version_str.split(".")
-                if len(parts) >= 2:
-                    major, minor = int(parts[0]), int(parts[1])
-                    version_ok = (major, minor) >= (0, 24)
-            except Exception:
-                pass  # Assume newer if can't check
-
-            full_url = f'{cfg.url.rstrip("/")}?token={cfg.access_token}'
-
-            if version_ok:
-                cmd = ["gemini", "mcp", "add", name, full_url, "--scope", scope]
-                result = subprocess.run(cmd)
-                sys.exit(result.returncode)
-            elif guide_only:
-                click.echo("npm i -g @google/gemini-cli@latest")
-                sys.exit(0)
-            else:
-                click.secho("Error: 'gemini mcp add' broken for HTTP in < v0.24.0", fg="red", err=True)
-                click.secho("Upgrade: npm i -g @google/gemini-cli@latest", fg="yellow", err=True)
-                sys.exit(1)
-
-        elif client == "claude":
-            subprocess.run(["claude", "mcp", "remove", name, "-s", scope], capture_output=True)
-            cmd = [
-                "claude", "mcp", "add",
-                "--transport", "http",
-                "--header", f"Authorization: Bearer {cfg.access_token}",
-                "-s", scope,
-                name, cfg.url
-            ]
-            result = subprocess.run(cmd)
-            sys.exit(result.returncode)
+    click.echo("  Then run: consult remote show --include-token")
+    click.echo("  to see registration commands.")

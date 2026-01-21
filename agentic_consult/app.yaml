@@ -74,6 +74,7 @@ precommit:
     - bank@example.com      # Triage testing (Finance)
     - git@github.com
 
+
 # Workspace Analysis Configuration
 workspace_analysis:
   required_last_commits_match: 10

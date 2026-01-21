@@ -3,12 +3,15 @@ import os
 import logging
 import contextlib
 
+import yaml
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from pydantic import ValidationError
 
 from .server import mcp
+from agentic_consult.sdk.email.rules_config import import_email_config, export_email_config
 
 # Setup Logging
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -80,6 +83,37 @@ app.add_middleware(AuthMiddleware)
 async def health():
     """Health check endpoint (no auth required)."""
     return {"status": "ok"}
+
+
+@app.get("/user/email-rules")
+async def get_email_rules():
+    """Download email.yaml configuration."""
+    try:
+        return export_email_config()
+    except Exception as e:
+        logger.error(f"Failed to read email.yaml: {e}")
+        return JSONResponse({"error": "Failed to read config"}, status_code=500)
+
+
+@app.post("/user/email-rules")
+async def post_email_rules(request: Request):
+    """Upload email.yaml configuration with validation and backup."""
+    try:
+        body = await request.body()
+        new_data = yaml.safe_load(body.decode('utf-8')) or {}
+    except yaml.YAMLError as e:
+        return JSONResponse({"error": f"Invalid YAML: {e}"}, status_code=400)
+
+    try:
+        result = import_email_config(new_data)
+        if result.get("backup_path"):
+            logger.info(f"Backed up email.yaml to {result['backup_path']}")
+        return result
+    except ValidationError as e:
+        return JSONResponse({"error": f"Schema validation failed: {e}"}, status_code=400)
+    except Exception as e:
+        logger.error(f"Failed to write email.yaml: {e}")
+        return JSONResponse({"error": f"Failed to write config: {e}"}, status_code=500)
 
 
 # Mount the MCP streamable HTTP app

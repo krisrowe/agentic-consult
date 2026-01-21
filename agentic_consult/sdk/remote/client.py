@@ -4,6 +4,12 @@ Provides functions for:
 - Health checks (unauthenticated)
 - Auth validation (authenticated)
 - MCP tool invocation
+
+MCP HTTP Transport Protocol:
+- Requires Accept: application/json, text/event-stream
+- Initialize first to get session ID from Mcp-Session-Id header
+- Pass Mcp-Session-Id on subsequent requests
+- Responses come as SSE: "event: message\ndata: {...}"
 """
 
 import json
@@ -12,6 +18,10 @@ import urllib.error
 from dataclasses import dataclass, field
 from typing import Optional, Any
 from .config import get_remote_config, RemoteConfig
+
+
+# Common headers for MCP HTTP transport
+MCP_ACCEPT = "application/json, text/event-stream"
 
 
 @dataclass
@@ -34,6 +44,18 @@ class RemoteStatus:
     def is_authenticated(self) -> bool:
         """Returns True if auth check passed."""
         return self.auth_ok
+
+
+def _parse_sse_response(data: bytes) -> Optional[dict]:
+    """Parse SSE response to extract JSON from 'data:' lines."""
+    text = data.decode("utf-8")
+    for line in text.split("\n"):
+        if line.startswith("data: "):
+            try:
+                return json.loads(line[6:])
+            except json.JSONDecodeError:
+                continue
+    return None
 
 
 def check_health(url: str, timeout: int = 10) -> tuple[bool, Optional[str]]:
@@ -64,7 +86,7 @@ def check_auth(url: str, token: str, timeout: int = 10) -> tuple[bool, Optional[
     """
     Validate auth token against remote server.
 
-    Sends a minimal MCP request to /mcp endpoint to verify token validity.
+    Sends MCP initialize request to /mcp endpoint to verify token validity.
 
     Args:
         url: Base URL of the MCP server
@@ -79,8 +101,18 @@ def check_auth(url: str, token: str, timeout: int = 10) -> tuple[bool, Optional[
         req = urllib.request.Request(mcp_url, method="POST")
         req.add_header("Authorization", f"Bearer {token}")
         req.add_header("Content-Type", "application/json")
-        # Send minimal MCP initialize request
-        req.data = b'{"jsonrpc": "2.0", "method": "initialize", "id": 1}'
+        req.add_header("Accept", MCP_ACCEPT)
+        # Full MCP initialize request with required params
+        req.data = json.dumps({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "consult-sdk", "version": "1.0"}
+            },
+            "id": 1
+        }).encode()
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             # Any 2xx means auth passed
             return True, None
@@ -100,6 +132,49 @@ def check_auth(url: str, token: str, timeout: int = 10) -> tuple[bool, Optional[
         return False, str(e)
 
 
+def _mcp_initialize(url: str, token: str, timeout: int = 10) -> tuple[Optional[str], Optional[str]]:
+    """
+    Initialize MCP session and get session ID.
+
+    Args:
+        url: Base URL of the MCP server
+        token: Access token
+        timeout: Request timeout in seconds
+
+    Returns:
+        (session_id, error_message) tuple
+    """
+    mcp_url = f"{url.rstrip('/')}/mcp"
+    try:
+        req = urllib.request.Request(mcp_url, method="POST")
+        req.add_header("Authorization", f"Bearer {token}")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Accept", MCP_ACCEPT)
+        req.data = json.dumps({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "consult-sdk", "version": "1.0"}
+            },
+            "id": 1
+        }).encode()
+
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            session_id = resp.headers.get("Mcp-Session-Id")
+            if not session_id:
+                return None, "No session ID in response"
+            return session_id, None
+
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}: {e.reason}"
+    except urllib.error.URLError as e:
+        return None, str(e.reason)
+    except Exception as e:
+        return None, str(e)
+
+
 def call_tool(
     url: str,
     token: str,
@@ -109,6 +184,8 @@ def call_tool(
 ) -> tuple[Optional[Any], Optional[str]]:
     """
     Call an MCP tool on the remote server.
+
+    Initializes a session first, then calls the tool with the session ID.
 
     Args:
         url: Base URL of the MCP server
@@ -120,11 +197,18 @@ def call_tool(
     Returns:
         (result, error_message) tuple
     """
+    # First initialize to get session ID
+    session_id, error = _mcp_initialize(url, token, timeout)
+    if error:
+        return None, f"Init failed: {error}"
+
     mcp_url = f"{url.rstrip('/')}/mcp"
     try:
         req = urllib.request.Request(mcp_url, method="POST")
         req.add_header("Authorization", f"Bearer {token}")
         req.add_header("Content-Type", "application/json")
+        req.add_header("Accept", MCP_ACCEPT)
+        req.add_header("Mcp-Session-Id", session_id)
         req.data = json.dumps({
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -133,14 +217,22 @@ def call_tool(
         }).encode()
 
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            result = json.loads(resp.read().decode())
+            # Response is SSE format: "event: message\ndata: {...}"
+            result = _parse_sse_response(resp.read())
+            if not result:
+                return None, "Failed to parse SSE response"
 
             if "error" in result:
                 return None, str(result["error"])
 
             if "result" in result:
                 content = result["result"]
-                # Handle MCP tool response format (list of content blocks)
+                # Check for structuredContent first (preferred)
+                if isinstance(content, dict) and "structuredContent" in content:
+                    return content["structuredContent"], None
+                # Fall back to parsing text from content blocks
+                if isinstance(content, dict) and "content" in content:
+                    content = content["content"]
                 if isinstance(content, list) and content:
                     text = content[0].get("text", "{}")
                     if isinstance(text, str):

@@ -127,6 +127,14 @@ class GCloudProvider(CloudProvider):
             input=value, check=True
         )
 
+    def set_secret_value(self, project_id: str, secret_id: str, value: str) -> None:
+        """Create or update a secret value (convenience method)."""
+        val = value.encode() if isinstance(value, str) else value
+        if self.secret_exists(project_id, secret_id):
+            self.add_secret_version(project_id, secret_id, val)
+        else:
+            self.create_secret(project_id, secret_id, val)
+
     # --- Image Operations ---
 
     def image_exists(self, project_id: str, image_name: str) -> bool:

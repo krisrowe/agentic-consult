@@ -85,6 +85,58 @@ def set_access_token(token: str) -> None:
     set_remote_config(access_token=token)
 
 
+def get_registration_info(include_token: bool = False) -> dict:
+    """
+    Get registration info for display.
+
+    Returns structured dict with:
+    - config: URL and token (masked unless include_token=True)
+    - commands: claude and gemini mcp add commands
+    - manual: header and query string auth options
+
+    Args:
+        include_token: If True, include full token; otherwise mask it
+
+    Returns:
+        Dict with all registration info for CLI display
+    """
+    cfg = get_remote_config()
+
+    if not cfg.is_configured:
+        return {
+            "configured": False,
+            "error": "Not configured. Run 'consult remote auth import' first.",
+        }
+
+    token_display = cfg.access_token if include_token else "****"
+    token_masked = cfg.masked_token
+
+    # MCP endpoint URL (base URL + /mcp path)
+    mcp_url = f"{cfg.url.rstrip('/')}/mcp"
+
+    return {
+        "configured": True,
+        "config": {
+            "url": cfg.url,
+            "token_masked": token_masked,
+            "token_full": cfg.access_token if include_token else None,
+        },
+        "commands": {
+            "claude": f'claude mcp add --transport http --header "Authorization: Bearer {token_display}" -s user consult {mcp_url}',
+            "gemini": f'gemini mcp add consult "{mcp_url}?token={token_display}" --scope user',
+        },
+        "manual": {
+            "header_auth": {
+                "url": mcp_url,
+                "header": f"Authorization: Bearer {token_display}",
+            },
+            "query_auth": {
+                "url": f"{mcp_url}?token={token_display}",
+            },
+        },
+    }
+
+
 def migrate_legacy_config() -> bool:
     """
     Migrate legacy config keys to new namespace.
