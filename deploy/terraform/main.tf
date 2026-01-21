@@ -108,6 +108,13 @@ resource "google_storage_bucket_iam_member" "gcs_admin" {
   member = "serviceAccount:${google_service_account.analyzer_sa.email}"
 }
 
+# Project owners need explicit object access with uniform bucket-level access
+resource "google_storage_bucket_iam_member" "gcs_owner_access" {
+  bucket = google_storage_bucket.data_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "projectOwner:${local.project_id}"
+}
+
 # Grant access to the secrets by name (assuming they were created by CLI init)
 resource "google_project_iam_member" "secret_accessor" {
   project = local.project_id
