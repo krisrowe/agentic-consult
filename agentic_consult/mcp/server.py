@@ -923,6 +923,47 @@ async def email_triage_stats(
         return {"error": str(e)}
 
 
+@mcp.tool()
+async def reset_analysis(
+    date: str
+) -> dict[str, Any]:
+    """
+    Reset email analysis for a specific date.
+
+    Clears analysis.json sidecars for all emails on the given date so they
+    will be re-analyzed by the background analyzer with current rules/prompt.
+
+    Use this after updating triage_prompt.txt or email rules to re-process
+    emails that were analyzed with outdated logic.
+
+    **WARNING:** This is a destructive operation. Analysis results will be
+    permanently deleted for the specified date. The analyzer will re-process
+    these emails on its next run.
+
+    Args:
+        date: Date to reset in ISO format (YYYY-MM-DD).
+
+    Returns:
+        {
+            "success": true,
+            "count": N,          # Number of sidecars removed
+            "first": "datetime", # Earliest email (ISO 8601, user's timezone), null if none
+            "last": "datetime"   # Latest email (ISO 8601, user's timezone), null if none
+        }
+    """
+    from datetime import date as date_type
+    from agentic_consult.email.analyzer import reset_analysis as sdk_reset_analysis
+
+    try:
+        target_date = date_type.fromisoformat(date)
+        return sdk_reset_analysis(target_date)
+    except ValueError as e:
+        return {"success": False, "error": f"Invalid date format: {e}. Use YYYY-MM-DD."}
+    except Exception as e:
+        logger.exception("Error in reset_analysis")
+        return {"success": False, "error": str(e)}
+
+
 # --- Customer Management Tools ---
 
 @mcp.tool()
