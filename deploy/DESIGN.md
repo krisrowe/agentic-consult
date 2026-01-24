@@ -1,5 +1,9 @@
 # Cloud Deployment Design
 
+Architecture and design rationale for the cloud deployment system.
+
+For operational commands and usage, see [README.md](README.md).
+
 ## Overview
 
 The email triage system consists of two Cloud Run Jobs orchestrated by Cloud Scheduler:
@@ -43,36 +47,6 @@ The email triage system consists of two Cloud Run Jobs orchestrated by Cloud Sch
 | `agentic-consult` | Terraform + CLI | Deploy and manage both jobs |
 
 Each repo owns its Docker image. The terraform in agentic-consult references both images.
-
-## Commands
-
-For step-by-step deployment instructions, see [README.md](../README.md#cloud-deployment).
-
-| Command | Purpose |
-|---------|---------|
-| `./cloud init` | Initialize project, bucket, secrets |
-| `./cloud status` | Show current cloud resource status (read-only) |
-| `./cloud pre-deploy` | Check readiness and output terraform commands |
-| `./cloud scheduler list` | View scheduler jobs and schedules |
-| `./cloud scheduler set <job> <mins>` | Update job frequency |
-| `./cloud image build` / `push` | Build and push analyzer image |
-
-## Terraform Behavior
-
-The terraform creates schedulers with default schedules but uses `lifecycle { ignore_changes = [schedule] }` so that:
-
-1. **First deploy**: Creates with default schedule (30 min)
-2. **Subsequent deploys**: Does NOT overwrite manual schedule changes
-3. **CLI is source of truth**: Use `./cloud scheduler set` to change schedules
-
-## Required Secrets
-
-| Secret ID | Description | Used By |
-|-----------|-------------|---------|
-| `gemini-api-key` | Gemini API key | analyzer |
-| `gmail-token` | Gmail OAuth token JSON | fetcher |
-
-Secrets are created/updated via `./cloud init`. See [README.md](../README.md#cloud-deployment) for the full deployment workflow.
 
 ## Resource Discovery & Configuration
 
@@ -120,15 +94,6 @@ To switch environments, run `init` targeting a different project label:
 
 The environment alias is used only for discovery - only the concrete `project_id` is saved.
 
-### Init Scenarios
-
-| User knows | Command | What happens |
-|------------|---------|--------------|
-| Nothing | `./cloud init` | Searches `agentic-consult=default`, finds project |
-| Project ID | `./cloud init --project=xyz` | Uses `xyz` directly, skips label search |
-
-Environment alias support (`init prod` for `agentic-consult=prod`) is tracked in [#24](https://github.com/krisrowe/agentic-consult/issues/24).
-
 ### CLI/Terraform Decoupling
 
 **Critical Design Decision**: Terraform and the CLI are **fully decoupled**. Terraform does NOT call any Python code from the repository.
@@ -156,24 +121,19 @@ variable "bucket_name" {
   description = "GCS bucket name for email archive"
   type        = string
 }
+
+variable "analyzer_tag" {
+  description = "Image tag for consult-analyzer"
+  type        = string
+}
 ```
 
-The CLI's `pre-deploy` command:
-1. Reads configuration from local settings
-2. Checks deploy readiness via the cloud SDK
-3. Outputs the full terraform commands with variables filled in
+The CLI's `deploy` command:
+1. Resolves git ref to SHA
+2. Checks GCR for existing images, builds/pushes if needed
+3. Runs terraform with all variables filled in
 
-```bash
-$ ./cloud pre-deploy
-
-Ready to deploy. Run:
-
-  cd deploy/terraform
-  terraform init
-  terraform apply -var="project_id=my-project" -var="bucket_name=my-bucket"
-```
-
-Users copy-paste these commands to run terraform. The CLI never invokes terraform directly.
+Users run `./cloud deploy` and the CLI handles terraform internally.
 
 #### Benefits
 
@@ -409,45 +369,3 @@ Single file (`settings.json`), different keys per persona:
 | `mcp_url` | `consult mcp import` | `consult mcp *` |
 | `personal_access_token` | `consult mcp import` | `consult mcp *` |
 
-### User Flow
-
-```bash
-# Admin exports config
-./cloud user-auth export > config.yaml
-
-# User imports (via email, slack, etc.)
-cat config.yaml | consult mcp import
-
-# User validates and registers
-consult mcp status --test && consult mcp register gemini
-```
-
-### Status Command
-
-```bash
-consult mcp status
-```
-```
-MCP Configuration
-─────────────────
-URL: https://consult-mcp-abc123.run.app
-PAT: Xk9mQ2... ✓
-```
-
-```bash
-consult mcp status --test
-```
-```
-MCP Configuration
-─────────────────
-URL: https://consult-mcp-abc123.run.app
-PAT: Xk9mQ2... ✓
-
-Health: ✓ Service reachable
-Auth:   ✓ Token valid
-```
-
-Chainable for scripts:
-```bash
-consult mcp status --test && consult mcp register gemini
-```
