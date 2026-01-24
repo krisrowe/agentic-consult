@@ -22,8 +22,7 @@ from pathlib import Path
 import yaml
 
 from agentic_consult.config import get_config_path, get_consult_config_dir, load_app_config, load_main_config
-from gwsa.sdk.mail.label import remove_label as gwsa_remove_label, add_label as gwsa_add_label
-from email_archive import EmailStore
+from agentic_consult.sdk.gmail import add_label as gmail_add_label, remove_label as gmail_remove_label
 
 logger = logging.getLogger(__name__)
 # Default to INFO if not set elsewhere
@@ -418,7 +417,6 @@ def log_archived_email(
 
 
 def get_rule_usage_stats() -> dict[str, dict]:
-    """Get usage statistics for each rule."""
     try:
         log_path = get_archive_log_path()
         if not log_path.exists():
@@ -446,59 +444,55 @@ def get_rule_usage_stats() -> dict[str, dict]:
         return {}
 
 
-def archive_email_with_gwsa(
+def archive_email_impl(
     message_id: str,
     rule_id: str,
     from_addr: str,
     subject: str,
-    profile: Optional[str] = None
 ) -> dict[str, Any]:
-    """Archive an email and persist 'triage.json' sidecar."""
+    """Archive an email by removing INBOX label.
+
+    Gmail labels are source of truth - no local triage.json needed.
+    """
     try:
-        # 1. Action (Cloud)
-        gwsa_remove_label(message_id, "INBOX", profile=profile)
-        
-        # 2. Persist State (Local Sidecar)
-        store = EmailStore()
-        store.save_sidecar(message_id, "triage.json", {
-            "action": "archived",
-            "rule_id": rule_id,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
-        # 3. Log (Legacy compatibility)
+        # 1. Archive via Gmail SDK (removes INBOX label)
+        gmail_remove_label(message_id, 'INBOX')
+
+        # 2. Log for rule usage tracking
         log_archived_email(rule_id, message_id, from_addr, subject)
-        
+
         return {"success": True, "message_id": message_id, "rule_id": rule_id, "archived": True}
     except Exception as e:
         return {"success": False, "message_id": message_id, "error": str(e)}
 
-def mark_email_in_review_with_gwsa(
+
+# Backwards compat alias
+archive_email_with_gwsa = archive_email_impl
+
+
+def mark_email_in_review_impl(
     message_id: str,
     reverse: bool = False,
-    profile: Optional[str] = None
 ) -> dict[str, Any]:
-    """Apply/Remove Review label and persist 'triage.json' sidecar."""
+    """Apply/Remove Review label.
+
+    Gmail labels are source of truth - no local triage.json needed.
+    """
     config = load_app_config().get("email", {})
     label = config.get('review_label', 'Reviewing')
     try:
-        # 1. Action (Cloud)
         if reverse:
-            gwsa_remove_label(message_id, label, profile=profile)
+            gmail_remove_label(message_id, label)
         else:
-            gwsa_add_label(message_id, label, profile=profile)
-        
-        # 2. Persist State (Local Sidecar)
-        if not reverse:
-            store = EmailStore()
-            store.save_sidecar(message_id, "triage.json", {
-                "action": "reviewing",
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            
+            gmail_add_label(message_id, label)
+
         return {'success': True, 'message_id': message_id, 'action': 'removed' if reverse else 'applied'}
     except Exception as e:
         return {'success': False, 'message_id': message_id, 'error': str(e)}
+
+
+# Backwards compat alias
+mark_email_in_review_with_gwsa = mark_email_in_review_impl
 
 
 # --- Triage Batching Configuration ---

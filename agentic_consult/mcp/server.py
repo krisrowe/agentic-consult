@@ -423,7 +423,6 @@ async def get_cached_emails(message_ids: list[str]) -> dict[str, Any]:
 async def mark_email_in_review(
     message_id: str,
     reverse: bool = False,
-    profile: Optional[str] = None
 ) -> dict[str, Any]:
     """
     Apply or remove the Reviewing label from an email.
@@ -435,7 +434,6 @@ async def mark_email_in_review(
     Args:
         message_id: Gmail message ID
         reverse: If True, remove the Reviewing label (default False = add label)
-        profile: Optional gwsa profile name
 
     Returns:
         Success status with label action taken.
@@ -444,7 +442,6 @@ async def mark_email_in_review(
         return mark_email_in_review_with_gwsa(
             message_id=message_id,
             reverse=reverse,
-            profile=profile
         )
     except Exception as e:
         logger.exception("Error in mark_email_in_review")
@@ -761,7 +758,6 @@ async def archive_email(
     subject: str,
     reason: str,
     rule_id: Optional[str] = None,
-    profile: Optional[str] = None
 ) -> dict[str, Any]:
     """
     Archive an email and persist 'triage.json' sidecar locally.
@@ -797,7 +793,6 @@ async def archive_email(
                 - "rules-based": Matches a configured auto-archive rule (rule_id required)
                 - "ad-hoc": User explicitly approved archiving during review
         rule_id: ID of the rule that triggered this archive (required when reason="rules-based")
-        profile: Optional gwsa profile name if not using default
 
     Returns:
         Dict with success status, message_id, reason, rule_id (if applicable), and archived flag.
@@ -817,7 +812,6 @@ async def archive_email(
             rule_id=rule_id or "ad-hoc",  # Use "ad-hoc" as rule_id for logging when not rules-based
             from_addr=from_addr,
             subject=subject,
-            profile=profile
         )
         # Add reason to result
         if result.get("success"):
@@ -842,13 +836,9 @@ async def get_recent_group_chats(limit: int = 10) -> dict[str, Any]:
     Returns:
         A dictionary containing a list of the most recent group chat spaces.
     """
-    try:
-        from gwsa.sdk.chat import get_recent_chats
-        chats = get_recent_chats(chat_type='GROUP_CHAT', limit=limit)
-        return {"group_chats": chats}
-    except Exception as e:
-        logger.error(f"Error getting recent group chats: {e}")
-        return {"error": str(e)}
+    # Chat functionality temporarily disabled (gwsa dependency removed)
+    logger.info("get_recent_group_chats temporarily disabled")
+    return {"group_chats": [], "disabled_reason": "Chat SDK not yet implemented"}
 
 
 @mcp.tool()
