@@ -791,6 +791,7 @@ def get_triage_stats(sample_size: int = 20) -> dict:
     """
     from email_archive import EmailStore
     from agentic_consult.sdk.gmail import list_inbox
+    from agentic_consult.config import get_user_timezone, get_user_datetime
 
     store = EmailStore()
 
@@ -820,7 +821,10 @@ def get_triage_stats(sample_size: int = 20) -> dict:
         return min(dates), max(dates)
 
     # Fetched = all emails in store
-    all_emails = store.list()
+    timezone = get_user_timezone()
+    end_date = get_user_datetime().strftime("%Y-%m-%d")
+    # First email sent on ARPANET by Ray Tomlinson in October 1971
+    all_emails = store.list("1971-10-01", end_date, timezone)
     fetched_start, fetched_end = get_date_range(all_emails)
     fetched = {
         "count": len(all_emails),

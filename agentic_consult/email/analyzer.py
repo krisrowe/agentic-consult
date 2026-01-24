@@ -8,14 +8,14 @@ results as sidecar JSON files.
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol
 
 from email_archive import EmailStore
 from agentic_consult.gemini import GeminiAPIClient
 from agentic_consult.mcp.email_processing import load_email_rules
-from agentic_consult.config import get_user_datetime
+from agentic_consult.config import get_user_datetime, get_user_timezone
 
 # Shared Triage Helpers
 from .triage import (
@@ -77,16 +77,21 @@ class EmailAnalyzer:
         lookback = lookback_days if lookback_days is not None else self.DEFAULT_LOOKBACK
         batch_limit = limit if limit is not None else self.DEFAULT_LIMIT
 
-        # Use Naive UTC to match EmailStore prefixes
-        now = reference_date or datetime.utcnow()
-        # Look back N days, anchored to the start of that day (00:00:00)
-        since = (now - timedelta(days=lookback)).replace(hour=0, minute=0, second=0, microsecond=0)
-        
+        # Get user's timezone for date calculations
+        timezone = get_user_timezone()
+        user_now = reference_date or get_user_datetime()
+
+        # Compute date range in user's timezone
+        end_date = user_now.strftime("%Y-%m-%d")
+        start_date = (user_now - timedelta(days=lookback)).strftime("%Y-%m-%d")
+
         # Discovery using high-performance SDK method (Newest first)
         pending = self.store.list(
-            since=since, 
-            sidecar_missing="analysis.json", 
-            limit=batch_limit, 
+            start_date=start_date,
+            end_date=end_date,
+            timezone=timezone,
+            sidecar_missing="analysis.json",
+            limit=batch_limit,
             newest_first=True
         )
         
@@ -212,3 +217,27 @@ class EmailAnalyzer:
             },
             "analysis": result
         })
+
+
+def reset_analysis(target_date: date) -> Dict[str, Any]:
+    """Reset analysis sidecars for emails on a specific date.
+
+    Clears analysis.json sidecars so emails will be re-analyzed with current prompt.
+    Uses timezone from user's email.yaml config.
+
+    Args:
+        target_date: Date to reset (date object or "YYYY-MM-DD" string)
+
+    Returns:
+        {
+            "success": true,
+            "count": N,          # Number of sidecars removed
+            "first": "datetime", # Earliest email (ISO 8601, user's timezone), null if none
+            "last": "datetime"   # Latest email (ISO 8601, user's timezone), null if none
+        }
+    """
+    timezone = get_user_timezone()
+    date_str = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
+
+    store = EmailStore()
+    return store.clear_sidecars("analysis.json", date_str, date_str, timezone)
