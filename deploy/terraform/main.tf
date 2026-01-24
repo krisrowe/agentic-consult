@@ -29,15 +29,25 @@ variable "service_delete_protection" {
   default     = true
 }
 
+variable "image_tag" {
+  description = "Tag for internal images (analyzer, mcp) - same repo, same ref"
+  type        = string
+}
+
+variable "fetcher_tag" {
+  description = "Tag for fetcher image (from images.ini ref)"
+  type        = string
+}
+
 locals {
   project_id  = var.project_id
   bucket_name = var.bucket_name
   region      = "us-central1"
 
-  # Image references
-  analyzer_image = "gcr.io/${local.project_id}/consult-analyzer:latest"
-  fetcher_image  = "gcr.io/${local.project_id}/gmex-fetcher:latest"
-  mcp_image      = "gcr.io/${local.project_id}/consult-mcp:latest"
+  # Image references - tags passed via variables
+  analyzer_image = "gcr.io/${local.project_id}/consult-analyzer:${var.image_tag}"
+  fetcher_image  = "gcr.io/${local.project_id}/gmex-fetcher:${var.fetcher_tag}"
+  mcp_image      = "gcr.io/${local.project_id}/consult-mcp:${var.image_tag}"
 }
 
 provider "google" {
@@ -282,6 +292,12 @@ resource "google_cloud_run_v2_service" "mcp_service" {
         value = "true"
       }
 
+      # Gmail OAuth credentials for label operations (archive, mark review)
+      env {
+        name  = "GOOGLE_APPLICATION_CREDENTIALS"
+        value = "/secrets/gmail-token/credentials.json"
+      }
+
       # Combined hash of restart-required app resources (see DESIGN.md section 15)
       # Changes to restart:true resources in config-resources.json trigger Cloud Run restart
       env {
@@ -294,6 +310,11 @@ resource "google_cloud_run_v2_service" "mcp_service" {
         mount_path = "/mnt/gcs"
       }
 
+      volume_mounts {
+        name       = "gmail-token"
+        mount_path = "/secrets/gmail-token"
+      }
+
       ports {
         container_port = 8080
       }
@@ -303,6 +324,17 @@ resource "google_cloud_run_v2_service" "mcp_service" {
       name = "gcs-volume"
       gcs {
         bucket = google_storage_bucket.data_bucket.name
+      }
+    }
+
+    volumes {
+      name = "gmail-token"
+      secret {
+        secret = "gmail-token"
+        items {
+          version = "latest"
+          path    = "credentials.json"
+        }
       }
     }
   }
