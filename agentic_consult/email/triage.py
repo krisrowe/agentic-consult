@@ -274,13 +274,13 @@ def cleanup_email_cache() -> int:
     return removed_count
 
 def mark_email_in_review(message_id: str, reverse: bool = False, profile: Optional[str] = None) -> dict[str, Any]:
-    from gwsa.sdk.mail.label import add_label, remove_label
+    from agentic_consult.sdk.gmail import add_label, remove_label
     label = _load_app_email_config().get('review_label', 'Reviewing')
     try:
         if reverse:
-            remove_label(message_id, label, profile=profile)
+            remove_label(message_id, label)
         else:
-            add_label(message_id, label, profile=profile)
+            add_label(message_id, label)
         return {'success': True, 'message_id': message_id, 'action': 'removed' if reverse else 'applied'}
     except Exception as e:
         return {'success': False, 'message_id': message_id, 'error': str(e)}
@@ -306,6 +306,9 @@ def _prepare_emails_for_prompt(emails: list[dict]) -> str:
         truncated_emails.append(email_copy)
     return json.dumps(truncated_emails, indent=2, default=str)
 
+EXPECTED_ANALYSIS_FREQ_MINS = 30  # Warn if emails lack analysis longer than this
+
+
 def fetch_triage_pool(
     review_status: Literal["new", "reviewing", "all"] = "all",
     limit: int = 5,
@@ -315,7 +318,9 @@ def fetch_triage_pool(
     progress_callback: Optional[Callable[[int, int], None]] = None
 ) -> dict[str, Any]:
     """
-    Fetch pool of emails ready for triage (has analysis.json, no triage.json).
+    Fetch pool of emails ready for triage.
+
+    Gmail is source of truth for inbox state. EmailStore provides cached analysis.
 
     Returns:
         Dict containing:
@@ -323,13 +328,16 @@ def fetch_triage_pool(
         - invites: List of calendar invite recommendations
         - chat_mentions: List of chat mentions requiring attention
         - instructions: Agent instructions for processing
-        - stats: Counts of each category
-        - current_datetime: ISO 8601 timestamp with timezone offset indicating
-          the user's current date/time. This is the reference point used for
-          all time-sensitive operations (fetching, analyzing, triaging) on both
-          server and client. Configured via email.yaml settings.timezone.
+        - stats: Counts including gmail_count, analyzed_count, skipped_no_analysis
+        - current_datetime: ISO 8601 timestamp with timezone offset
     """
+    import time
+    from email_archive import EmailStore
+    from agentic_consult.sdk.gmail import list_inbox
+
     messages = []  # User-facing messages with severity
+    config = _load_app_email_config()
+    review_label = config.get('review_label', 'Reviewing')
 
     try:
         # 1. Fetch Chat Mentions (optional, can be disabled or fail gracefully)
@@ -347,39 +355,63 @@ def fetch_triage_pool(
                     "text": "Failed to retrieve chat messages."
                 })
 
-        # 2. Discover Ready-to-Triage Emails via SDK
-        from email_archive import EmailStore
+        # 2. Query Gmail for inbox messages (source of truth)
+        gmail_result = list_inbox(
+            review_status=review_status,
+            review_label=review_label,
+            limit=limit * 3  # Fetch extra to account for missing analysis
+        )
+        gmail_ids = gmail_result.get('message_ids', [])
+        gmail_elapsed_ms = gmail_result.get('elapsed_ms', 0)
+        logger.debug(f"Gmail query returned {len(gmail_ids)} messages in {gmail_elapsed_ms}ms")
+
+        # 3. Check EmailStore for analysis sidecars
         store = EmailStore()
-        
-        # Newest first, only those not yet triaged
-        # Since is generous (14 days)
-        since = datetime.utcnow() - timedelta(days=14)
-        candidates = store.list(since=since, sidecar_missing="triage.json", newest_first=True)
-        
+        store_start = time.time()
+
         emails = []
         invites = []
-        
-        for item in candidates:
-            if len(emails) + len(invites) >= limit: break
-            
-            # Must HAVE an analysis sidecar to be shown here
-            analysis = store.get_sidecar(item['id'], "analysis.json")
-            if not analysis: continue
-            
+        skipped_no_analysis = 0
+
+        for msg_id in gmail_ids:
+            if len(emails) + len(invites) >= limit:
+                break
+
+            # Must HAVE an analysis sidecar to be shown
+            analysis = store.get_sidecar(msg_id, "analysis.json")
+            if not analysis:
+                skipped_no_analysis += 1
+                continue
+
             # Load raw headers for display
-            raw = store.get(item['id'])
-            if not raw: continue
-            
+            raw = store.get(msg_id)
+            if not raw:
+                skipped_no_analysis += 1
+                continue
+
             # Merge for frontend
-            entry = {**analysis, "id": item['id'], "date": item['date'].isoformat()}
+            item_date = raw.get('date', datetime.utcnow().isoformat())
+            entry = {**analysis, "id": msg_id, "date": item_date}
             entry["from"] = raw.get("from", "")
             entry["subject"] = raw.get("subject", "")
-            
-            # Split into categories (Same as original logic)
+
+            # Split into categories
             if entry.get("status") or "event_date" in entry:
                 invites.append(entry)
             else:
                 emails.append(entry)
+
+        store_elapsed_ms = int((time.time() - store_start) * 1000)
+        logger.debug(f"EmailStore check took {store_elapsed_ms}ms for {len(gmail_ids)} messages")
+
+        # Warn if many emails lack analysis
+        if skipped_no_analysis > 0 and len(gmail_ids) > 0:
+            skip_ratio = skipped_no_analysis / len(gmail_ids)
+            if skip_ratio > 0.5:
+                logger.warning(
+                    f"{skipped_no_analysis}/{len(gmail_ids)} emails lack analysis. "
+                    f"Analyzer may be behind (expected every {EXPECTED_ANALYSIS_FREQ_MINS} mins)."
+                )
 
         # 3. Assign Refs (Same as original logic)
         chat_ids = [m.get('thread_name') or m.get('space_id') for m in chat_mentions]
@@ -414,7 +446,11 @@ def fetch_triage_pool(
             'stats': {
                 'email_count': len(emails),
                 'invite_count': len(invites),
-                'chat_count': len(chat_mentions)
+                'chat_count': len(chat_mentions),
+                'gmail_count': len(gmail_ids),
+                'skipped_no_analysis': skipped_no_analysis,
+                'gmail_elapsed_ms': gmail_elapsed_ms,
+                'store_elapsed_ms': store_elapsed_ms
             }
         }
         if messages:
@@ -737,28 +773,24 @@ def _format_subject(subject: str) -> str:
 
 def get_triage_stats(sample_size: int = 20) -> dict:
     """
-    Get email triage statistics from the email archive.
+    Get email triage statistics.
 
-    Uses EmailStore SDK methods for disk I/O. Returns counts and date ranges
-    plus a sampled breakdown of active emails by recommended_action.
+    Gmail is source of truth for inbox state. EmailStore tracks fetched/analyzed.
 
     Args:
-        sample_size: Max active emails to load for action breakdown (default 20).
+        sample_size: Max emails to load for action breakdown (default 20).
 
     Returns:
         {
             "emails": {
                 "fetched": {"count": N, "start": "YYYY-MM-DD HH:MM", "end": "..."},
                 "analyzed": {"count": N, "start": "...", "end": "..."},
-                "resolved": {"count": N, "start": "...", "end": "..."},
-                "active": {
-                    "count": N,
-                    "sample": {"size": M, "archive": X, ...}
-                }
+                "active": {"count": N, "sample": {...}}  # In inbox with analysis
             }
         }
     """
     from email_archive import EmailStore
+    from agentic_consult.sdk.gmail import list_inbox
 
     store = EmailStore()
 
@@ -788,7 +820,6 @@ def get_triage_stats(sample_size: int = 20) -> dict:
         return min(dates), max(dates)
 
     # Fetched = all emails in store
-    # Note: list() reads .meta files; TODO: email-archive should add count() for efficiency
     all_emails = store.list()
     fetched_start, fetched_end = get_date_range(all_emails)
     fetched = {
@@ -797,18 +828,13 @@ def get_triage_stats(sample_size: int = 20) -> dict:
         "end": format_date(fetched_end)
     }
 
-    # Build lookup of which emails have which sidecars
+    # Analyzed = has analysis.json in store
     analyzed_ids = set()
-    resolved_ids = set()
     for item in all_emails:
         msg_id = item.get('id')
-        if msg_id:
-            if store.has_sidecar(msg_id, "analysis.json"):
-                analyzed_ids.add(msg_id)
-            if store.has_sidecar(msg_id, "triage.json"):
-                resolved_ids.add(msg_id)
+        if msg_id and store.has_sidecar(msg_id, "analysis.json"):
+            analyzed_ids.add(msg_id)
 
-    # Analyzed = has analysis.json
     analyzed_items = [e for e in all_emails if e.get('id') in analyzed_ids]
     analyzed_start, analyzed_end = get_date_range(analyzed_items)
     analyzed = {
@@ -817,17 +843,12 @@ def get_triage_stats(sample_size: int = 20) -> dict:
         "end": format_date(analyzed_end)
     }
 
-    # Resolved = has triage.json
-    resolved_items = [e for e in all_emails if e.get('id') in resolved_ids]
-    resolved_start, resolved_end = get_date_range(resolved_items)
-    resolved = {
-        "count": len(resolved_ids),
-        "start": format_date(resolved_start),
-        "end": format_date(resolved_end)
-    }
+    # Active = currently in Gmail inbox AND has analysis
+    # Query Gmail for current inbox state (source of truth)
+    gmail_result = list_inbox(review_status="all", limit=500)
+    inbox_ids = set(gmail_result.get('message_ids', []))
 
-    # Active = analyzed but not resolved
-    active_ids = analyzed_ids - resolved_ids
+    active_ids = analyzed_ids & inbox_ids  # Intersection: analyzed AND in inbox
     active_items = [e for e in all_emails if e.get('id') in active_ids]
     active_start, active_end = get_date_range(active_items)
     active_result = {
@@ -861,7 +882,6 @@ def get_triage_stats(sample_size: int = 20) -> dict:
         "emails": {
             "fetched": fetched,
             "analyzed": analyzed,
-            "resolved": resolved,
             "active": active_result
         }
     }

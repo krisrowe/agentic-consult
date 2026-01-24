@@ -44,6 +44,16 @@ def test_end_to_end(config_dir, tmp_path, monkeypatch):
     }
     (config_dir / "email.yaml").write_text(yaml.dump(email_config))
 
+    # Mock Gmail API - return our test message IDs as if they're in inbox
+    def mock_list_inbox(**kwargs):
+        return {
+            'message_ids': ['msg-001', 'msg-002'],
+            'count': 2,
+            'query': 'in:inbox',
+            'elapsed_ms': 10
+        }
+    monkeypatch.setattr("agentic_consult.sdk.gmail.list_inbox", mock_list_inbox)
+
     from agentic_consult.email.triage import fetch_triage_pool, get_cached_emails
 
     # 1. Populate Store (Mocking the background analyzer)
