@@ -370,14 +370,14 @@ def get_model_help_text() -> str:
     return " ".join(parts)
 
 
-def get_user_datetime() -> datetime:
-    """Get current datetime in user's configured timezone.
+def get_user_timezone() -> str:
+    """Get user's configured timezone name.
 
-    Reads timezone from email.yaml settings. Falls back to system time
-    if not configured or if timezone is invalid.
+    Reads timezone from email.yaml settings. Falls back to UTC
+    if not configured.
 
     Returns:
-        datetime: Current datetime in user's timezone (or system default).
+        IANA timezone name (e.g., "America/Chicago", "UTC")
     """
     try:
         email_config_path = get_config_path("email.yaml")
@@ -386,12 +386,29 @@ def get_user_datetime() -> datetime:
                 data = yaml.safe_load(f) or {}
                 tz_name = data.get('settings', {}).get('timezone')
                 if tz_name:
-                    from zoneinfo import ZoneInfo
-                    return datetime.now(ZoneInfo(tz_name))
+                    return tz_name
     except Exception as e:
         logger.debug(f"Failed to load timezone from email.yaml: {e}")
 
-    return datetime.now()
+    return "UTC"
+
+
+def get_user_datetime() -> datetime:
+    """Get current datetime in user's configured timezone.
+
+    Reads timezone from email.yaml settings. Falls back to UTC
+    if not configured or if timezone is invalid.
+
+    Returns:
+        datetime: Current datetime in user's timezone.
+    """
+    from zoneinfo import ZoneInfo
+    tz_name = get_user_timezone()
+    try:
+        return datetime.now(ZoneInfo(tz_name))
+    except Exception as e:
+        logger.debug(f"Invalid timezone {tz_name}: {e}")
+        return datetime.now(ZoneInfo("UTC"))
 
 
 def backup_config_file(file_path: Path) -> Optional[Path]:

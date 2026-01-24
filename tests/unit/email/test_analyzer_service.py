@@ -216,3 +216,121 @@ def test_analyzer_uses_configured_timezone(config_dir, tmp_path):
     assert "18:30" in utc_time, f"Expected 18:30 in UTC time, got: {utc_time}"
     assert "20:30" in athens_time, f"Expected 20:30 in Athens time, got: {athens_time}"
     assert utc_time != athens_time, "Timezone should affect the datetime in prompt"
+
+
+# --- Reset Analysis Tests ---
+
+def test_reset_analysis_clears_only_target_date_sidecars(config_dir, tmp_path):
+    """
+    Proof: reset_analysis() clears sidecars only for emails on the specified local date.
+
+    Test scenario (all times in America/Chicago):
+    - Date 1 (Jan 14): 1 email at 11:50 PM (should NOT be cleared)
+    - Date 2 (Jan 15): 5 emails spanning the day (SHOULD be cleared)
+      - These 5 span TWO UTC dates (Jan 15 and Jan 16 UTC)
+    - Date 3 (Jan 16): 1 email at 12:05 AM (should NOT be cleared)
+
+    We reset analysis for Jan 15 (middle date) and verify:
+    - Only the 5 middle-date sidecars are removed
+    - Boundary emails (11:50 PM on 14th, 12:05 AM on 16th) are untouched
+    """
+    from datetime import date
+    from zoneinfo import ZoneInfo
+    from agentic_consult.email.analyzer import reset_analysis
+    import os
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    store = EmailStore(data_dir)
+
+    chicago_tz = ZoneInfo("America/Chicago")
+
+    # Configure email.yaml with America/Chicago timezone
+    email_config = {
+        "settings": {"timezone": "America/Chicago"},
+        "rules": []
+    }
+    (config_dir / "email.yaml").write_text(yaml.dump(email_config))
+
+    # --- Create test emails ---
+
+    # Date 1 boundary: Jan 14, 11:50 PM Chicago = Jan 15, 5:50 AM UTC
+    dt_boundary_before = datetime(2026, 1, 14, 23, 50, 0, tzinfo=chicago_tz)
+    store.save("boundary-before", dt_boundary_before, {"Subject": "Before", "From": "a@example.com"}, {})
+    store.save_sidecar("boundary-before", "analysis.json", {"action": "review"})
+
+    # Date 2 (target date): Jan 15 - 5 emails spanning the day
+    # Early morning: Jan 15, 1:00 AM Chicago = Jan 15, 7:00 AM UTC
+    dt_target_1 = datetime(2026, 1, 15, 1, 0, 0, tzinfo=chicago_tz)
+    store.save("target-1", dt_target_1, {"Subject": "Target 1", "From": "a@example.com"}, {})
+    store.save_sidecar("target-1", "analysis.json", {"action": "archive"})
+
+    # Morning: Jan 15, 9:00 AM Chicago = Jan 15, 3:00 PM UTC
+    dt_target_2 = datetime(2026, 1, 15, 9, 0, 0, tzinfo=chicago_tz)
+    store.save("target-2", dt_target_2, {"Subject": "Target 2", "From": "a@example.com"}, {})
+    store.save_sidecar("target-2", "analysis.json", {"action": "archive"})
+
+    # Noon: Jan 15, 12:00 PM Chicago = Jan 15, 6:00 PM UTC
+    dt_target_3 = datetime(2026, 1, 15, 12, 0, 0, tzinfo=chicago_tz)
+    store.save("target-3", dt_target_3, {"Subject": "Target 3", "From": "a@example.com"}, {})
+    store.save_sidecar("target-3", "analysis.json", {"action": "review"})
+
+    # Evening: Jan 15, 7:00 PM Chicago = Jan 16, 1:00 AM UTC (crosses UTC date!)
+    dt_target_4 = datetime(2026, 1, 15, 19, 0, 0, tzinfo=chicago_tz)
+    store.save("target-4", dt_target_4, {"Subject": "Target 4", "From": "a@example.com"}, {})
+    store.save_sidecar("target-4", "analysis.json", {"action": "archive"})
+
+    # Late night: Jan 15, 11:30 PM Chicago = Jan 16, 5:30 AM UTC (crosses UTC date!)
+    dt_target_5 = datetime(2026, 1, 15, 23, 30, 0, tzinfo=chicago_tz)
+    store.save("target-5", dt_target_5, {"Subject": "Target 5", "From": "a@example.com"}, {})
+    store.save_sidecar("target-5", "analysis.json", {"action": "review"})
+
+    # Date 3 boundary: Jan 16, 12:05 AM Chicago = Jan 16, 6:05 AM UTC
+    dt_boundary_after = datetime(2026, 1, 16, 0, 5, 0, tzinfo=chicago_tz)
+    store.save("boundary-after", dt_boundary_after, {"Subject": "After", "From": "a@example.com"}, {})
+    store.save_sidecar("boundary-after", "analysis.json", {"action": "archive"})
+
+    # --- Verify initial state ---
+    initial_sidecars = list(data_dir.glob("*.analysis.json"))
+    assert len(initial_sidecars) == 7, f"Expected 7 sidecars, got {len(initial_sidecars)}"
+
+    # Verify UTC filenames span multiple dates (Jan 15 and Jan 16 UTC)
+    filenames = sorted([f.name for f in data_dir.glob("*.meta")])
+    jan15_utc = [f for f in filenames if f.startswith("20260115")]
+    jan16_utc = [f for f in filenames if f.startswith("20260116")]
+    assert len(jan15_utc) >= 2, "Should have emails on Jan 15 UTC"
+    assert len(jan16_utc) >= 2, "Should have emails on Jan 16 UTC (from Chicago evening/night)"
+
+    # --- Call reset_analysis for Jan 15 (Chicago time) ---
+    # Set EMAIL_ARCHIVE_DATA_DIR to use our temp dir
+    old_env = os.environ.get("EMAIL_ARCHIVE_DATA_DIR")
+    os.environ["EMAIL_ARCHIVE_DATA_DIR"] = str(data_dir)
+
+    try:
+        result = reset_analysis(date(2026, 1, 15))
+    finally:
+        if old_env:
+            os.environ["EMAIL_ARCHIVE_DATA_DIR"] = old_env
+        else:
+            os.environ.pop("EMAIL_ARCHIVE_DATA_DIR", None)
+
+    # --- Validate result ---
+    assert result["success"] is True
+    assert result["count"] == 5, f"Expected 5 sidecars cleared, got {result['count']}"
+    # first/last are ISO 8601 in Chicago time (UTC-6 in January)
+    # first: target-1 at 1:00 AM Chicago
+    assert result["first"] == "2026-01-15T01:00:00-06:00", f"Expected first 01:00, got {result['first']}"
+    # last: target-5 at 11:30 PM Chicago
+    assert result["last"] == "2026-01-15T23:30:00-06:00", f"Expected last 23:30, got {result['last']}"
+
+    # --- Verify correct sidecars were cleared ---
+    remaining_sidecars = list(data_dir.glob("*.analysis.json"))
+    assert len(remaining_sidecars) == 2, f"Expected 2 remaining sidecars, got {len(remaining_sidecars)}"
+
+    # The boundary emails should still have their sidecars
+    assert store.has_sidecar("boundary-before", "analysis.json"), "Boundary before should be untouched"
+    assert store.has_sidecar("boundary-after", "analysis.json"), "Boundary after should be untouched"
+
+    # The target emails should NOT have sidecars anymore
+    for i in range(1, 6):
+        assert not store.has_sidecar(f"target-{i}", "analysis.json"), f"target-{i} sidecar should be cleared"
