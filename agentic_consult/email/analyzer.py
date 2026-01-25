@@ -132,13 +132,20 @@ class EmailAnalyzer:
         active_rules = _inject_config_into_rules(raw_active_rules, contacts_config)
 
         # 3. Build Single-Email Prompt
+        # Use whichever body is larger (HTML usually contains more info for bills/statements)
+        body_text = email_data.get("body_text") or ""
+        body_html = email_data.get("body_html") or ""
+        body = body_html if len(body_html) > len(body_text) else body_text
+        if not body:
+            body = email_data.get("snippet", "")
+
         email_payload = [{
             "id": email_data["id"],
             "date": email_data["date"],
             "from": email_data["from"],
             "to": email_data.get("to", ""),
             "subject": email_data["subject"],
-            "body": email_data.get("body_text", "") or email_data.get("snippet", ""),
+            "body": body,
             "labels": email_data.get("labels", [])
         }]
 
