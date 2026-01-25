@@ -185,14 +185,24 @@ ALWAYS provide a `summary`. Extract the useful content - what the user needs to 
 
 **MAX 50 CHARACTERS.** Be concise. The original subject is in `original.subject` if needed.
 
-**For financial emails**, include the dollar amount:
-- "$32.46 Predator: Badlands"
-- "$142.50 electric bill due"
+**If there's a dollar amount central to the email**, always include it:
+- "$32.46 Predator: Badlands" (receipt)
+- "$19.00 field trip due 2/15" (school payment)
+- "401k Q4 balance $50,000" (statement)
+
+**For bill statements**, include min payment, due date, balance, and status (e.g. OVERDUE) if evident:
+- "$55.00 min due 2/13 of $5,000.00"
+- "OVERDUE: $142.50 due 1/15 of $892.00"
 
 **For non-financial emails**, summarize what matters:
 - "Johnny: recess incident, call req"
 - "AirPods shipped, arriving Thu"
 - "Password reset requested"
+
+**If the subject teases but hides the key detail** (clickbait designed to make you open it), extract that detail from the body:
+- Subject "New recurring merchant found" → "New recurring: Pay Me Later (monthly)"
+- Subject "You have a new alert" → "Alert: Card ending 4523 used"
+- Subject "Someone mentioned you" → "@mention by Jane in #general"
 
 ### sender Field
 
