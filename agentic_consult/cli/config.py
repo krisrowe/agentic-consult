@@ -7,6 +7,7 @@ import os
 from agentic_consult.customers import get_active_customers_root
 from agentic_consult.config import load_main_config, save_main_config, get_config_path
 from .user_home import user_home_cli, get_default_user_home_config
+from agentic_consult.sdk.hooks import get_hook_status, install_hook
 
 
 @click.group()
@@ -70,7 +71,7 @@ def config_show():
     """Show current configuration."""
     data = load_main_config()
     path = get_config_path()
-    
+
     # Show resolved paths first
     root = get_active_customers_root()
     click.echo(f"# Global Settings: {path}")
@@ -84,10 +85,18 @@ def config_show():
                 customer_count += 1
     click.echo(f"# Found {customer_count} customer(s).")
 
-    if not data:
-        click.echo("# No global settings.json found (using defaults).")
-    else:
-        click.echo(json.dumps(data, indent=2))
+    # Build output object with settings and precommit status
+    hook_status = get_hook_status()
+    output = {
+        "settings": data if data else {},
+        "precommit": {
+            "hooks": {
+                "installed": hook_status["installed"],
+                "location": hook_status["location"]
+            }
+        }
+    }
+    click.echo(json.dumps(output, indent=2))
 
 @config.command(name='set')
 @click.argument('key')
@@ -128,3 +137,43 @@ def config_set(key, value):
     
     path = save_main_config(data)
     click.echo(f"Updated {real_key} in {path}")
+
+
+# Precommit subgroup
+@config.group(name='precommit')
+def config_precommit():
+    """Manage pre-commit hook configuration."""
+    pass
+
+
+@config_precommit.command(name='show')
+def precommit_show():
+    """Show pre-commit hook status."""
+    status = get_hook_status()
+    output = {
+        "hooks": {
+            "installed": status["installed"],
+            "location": status["location"]
+        }
+    }
+    click.echo(json.dumps(output, indent=2))
+
+
+@config_precommit.command(name='install')
+def precommit_install():
+    """Install the consult pre-commit hook globally.
+
+    Installs to ~/.config/git/hooks/ and configures git core.hooksPath.
+    Idempotent - safe to run multiple times.
+    """
+    result = install_hook()
+
+    if result["success"]:
+        click.secho(f"✅ {result['message']}", fg="green")
+        if result["path"]:
+            click.echo(f"   Location: {result['path']}")
+    else:
+        click.secho(f"❌ {result['message']}", fg="red")
+        if result["path"]:
+            click.echo(f"   Location: {result['path']}")
+        sys.exit(1)
