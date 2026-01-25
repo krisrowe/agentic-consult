@@ -63,7 +63,13 @@ if os.environ.get("K_SERVICE"):
 else:
     transport_security = None  # Let FastMCP use its defaults (protection for localhost)
 
-mcp = FastMCP(__package_name__, transport_security=transport_security)
+mcp = FastMCP(
+    __package_name__, 
+    transport_security=transport_security,
+    stateless_http=True,
+    json_response=True,
+    streamable_http_path="/"
+)
 
 # Log version on module load (appears in Cloud Run startup logs)
 logger.info(f"{__package_name__} MCP server v{__version__}")
