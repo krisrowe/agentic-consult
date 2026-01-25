@@ -472,7 +472,8 @@ def flag_for_reanalysis(message_ids: list[str]) -> dict[str, Any]:
     Returns:
         Dict with 'flagged' count and 'errors' list if any failures.
     """
-    store = _get_email_store()
+    from email_archive import EmailStore
+    store = EmailStore()
     flagged = 0
     errors = []
 
