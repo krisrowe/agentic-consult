@@ -22,7 +22,6 @@ from agentic_consult.mcp.email_processing import load_email_rules, get_cache_dir
 from agentic_consult.chat.triage import get_chat_mentions
 
 logger = logging.getLogger(__name__)
-EMAIL_CACHE_SUBDIR = "emails"
 CONTACTS_CONFIG_FILE = "contacts.yaml"
 REF_MAP_FILE = "ref_map.json"
 
@@ -30,13 +29,6 @@ REF_MAP_FILE = "ref_map.json"
 def _get_package_dir() -> Path:
     """Get the agentic_consult package directory."""
     return Path(__file__).parent.parent
-
-
-def _get_email_cache_dir() -> Path:
-    """Get email cache directory."""
-    cache_dir = get_cache_dir() / EMAIL_CACHE_SUBDIR
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir
 
 
 def _load_app_email_config() -> dict:
@@ -206,72 +198,31 @@ def _assign_shortcodes(message_ids: list[str]) -> dict[str, str]:
     _save_ref_map(data)
     return assignments
 
-def _cache_filename(message_id: str, email_date: str) -> str:
-    safe_id = message_id.replace('/', '_').replace('\\', '_')
-    return f"{safe_id}_{email_date}.json"
-
-def cache_email(email: dict) -> Path:
-    cache_dir = _get_email_cache_dir()
-    message_id = email.get('id', 'unknown')
-    email_date = email.get('date', datetime.now().strftime('%Y-%m-%d'))
-    if isinstance(email_date, datetime):
-        email_date = email_date.strftime('%Y-%m-%d')
-    elif len(email_date) > 10:
-        email_date = email_date[:10]
-    filename = _cache_filename(message_id, email_date)
-    cache_path = cache_dir / filename
-    cached_email = {**email, 'cached_at': datetime.utcnow().isoformat()}
-    with open(cache_path, 'w', encoding='utf-8') as f:
-        json.dump(cached_email, f, indent=2, default=str)
-    return cache_path
-
 def get_cached_emails(message_ids: list[str]) -> dict[str, Any]:
+    """Retrieve emails from GCS archive by message ID.
+
+    Uses EmailStore to fetch emails that were fetched and stored by the fetcher job.
+    """
     if not message_ids:
         return {'messages': []}
-    cache_dir = _get_email_cache_dir()
+
+    from email_archive import EmailStore
+    store = EmailStore()
+
     messages = []
     for message_id in message_ids:
-        safe_id = message_id.replace('/', '_').replace('\\', '_')
-        found = False
-        for cache_file in cache_dir.glob(f"{safe_id}_*.json"):
-            try:
-                with open(cache_file, 'r', encoding='utf-8') as f:
-                    email = json.load(f)
-                    result = {'id': message_id}
-                    result.update(email)
-                    messages.append(result)
-                    found = True
-                    break
-            except Exception:
-                messages.append({'id': message_id, 'error': {'code': 'read_error'}})
-                found = True
-                break
-        if not found:
-            messages.append({'id': message_id, 'error': {'code': 'not_cached'}})
+        try:
+            email = store.get(message_id, include_content=True)
+            if email:
+                messages.append(email)
+            else:
+                messages.append({'id': message_id, 'error': {'code': 'not_cached'}})
+        except Exception as e:
+            logger.warning(f"Failed to retrieve email {message_id}: {e}")
+            messages.append({'id': message_id, 'error': {'code': 'read_error', 'message': str(e)}})
+
     return {'messages': messages}
 
-def cleanup_email_cache() -> int:
-    cache_dir = _get_email_cache_dir()
-    config = _load_app_email_config()
-    cache_config = config.get('cache', {})
-    file_age_days = cache_config.get('cleanup_file_age_days', 7)
-    email_max_age_days = cache_config.get('email_max_age_days', 30)
-    now = datetime.now()
-    file_age_cutoff = now - timedelta(days=file_age_days)
-    email_date_cutoff = now - timedelta(days=email_max_age_days)
-    removed_count = 0
-    for cache_file in cache_dir.glob("*.json"):
-        try:
-            file_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
-            if file_mtime >= file_age_cutoff: continue
-            parts = cache_file.stem.rsplit('_', 1)
-            if len(parts) != 2: continue
-            email_date = datetime.strptime(parts[1], '%Y-%m-%d')
-            if email_date >= email_date_cutoff: continue
-            cache_file.unlink()
-            removed_count += 1
-        except Exception: pass
-    return removed_count
 
 def mark_email_in_review(message_id: str, reverse: bool = False, profile: Optional[str] = None) -> dict[str, Any]:
     from agentic_consult.sdk.gmail import add_label, remove_label
