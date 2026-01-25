@@ -28,7 +28,6 @@ def list_mentions(scan_spaces_limit, unanswered_only, format, days_back, scan_me
     import os
     if os.environ.get('LOG_LEVEL', '').upper() == 'DEBUG':
         logging.basicConfig(level=logging.DEBUG)
-        logging.getLogger('gwsa.sdk.chat.triage').setLevel(logging.DEBUG)
 
     # Parse days_back rules
     tiers = None
