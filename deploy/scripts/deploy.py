@@ -63,6 +63,25 @@ def get_head_sha() -> str:
     return result.stdout.strip()[:12]  # Short SHA
 
 
+def git_status_clean() -> bool:
+    """Check if working tree is clean (no uncommitted or untracked files)."""
+    result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=REPO_ROOT, capture_output=True, text=True
+    )
+    return result.returncode == 0 and not result.stdout.strip()
+
+
+def git_has_unpushed() -> bool:
+    """Check if HEAD has commits not pushed to remote."""
+    result = subprocess.run(
+        ["git", "log", "@{u}..HEAD", "--oneline"],
+        cwd=REPO_ROOT, capture_output=True, text=True
+    )
+    # If no upstream or has unpushed commits
+    return result.returncode != 0 or bool(result.stdout.strip())
+
+
 def load_images_config(ref: str = None) -> dict:
     """Load image definitions from deploy/images.ini, optionally at specific ref."""
     if ref is None:
@@ -202,6 +221,20 @@ Examples:
         help="Run terraform plan instead of apply"
     )
     args = parser.parse_args()
+
+    # Git status checks
+    if not args.ref:
+        if not git_status_clean():
+            print("Error: Working tree has uncommitted changes.", file=sys.stderr)
+            print("Either:", file=sys.stderr)
+            print("  1. Commit your changes first", file=sys.stderr)
+            print("  2. Run with --ref HEAD to deploy current HEAD anyway", file=sys.stderr)
+            sys.exit(1)
+        print(f"Deploying from HEAD (working tree clean)", file=sys.stderr)
+
+    # Warn about unpushed commits
+    if git_has_unpushed():
+        print("Warning: HEAD has unpushed commits. Proceeding anyway.", file=sys.stderr)
 
     # Load settings
     settings = load_settings()
