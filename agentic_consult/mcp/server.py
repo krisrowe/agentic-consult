@@ -930,6 +930,49 @@ async def email_triage_stats(
 
 
 @mcp.tool()
+async def analyze_emails(
+    message_ids: list[str]
+) -> dict[str, Any]:
+    """
+    Analyze specific emails on-demand.
+
+    Runs Gemini analysis on the given email IDs immediately, without waiting
+    for the background analyzer. Use when you need fresh analysis or want to
+    analyze specific emails that haven't been processed yet.
+
+    Args:
+        message_ids: List of Gmail message IDs to analyze (1 or more)
+
+    Returns:
+        {
+            "results": [
+                {
+                    "id": "msg_id",
+                    "action": "archive|review|...",
+                    "rule_id": "...",
+                    "reason": "...",
+                    "summary": "..."
+                },
+                ...
+            ]
+        }
+    """
+    from email_archive import EmailStore
+    from agentic_consult.email.analyzer import EmailAnalyzer
+
+    if not message_ids:
+        return {"error": "message_ids must contain at least one ID"}
+
+    try:
+        analyzer = EmailAnalyzer(store=EmailStore())
+        results = analyzer.process_list(message_ids)
+        return {"results": results}
+    except Exception as e:
+        logger.exception("Error in analyze_emails")
+        return {"error": str(e)}
+
+
+@mcp.tool()
 async def reset_analysis(
     date: str
 ) -> dict[str, Any]:

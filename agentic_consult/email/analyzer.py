@@ -100,13 +100,16 @@ class EmailAnalyzer:
             return {"processed": 0, "status": "idle"}
 
         logger.info(f"Analyzer: Cycle started. (Found: {len(pending)} emails, Limit: {batch_limit})")
-        
+
+        # Process each email individually rather than calling process_list().
+        # This avoids accumulating result objects in memory for large batches.
+        # At this point only the index is loaded; email data is fetched per-item.
         success_count = 0
         for i, item in enumerate(pending, 1):
             try:
                 # Individual item logging for cloud visibility
                 logger.info(f"Analyzer: Processing email {i} of {len(pending)} ({item['id']})")
-                self._process_item(item['id'])
+                self._process_email(item['id'])
                 success_count += 1
             except Exception as e:
                 logger.error(f"Analyzer: Failed to process {item['id']}: {e}")
@@ -117,8 +120,32 @@ class EmailAnalyzer:
             "status": "completed"
         }
 
-    def _process_item(self, msg_id: str):
-        """Loads data for one item and runs the analysis."""
+    def process_list(self, msg_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Analyze specific emails by ID.
+
+        Public method for on-demand analysis of known email IDs.
+        Used by MCP tool and CLI.
+
+        Args:
+            msg_ids: List of Gmail message IDs to analyze
+
+        Returns:
+            List of analysis results (one per email)
+        """
+        results = []
+        for i, msg_id in enumerate(msg_ids, 1):
+            try:
+                logger.info(f"Analyzer: Processing email {i} of {len(msg_ids)} ({msg_id})")
+                result = self._process_email(msg_id)
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Analyzer: Failed to process {msg_id}: {e}")
+                results.append({"id": msg_id, "error": str(e)})
+        return results
+
+    def _process_email(self, msg_id: str) -> Dict[str, Any]:
+        """Loads data for one email and runs the analysis. Returns the result."""
         # 1. Load full email data from SDK
         email_data = self.store.get(msg_id, include_content=True)
         if not email_data:
@@ -224,6 +251,8 @@ class EmailAnalyzer:
             },
             "analysis": result
         })
+
+        return result
 
 
 def reset_analysis(target_date: date) -> Dict[str, Any]:

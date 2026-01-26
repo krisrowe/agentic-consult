@@ -15,11 +15,6 @@ COPY . .
 RUN pip install "email-archive @ git+https://github.com/krisrowe/gmail-extractor.git#subdirectory=email-archive"
 RUN pip install -e .
 
-# --- Analyzer Stage ---
-FROM base AS analyzer
-# Default command: perform one-shot analysis
-CMD ["python", "-m", "agentic_consult.email"]
-
 # --- MCP HTTP Stage ---
 FROM base AS mcp-http
 # Install HTTP dependencies

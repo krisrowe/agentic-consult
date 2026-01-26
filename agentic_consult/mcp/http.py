@@ -2,6 +2,7 @@
 import os
 import logging
 import contextlib
+import secrets
 
 import yaml
 from fastapi import FastAPI, Request
@@ -24,25 +25,48 @@ logger = logging.getLogger("agentic_consult.mcp.http")
 # PAT from environment (injected from Secret Manager in Cloud Run)
 EXPECTED_PAT = os.environ.get("MCP_PERSONAL_ACCESS_TOKEN", "")
 
+# Batch endpoint token (separate from user PAT, for scheduler auth)
+BATCH_AUTH_TOKEN = os.environ.get("BATCH_AUTH_TOKEN", "")
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Validates PAT from header or query param."""
+    """Validates auth tokens - PAT for users, BATCH_AUTH_TOKEN for internal endpoints."""
 
     async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
         # Health check bypass
-        if request.url.path == "/health":
+        if path == "/health":
             return await call_next(request)
 
-        # Extract PAT from header or query param
+        # Extract token from header
         auth_header = request.headers.get("Authorization")
-        pat = None
-
+        token = None
         if auth_header and auth_header.startswith("Bearer "):
-            pat = auth_header.split(" ")[1]
-        else:
-            pat = request.query_params.get("token")
+            token = auth_header.split(" ", 1)[1]
 
-        if not pat:
+        # Internal endpoints (scheduler, admin) use BATCH_AUTH_TOKEN
+        if path.startswith("/internal/"):
+            if not BATCH_AUTH_TOKEN:
+                logger.error("Auth failed: BATCH_AUTH_TOKEN not configured, internal endpoints disabled")
+                return JSONResponse({"error": "Server misconfigured"}, status_code=500)
+
+            if not token:
+                logger.error("Auth failed: No token provided for internal endpoint")
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+            if not secrets.compare_digest(token, BATCH_AUTH_TOKEN):
+                logger.error("Auth failed: Invalid token for internal endpoint")
+                return JSONResponse({"error": "Forbidden"}, status_code=403)
+
+            logger.info(f"Internal auth successful: {path}")
+            return await call_next(request)
+
+        # User endpoints use PAT (header or query param)
+        if not token:
+            token = request.query_params.get("token")
+
+        if not token:
             logger.error("Auth failed: No token provided")
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
@@ -50,7 +74,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.error("Auth failed: MCP_PERSONAL_ACCESS_TOKEN not configured")
             return JSONResponse({"error": "Server misconfigured"}, status_code=500)
 
-        if pat != EXPECTED_PAT:
+        if not secrets.compare_digest(token, EXPECTED_PAT):
             logger.error("Auth failed: Invalid token")
             return JSONResponse({"error": "Forbidden"}, status_code=403)
 
@@ -114,6 +138,21 @@ async def post_email_rules(request: Request):
     except Exception as e:
         logger.error(f"Failed to write email.yaml: {e}")
         return JSONResponse({"error": f"Failed to write config: {e}"}, status_code=500)
+
+
+@app.post("/internal/batch")
+async def internal_batch():
+    """Run batch email analysis. Called by Cloud Scheduler."""
+    from email_archive import EmailStore
+    from agentic_consult.email.analyzer import EmailAnalyzer
+
+    try:
+        analyzer = EmailAnalyzer(store=EmailStore())
+        result = analyzer.process_queue()
+        return result
+    except Exception as e:
+        logger.exception("Batch analysis failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # Mount the MCP streamable HTTP app
