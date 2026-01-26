@@ -20,24 +20,10 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 TERRAFORM_DIR = REPO_ROOT / "deploy" / "terraform"
-IMAGES_INI = REPO_ROOT / "deploy" / "images.ini"
+COMPONENTS_INI = REPO_ROOT / "deploy" / "components.ini"
 
 sys.path.insert(0, str(REPO_ROOT))
 from agentic_consult.paths import load_settings
-
-# Component to terraform resource mapping
-COMPONENT_TARGETS = {
-    "mcp": "google_cloud_run_v2_service.mcp_service",
-    "analyzer": "google_cloud_run_v2_job.analyzer_job",
-    "fetcher": "google_cloud_run_v2_job.fetcher_job",
-    "config": "google_storage_bucket_object.app_resource",
-}
-
-# Components that use image_tag (internal images from this repo)
-INTERNAL_COMPONENTS = {"mcp", "analyzer"}
-
-# Components that use fetcher_tag (external images)
-EXTERNAL_COMPONENTS = {"fetcher"}
 
 
 def run_cmd(cmd: list, cwd=None, capture=False, check=True) -> subprocess.CompletedProcess:
@@ -82,20 +68,20 @@ def git_has_unpushed() -> bool:
     return result.returncode != 0 or bool(result.stdout.strip())
 
 
-def load_images_config(ref: str = None) -> dict:
-    """Load image definitions from deploy/images.ini, optionally at specific ref."""
+def load_components_config(ref: str = None) -> dict:
+    """Load component definitions from deploy/components.ini, optionally at specific ref."""
     if ref is None:
         # Read from working directory
         parser = configparser.ConfigParser()
-        parser.read(IMAGES_INI)
+        parser.read(COMPONENTS_INI)
     else:
         # Read from git at specific ref
         result = subprocess.run(
-            ["git", "show", f"{ref}:deploy/images.ini"],
+            ["git", "show", f"{ref}:deploy/components.ini"],
             cwd=REPO_ROOT, capture_output=True, text=True
         )
         if result.returncode != 0:
-            print(f"Error: Could not read images.ini at ref {ref}", file=sys.stderr)
+            print(f"Error: Could not read components.ini at ref {ref}", file=sys.stderr)
             sys.exit(1)
         parser = configparser.ConfigParser()
         parser.read_string(result.stdout)
@@ -203,9 +189,13 @@ Examples:
   ./cloud deploy mcp --ref abc123   Deploy only MCP from ref abc123
   ./cloud deploy config             Sync config files only
 """)
+    # Load components config to get valid choices
+    components_config = load_components_config()
+    component_targets = {name: cfg.get("terraform") for name, cfg in components_config.items() if cfg.get("terraform")}
+
     parser.add_argument(
         "component", nargs="?",
-        choices=list(COMPONENT_TARGETS.keys()),
+        choices=list(component_targets.keys()),
         help="Component to deploy (default: all)"
     )
     parser.add_argument(
@@ -252,9 +242,20 @@ Examples:
         image_tag = get_head_sha()
     print(f"Image tag: {image_tag}", file=sys.stderr)
 
-    # Load images config (at the ref if specified, else HEAD)
-    images_config = load_images_config(args.ref)
-    fetcher_config = images_config.get("fetcher", {})
+    # Reload config at the specified ref (may differ from HEAD)
+    if args.ref:
+        components_config = load_components_config(args.ref)
+        component_targets = {name: cfg.get("terraform") for name, cfg in components_config.items() if cfg.get("terraform")}
+
+    # Derive component categories from config
+    # - image_components: have 'image' field (need building)
+    # - internal: have 'image' but no 'repo' (use image_tag from this repo)
+    # - external: have 'image' and 'repo' (use ref from config)
+    image_components = [name for name, cfg in components_config.items() if cfg.get("image")]
+    internal_components = {name for name, cfg in components_config.items() if cfg.get("image") and not cfg.get("repo")}
+    external_components = {name for name, cfg in components_config.items() if cfg.get("image") and cfg.get("repo")}
+
+    fetcher_config = components_config.get("fetcher", {})
     fetcher_tag = fetcher_config.get("ref", "latest")
     print(f"Fetcher tag: {fetcher_tag}", file=sys.stderr)
 
@@ -262,14 +263,14 @@ Examples:
     if args.component:
         components = [args.component]
     else:
-        components = ["analyzer", "mcp", "fetcher"]  # All image components
+        components = image_components  # All image components
 
     # Config-only deploy: skip image building
     if args.component == "config":
         print("\nSyncing config files only (no image build)...", file=sys.stderr)
         run_terraform(
             project_id, bucket_name, image_tag, fetcher_tag,
-            target=COMPONENT_TARGETS["config"],
+            target=component_targets["config"],
             plan_only=args.plan,
             dry_run=args.dry_run
         )
@@ -281,14 +282,14 @@ Examples:
         if component == "config":
             continue
 
-        info = images_config.get(component, {})
+        info = components_config.get(component, {})
         image_name = info.get("image")
         if not image_name:
             print(f"Warning: No image config for {component}, skipping", file=sys.stderr)
             continue
 
         # Determine tag for this component
-        if component in INTERNAL_COMPONENTS:
+        if component in internal_components:
             tag = image_tag
         else:
             tag = fetcher_tag
@@ -301,7 +302,7 @@ Examples:
             print(f"  Would build and push", file=sys.stderr)
         else:
             # Build and push
-            if component in INTERNAL_COMPONENTS:
+            if component in internal_components:
                 target = info.get("target")
                 build_and_push_internal(project_id, image_name, tag, args.ref or "HEAD", target)
             else:
@@ -310,7 +311,7 @@ Examples:
 
     # Run terraform
     print("\n[terraform]", file=sys.stderr)
-    target = COMPONENT_TARGETS.get(args.component) if args.component else None
+    target = component_targets.get(args.component) if args.component else None
     run_terraform(
         project_id, bucket_name, image_tag, fetcher_tag,
         target=target,

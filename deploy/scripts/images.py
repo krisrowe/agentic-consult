@@ -22,14 +22,17 @@ from _common import load_settings, error, success, warn, REPO_ROOT
 
 
 def load_images_config():
-    """Load image definitions from deploy/images.ini."""
-    config_path = REPO_ROOT / "deploy" / "images.ini"
+    """Load image definitions from deploy/components.ini."""
+    config_path = REPO_ROOT / "deploy" / "components.ini"
     parser = configparser.ConfigParser()
     parser.read(config_path)
 
+    # Only return components that have an image field
     images = {}
     for section in parser.sections():
-        images[section] = dict(parser[section])
+        cfg = dict(parser[section])
+        if cfg.get("image"):
+            images[section] = cfg
     return images
 
 

@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 
   # GCS backend for remote state storage - TEMPORARILY DISABLED due to billing issue
@@ -30,7 +34,7 @@ variable "service_delete_protection" {
 }
 
 variable "image_tag" {
-  description = "Tag for internal images (analyzer, mcp) - same repo, same ref"
+  description = "Tag for internal images (mcp) - same repo, same ref"
   type        = string
 }
 
@@ -45,9 +49,8 @@ locals {
   region      = "us-central1"
 
   # Image references - tags passed via variables
-  analyzer_image = "gcr.io/${local.project_id}/consult-analyzer:${var.image_tag}"
-  fetcher_image  = "gcr.io/${local.project_id}/gmex-fetcher:${var.fetcher_tag}"
-  mcp_image      = "gcr.io/${local.project_id}/consult-mcp:${var.image_tag}"
+  fetcher_image = "gcr.io/${local.project_id}/gmex-fetcher:${var.fetcher_tag}"
+  mcp_image     = "gcr.io/${local.project_id}/consult-mcp:${var.image_tag}"
 }
 
 provider "google" {
@@ -139,6 +142,30 @@ resource "google_project_iam_member" "run_invoker" {
   member  = "serviceAccount:${google_service_account.analyzer_sa.email}"
 }
 
+# 3b. Batch Auth Token (for scheduler -> MCP internal endpoints)
+# Change rotation_trigger to force token regeneration
+resource "random_password" "batch_token" {
+  length  = 32
+  special = false
+
+  keepers = {
+    rotation_trigger = "1"
+  }
+}
+
+resource "google_secret_manager_secret" "batch_auth_token" {
+  secret_id = "batch-auth-token"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "batch_auth_token" {
+  secret      = google_secret_manager_secret.batch_auth_token.id
+  secret_data = random_password.batch_token.result
+}
+
 # 4a. Cloud Run Job: Fetcher (gmex)
 resource "google_cloud_run_v2_job" "fetcher_job" {
   name                = "gmex-fetcher"
@@ -195,57 +222,7 @@ resource "google_cloud_run_v2_job" "fetcher_job" {
   }
 }
 
-# 4b. Cloud Run Job: Analyzer
-resource "google_cloud_run_v2_job" "analyzer_job" {
-  name                = "consult-analyzer"
-  location            = local.region
-  deletion_protection = var.service_delete_protection
-
-  template {
-    template {
-      service_account = google_service_account.analyzer_sa.email
-
-      containers {
-        image = local.analyzer_image
-
-        env {
-          name  = "EMAIL_ARCHIVE_DATA_DIR"
-          value = "/mnt/gcs/email-archive"
-        }
-
-        env {
-          name  = "CONSULT_CONFIG_DIR"
-          value = "/mnt/gcs/config"
-        }
-
-        # Point directly to secret names for env var injection
-        env {
-          name = "GEMINI_API_KEY"
-          value_source {
-            secret_key_ref {
-              secret  = "gemini-api-key"
-              version = "latest"
-            }
-          }
-        }
-
-        volume_mounts {
-          name       = "gcs-volume"
-          mount_path = "/mnt/gcs"
-        }
-      }
-
-      volumes {
-        name = "gcs-volume"
-        gcs {
-          bucket = google_storage_bucket.data_bucket.name
-        }
-      }
-    }
-  }
-}
-
-# 4c. Cloud Run Service: MCP Server (HTTP endpoint)
+# 4b. Cloud Run Service: MCP Server (HTTP endpoint)
 resource "google_cloud_run_v2_service" "mcp_service" {
   name                = "consult-mcp"
   location            = local.region
@@ -290,6 +267,17 @@ resource "google_cloud_run_v2_service" "mcp_service" {
       env {
         name  = "TRIAGE_DISABLE_CHAT"
         value = "true"
+      }
+
+      # Batch auth token (for scheduler -> /internal/* endpoints)
+      env {
+        name = "BATCH_AUTH_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.batch_auth_token.secret_id
+            version = "latest"
+          }
+        }
       }
 
       # Gmail OAuth credentials for label operations (archive, mark review)
@@ -375,13 +363,13 @@ resource "google_cloud_scheduler_job" "periodic_fetch" {
   }
 }
 
-# 5b. Trigger: Analyzer (runs every 30 mins at :05, :35 - after fetcher)
+# 5b. Trigger: Batch Analysis (runs every 30 mins, offset by 5min from fetch)
 resource "google_cloud_scheduler_job" "periodic_analysis" {
   name             = "trigger-email-analysis"
-  description      = "Triggers the agentic-consult analyzer job every 30 minutes"
+  description      = "Triggers batch email analysis on MCP service"
   schedule         = "5,35 * * * *"
   time_zone        = "Etc/UTC"
-  attempt_deadline = "320s"
+  attempt_deadline = "600s"
 
   retry_config {
     retry_count = 1
@@ -389,10 +377,10 @@ resource "google_cloud_scheduler_job" "periodic_analysis" {
 
   http_target {
     http_method = "POST"
-    uri         = "https://${local.region}-run.googleapis.com/v2/projects/${local.project_id}/locations/${local.region}/jobs/${google_cloud_run_v2_job.analyzer_job.name}:run"
+    uri         = "${google_cloud_run_v2_service.mcp_service.uri}/internal/batch"
 
-    oauth_token {
-      service_account_email = google_service_account.analyzer_sa.email
+    headers = {
+      "Authorization" = "Bearer ${random_password.batch_token.result}"
     }
   }
 
@@ -400,4 +388,7 @@ resource "google_cloud_scheduler_job" "periodic_analysis" {
   lifecycle {
     ignore_changes = [schedule]
   }
+
+  depends_on = [google_secret_manager_secret_version.batch_auth_token]
 }
+

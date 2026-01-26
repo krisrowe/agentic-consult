@@ -6,7 +6,7 @@ For operational commands and usage, see [README.md](README.md).
 
 ## Overview
 
-The email triage system consists of two Cloud Run Jobs orchestrated by Cloud Scheduler:
+The email triage system consists of a Cloud Run Job for fetching and a Cloud Run Service for analysis/MCP:
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -20,12 +20,16 @@ The email triage system consists of two Cloud Run Jobs orchestrated by Cloud Sch
             │                             │
             ▼                             ▼
 ┌──────────────────────┐      ┌──────────────────────┐
-│   gmex-fetcher       │      │   consult-analyzer   │
-│   (Cloud Run Job)    │      │   (Cloud Run Job)    │
+│   gmex-fetcher       │      │   consult-mcp        │
+│   (Cloud Run Job)    │      │   (Cloud Run Service)│
 │                      │      │                      │
-│   Fetches emails     │      │   Analyzes emails    │
-│   from Gmail API     │      │   using Gemini       │
-└──────────┬───────────┘      └──────────┬───────────┘
+│   Fetches emails     │      │   /internal/batch    │
+│   from Gmail API     │      │   Analyzes emails    │
+└──────────┬───────────┘      │   using Gemini       │
+           │                  │                      │
+           │                  │   /mcp, /user/*      │
+           │                  │   MCP tools + API    │
+           │                  └──────────┬───────────┘
            │                             │
            ▼                             ▼
 ┌────────────────────────────────────────────────────────────────┐
@@ -38,13 +42,23 @@ The email triage system consists of two Cloud Run Jobs orchestrated by Cloud Sch
 └────────────────────────────────────────────────────────────────┘
 ```
 
+### Internal Endpoint Auth
+
+The `/internal/*` endpoints (like `/internal/batch`) use a separate auth token from user PAT:
+
+| Secret | Purpose |
+|--------|---------|
+| `batch-auth-token` | Terraform-generated, injected into scheduler header and Cloud Run env |
+
+This keeps internal endpoints isolated from user auth and allows rotation via Terraform.
+
 ## Repository Responsibilities
 
 | Repo | Artifact | Responsibility |
 |------|----------|----------------|
 | `gmail-extractor` | `gcr.io/.../gmex-fetcher` | Fetch emails from Gmail, store in archive |
-| `agentic-consult` | `gcr.io/.../consult-analyzer` | Analyze emails with Gemini |
-| `agentic-consult` | Terraform + CLI | Deploy and manage both jobs |
+| `agentic-consult` | `gcr.io/.../consult-mcp` | MCP tools + batch analysis via `/internal/batch` |
+| `agentic-consult` | Terraform + CLI | Deploy and manage infrastructure |
 
 Each repo owns its Docker image. The terraform in agentic-consult references both images.
 
@@ -122,8 +136,13 @@ variable "bucket_name" {
   type        = string
 }
 
-variable "analyzer_tag" {
-  description = "Image tag for consult-analyzer"
+variable "image_tag" {
+  description = "Tag for internal images (consult-mcp)"
+  type        = string
+}
+
+variable "fetcher_tag" {
+  description = "Tag for external fetcher image"
   type        = string
 }
 ```
