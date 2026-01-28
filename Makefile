@@ -1,9 +1,17 @@
-.PHONY: install venv docker-build push
+.PHONY: install venv docker-build push setup test test-integration test-all precommit precommit-verbose run-analyzer cloud-init cloud-status cloud-pre-deploy
 
 # GCP project for container registry (override with: make push PROJECT=my-project)
 PROJECT ?= $(shell gcloud config get-value project 2>/dev/null)
 IMAGE_NAME = consult-analyzer
 IMAGE_TAG ?= latest
+
+# Create and configure the virtual environment
+setup:
+	@if [ ! -d ".venv" ]; then \
+		echo "Virtual environment not found. Creating it..."; \
+		python3 -m venv .venv; \
+		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
+	fi
 
 install:
 	@command -v pipx >/dev/null 2>&1 || (echo "pipx not found; please install pipx or run 'make venv'"; exit 1)
@@ -17,42 +25,19 @@ clean:
 	find . -type d -name "*.egg-info" -exec rm -rf {} +
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
 
-build: clean
-	python3 -m venv .venv
-	. .venv/bin/activate && pip install --upgrade pip
-	. .venv/bin/activate && pip install -e '.[dev]'
+build: clean setup
 	. .venv/bin/activate && pytest
 
-test:
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Creating it..."; \
-		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
-	fi
+test: setup
 	@. .venv/bin/activate && PYTHONPATH=. pytest tests/unit
 
-test-integration:
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Creating it..."; \
-		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
-	fi
+test-integration: setup
 	@. .venv/bin/activate && PYTHONPATH=. pytest tests/integration
 
-test-all:
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Creating it..."; \
-		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
-	fi
+test-all: setup
 	@. .venv/bin/activate && PYTHONPATH=. pytest tests/
 
-precommit:
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Creating it..."; \
-		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
-	fi
+precommit: setup
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "Running precommit checks..."
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -82,19 +67,14 @@ precommit:
 		exit 1; \
 	fi
 
-precommit-verbose:
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Creating it..."; \
-		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
-	fi
+precommit-verbose: setup
 	@echo "Running tests..."
 	@. .venv/bin/activate && pytest
 	@echo ""
 	@echo "Running pre-commit checks via CLI"
 	@export PYTHONPATH=${PYTHONPATH}:. && .venv/bin/python -m agentic_consult precommit
 
-run-analyzer:
+run-analyzer: setup
 	@. .venv/bin/activate && PYTHONPATH=. python3 -m agentic_consult.email.analyzer
 
 # ============================================
@@ -103,30 +83,13 @@ run-analyzer:
 # These targets let deployers use the SDK without pipx install.
 # Run from repo root. Uses local code, no version mismatch.
 
-.PHONY: cloud-init cloud-status cloud-pre-deploy
-
-cloud-init:
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Creating it..."; \
-		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
-	fi
+cloud-init: setup
 	@. .venv/bin/activate && PYTHONPATH=. python -m agentic_consult.cli.main cloud init $(ARGS)
 
-cloud-status:
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Creating it..."; \
-		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
-	fi
+cloud-status: setup
 	@. .venv/bin/activate && PYTHONPATH=. python -m agentic_consult.cli.main cloud status
 
-cloud-pre-deploy:
-	@if [ ! -d ".venv" ]; then \
-		echo "Virtual environment not found. Creating it..."; \
-		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
-	fi
+cloud-pre-deploy: setup
 	@. .venv/bin/activate && PYTHONPATH=. python -m agentic_consult.cli.main cloud pre-deploy
 
 # Full deployment workflow: test -> build -> push -> show terraform commands

@@ -104,7 +104,17 @@ consult precommit
 consult precommit --include-ignored
 ```
 
-## Workflow
+## Design Principles
+
+1.  **Favor Sociable Unit Tests**: Avoid mocking internal project collaborators. Mock only at the system boundary (Network I/O, Third-Party APIs). See [TESTING.md](TESTING.md).
+2.  **SDK/CLI Separation**: Business logic belongs in the SDK (`agentic_consult/sdk/` or appropriate domain modules). The CLI (`agentic_consult/cli/`) is a thin wrapper.
+3.  **Makefile-First Automation**: The `Makefile` is the primary interface for all development tasks.
+    *   **One Command to Rule Them All**: Every task (testing, building, scanning) should be achievable through a single `make` command.
+    *   **Zero Manual Setup**: Contributors should never need to manually create virtual environments, activate them, or install dependencies as separate steps.
+    *   **Auto-Initialization**: Targets must automatically detect and repair missing prerequisites (like a missing `.venv`) before running.
+    *   **Transparency**: While `make` provides a convenient shortcut, it should remain clear what is happening under the hood (e.g., by logging the steps being performed).
+
+## Development Workflow
 
 1. **Create feature branch**
    ```bash
