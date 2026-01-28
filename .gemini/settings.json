@@ -1,6 +1,9 @@
 {
   "context": {
-    "fileName": "GEMINI.md",
+    "fileName": [
+      "GEMINI.md",
+      "CONTRIBUTING.md"
+    ],
     "includeDirectories": [
       "../gworkspace-access"
     ]
