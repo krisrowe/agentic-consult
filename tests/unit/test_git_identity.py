@@ -60,7 +60,6 @@ def test_identity_pristine_history_but_impending_mismatch_fail(tmp_path):
     assert not result.passed
     assert any("History has" in f for f in result.findings)
 
-@pytest.mark.skip(reason="Pre-existing failure - needs investigation")
 def test_identity_mixed_history_no_local_fail(tmp_path):
     """Scenario: Mixed history, no local override -> FAIL"""
     repo = tmp_path / "mixed"
