@@ -28,6 +28,7 @@ http = [
 ]
 dev = [
     "pytest>=7.0",
+    "pytest-timeout",
     "jsonschema>=4.0",
 ]
 

@@ -8,7 +8,7 @@ Use the `config_dir` fixture to get the isolated config path.
 """
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 import yaml
@@ -62,7 +62,7 @@ def test_end_to_end(config_dir, tmp_path, monkeypatch):
     # Email 1: Newsletter -> Archive
     store.save(
         "msg-001",
-        datetime.utcnow(),
+        datetime.now(timezone.utc),
         {"Subject": "Weekly Newsletter", "From": "sender@example.com"},
         {"body_text": "Content"}
     )
@@ -77,7 +77,7 @@ def test_end_to_end(config_dir, tmp_path, monkeypatch):
     # Email 2: Failed Payment -> Review
     store.save(
         "msg-002",
-        datetime.utcnow(),
+        datetime.now(timezone.utc),
         {"Subject": "Payment Failed", "From": "bank@example.com"},
         {"body_text": "Your payment failed."}
     )
