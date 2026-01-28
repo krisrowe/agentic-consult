@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import textwrap
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, Union
 
@@ -341,7 +341,7 @@ def fetch_triage_pool(
                 continue
 
             # Merge for frontend
-            item_date = raw.get('date', datetime.utcnow().isoformat())
+            item_date = raw.get('date', datetime.now(timezone.utc).isoformat())
             entry = {**analysis, "id": msg_id, "date": item_date}
             entry["from"] = raw.get("from", "")
             entry["subject"] = raw.get("subject", "")
