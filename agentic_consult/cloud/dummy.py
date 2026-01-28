@@ -70,6 +70,9 @@ class DummyCloudProvider(CloudProvider):
                 return pid
         return ""
 
+    def get_current_account(self) -> str:
+        return "test-user@example.com"
+
     def project_exists(self, project_id: str) -> bool:
         return project_id in self.projects
 

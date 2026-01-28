@@ -263,9 +263,8 @@ def read_cloud_status(
         return CloudStatus(
             pre_deploy=pre_deploy,
             deploy=[],
-            guidance=["./cloud init"],
-            deploy_ready=False,
-            config_saved=False,
+            guidance=[GuidanceGroup(items=["./cloud init"])],
+            status="not_deploy_ready",
         )
 
     # 1. Check project

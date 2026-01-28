@@ -88,6 +88,10 @@ def cloud_init(
     """
     # --- PHASE 1: VERIFICATION (READ-ONLY) ---
 
+    # 0. Identify User
+    current_account = provider.get_current_account()
+    context.log(f"Active identity: {current_account}")
+
     # 1. Resolve Project: options > existing config > label discovery
     project_id = (
         options.project or
@@ -98,8 +102,20 @@ def cloud_init(
     if not project_id:
         return InitResult(
             success=False,
-            error="Could not determine Project ID. Pass --project or label your project."
+            error=(
+                f"Could not find project with label '{APP_SLUG}=default' accessible to {current_account}.\n"
+                "To fix:\n"
+                "1. Pass project explicitly: ./cloud init --project=<project-id>\n"
+                "2. Or label an existing project:\n"
+                f"   gcloud projects update <project-id> --update-labels={APP_SLUG}=default\n"
+                "3. Or use a different account:\n"
+                "   List available: gcloud auth list\n"
+                "   Switch active:  gcloud config set account <email>\n"
+                "   Login new:      gcloud auth login"
+            )
         )
+
+    context.log(f"Resolved Project ID: {project_id}")
 
     # 2. Validate project exists (if from config, might be stale/inaccessible)
     if not options.project and existing_config.get("project_id"):

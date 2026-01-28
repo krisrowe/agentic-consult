@@ -210,3 +210,25 @@ def test_project_override_updates_result(cloud_config):
 
     assert result.success, f"Failed: {result.error}"
     assert result.project_id == "test-project-123"
+
+
+def test_init_real_gcloud_not_logged_in(monkeypatch, tmp_path):
+    """Integration test: init reports 'not logged in' when gcloud has no active account.
+    
+    Uses real GCloudProvider with isolated CLOUDSDK_CONFIG.
+    """
+    from agentic_consult.cloud.gcloud import GCloudProvider
+    
+    # Isolate gcloud config to simulate logged-out state
+    monkeypatch.setenv("CLOUDSDK_CONFIG", str(tmp_path))
+    
+    provider = GCloudProvider()
+    options = InitOptions()
+    context = InitContext()
+
+    result = cloud_init(provider, options, {}, context)
+
+    assert not result.success
+    assert "Active identity: none (not logged in)" in str(result.error)
+    assert "gcloud auth login" in str(result.error)
+

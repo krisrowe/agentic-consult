@@ -35,6 +35,20 @@ class GCloudProvider(CloudProvider):
         except subprocess.CalledProcessError:
             return ""
 
+    def get_current_account(self) -> str:
+        try:
+            res = _run_cmd([
+                "gcloud", "config", "get-value", "account"
+            ], capture=True)
+            output = res.stdout.strip()
+            if output == "(unset)":
+                return "none (not logged in)"
+            return output
+        except FileNotFoundError:
+            return "none (gcloud not installed)"
+        except subprocess.CalledProcessError:
+            return "unknown error"
+
     def project_exists(self, project_id: str) -> bool:
         try:
             _run_cmd([

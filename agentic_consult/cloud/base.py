@@ -19,6 +19,11 @@ class CloudProvider(ABC):
         pass
 
     @abstractmethod
+    def get_current_account(self) -> str:
+        """Get the currently active account email. Returns 'unknown' on error."""
+        pass
+
+    @abstractmethod
     def project_exists(self, project_id: str) -> bool:
         """Check if project exists and is accessible."""
         pass
