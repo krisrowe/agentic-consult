@@ -725,3 +725,32 @@ Later: merge fix to repo → rebuild → deploy → back to normal
 
 Config-only deploys to GCS are an escape hatch for emergencies, not the normal workflow.
 The WARN logging alerts when drift exists so it can be resolved.
+
+## 16. Core Design Principles
+
+### A. SDK Layering Strategy
+Business logic belongs exclusively in the SDK (`agentic_consult/sdk/` or appropriate domain modules). The SDK is the stable core; all external interfaces are thin clients.
+*   **SDK**: Pure Python functions, dataclasses, and exceptions. No `click`, `argparse`, `fastmcp`, or `sys.exit`. Returns data, not text.
+*   **Clients**: The CLI (`agentic_consult/cli/`), MCP Server (`agentic_consult/mcp/`), and other apps are equal consumers of the SDK. They handle transport, formatting, and user interaction, but delegation logic stays in the SDK.
+
+### B. Sociable Unit Testing
+We prioritize tests that verify full features or SDK transactions end-to-end without network I/O over isolated, granular "Solitary" unit tests.
+*   **Mock Boundary**: Only mock at the system edge (Network I/O, Third-Party APIs).
+*   **Real Collaborators**: Use real internal helper classes and file system operations (via temp dirs).
+*   **Deceptiveness of Mocks**: We avoid mocking internal logic and file systems because mocks are inherently deceptive; they can pass even when the underlying integration is broken. Our sociable strategy provides real end-to-end confidence by exercising the actual code paths.
+*   **Environment-Based Isolation**: We use environment variables (e.g., `CONSULT_CONFIG_DIR`) to redirect configuration and data paths to isolated temporary directories during tests. This allows us to test real disk I/O paths (which are fast, <10ms) safely and authentically, ensuring the code works "for real" without risking user data or system state.
+*   **Automated Isolation & Cleanup**: Test setup should establish OS-managed or Python-managed temporary directories (e.g., using `pytest`'s `tmp_path` fixture or `tempfile`). This ensures per-test isolation and guarantees cleanup is handled systematically by the environment.
+*   **Zero Repo Pollution**: Temporary test locations **must never** be created within the repository directory structure. They should be located in system-managed temporary paths (e.g., `/tmp` or its equivalent) to eliminate any risk of repo corruption, local file pollution, or accidental contamination of the git history.
+*   **Reference**: See [TESTING.md](TESTING.md) for the complete philosophy.
+
+### C. Makefile-First Automation
+The `Makefile` is the authoritative interface for all development tasks.
+*   **Single Entry Point**: Every task (test, build, scan) is achievable via a single `make` command.
+*   **Self-Healing**: Targets automatically detect and repair missing prerequisites (like `.venv`) via the `setup` target.
+*   **Zero Manual Setup**: Manual venv creation or activation should never be required for standard workflows.
+
+### D. Centralized Path Authority
+All filesystem paths (configuration, data, cache, etc.) must be resolved via a centralized internal API (e.g., `agentic_consult.paths`).
+*   **One Source of Truth**: Path resolution logic must not be scattered or duplicated.
+*   **Env Var Overrides**: Centralized functions must prioritize optional environment variable overrides (e.g., `CONSULT_CONFIG_DIR`) before falling back to XDG defaults or user-configured paths.
+*   **Workstation/Production Safety**: This architecture enables tests to reliably redirect all I/O to isolated temporary directories. This is critical for developers whose workstations also serve as their production environment, as it eliminates the risk of tests accidentally contaminating or corrupting real user data or system state.
