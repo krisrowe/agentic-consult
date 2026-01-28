@@ -230,6 +230,6 @@ def test_init_real_gcloud_not_logged_in(monkeypatch, tmp_path):
     result = cloud_init(provider, options, {}, context)
 
     assert not result.success
-    assert "Active identity: none (not logged in)" in str(result.error)
+    assert "No active Google Cloud account detected" in str(result.error)
     assert "gcloud auth login" in str(result.error)
 

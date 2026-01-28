@@ -92,6 +92,18 @@ def cloud_init(
     current_account = provider.get_current_account()
     context.log(f"Active identity: {current_account}")
 
+    if current_account.startswith("none"):
+        return InitResult(
+            success=False,
+            error=(
+                "No active Google Cloud account detected.\n"
+                "To fix, please log in or select an account:\n"
+                "   Login new:      gcloud auth login\n"
+                "   List available: gcloud auth list\n"
+                "   Switch active:  gcloud config set account <email>"
+            )
+        )
+
     # 1. Resolve Project: options > existing config > label discovery
     project_id = (
         options.project or
