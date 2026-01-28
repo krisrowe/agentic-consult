@@ -51,20 +51,33 @@ The tool separates Calendar Invites into a distinct `invites` list in the respon
 
 ## DSL & Command Handling
 
-The tool output includes a "Suggested Actions" block using a shorthand DSL.
-If the user replies with these commands (e.g., `do rev A1 B2`), you must:
-1.  **Resolve Refs**: Look up the `ref` (e.g., "A1") in the tool output table to find the corresponding `id` (Gmail Message ID).
-2.  **Execute Tool**: Call the appropriate tool for the command:
+Users can respond with shorthand commands. When processing these:
+1.  **Resolve Refs**: Look up the `ref` (e.g., "A1") to find the corresponding `id` (Gmail Message ID).
+2.  **Execute Tool**: Call the appropriate tool:
     - `do rev <refs>`   → `mark_email_in_review(message_id=id)`
     - `do task <refs>`  → Create a task for each, then `archive_email(message_id=id)`
     - `do arc <refs>`   → `archive_email(message_id=id)`
     - `do sum <refs>`   → `get_cached_emails(message_ids=[id])` (Summarize content)
     - `do show <refs>`  → `get_cached_emails(message_ids=[id])` (Show full content)
-    - `do batch`        → Present next batch from pool, including any unaddressed items (no tool call)
+    - `do batch`        → Present next batch from pool (no tool call)
+    - `ok` / `ok`    → Execute the proposed command(s) for the batch
 
-**Example:**
-User: "do rev A1"
-Agent: Finds A1 in table -> ID "19b9..." -> Calls `mark_email_in_review(message_id="19b9...")`
+**Always propose commands:** After showing a batch, propose specific command(s) the user
+can approve or modify. Include `ok` plus alternatives.
+
+**Single-action batch:**
+```
+Proposed: `do arc A1 A2 A3 A4 A5`
+Respond: `ok` | `ok except do rev A2` | other
+```
+
+**Mixed batch (last ~5 emails):**
+```
+Proposed:
+  do arc A1 A2 A3
+  do rev B1 B2
+Respond: `ok` | `ok except do rev A2` | other
+```
 
 ## Presentation Guidance
 
@@ -72,7 +85,7 @@ Agent: Finds A1 in table -> ID "19b9..." -> Calls `mark_email_in_review(message_
 time, then wait for user response before showing the next. Do NOT show multiple
 batches at once - this overwhelms users and forces complex multi-part responses.
 
-**Batch Flow:** Show batch → invite confirmation ("agree" to approve, or give
+**Batch Flow:** Show batch → invite confirmation ("ok" to approve, or give
 alternate guidance) → execute actions → show next batch → repeat until pool exhausted.
 
 **NEVER mix recommendations:** Each batch must have the SAME recommended_action.
@@ -109,7 +122,7 @@ Dictionary with:
 - **emails**: List of email objects (see fields below)
 - **invites**: Calendar invites requiring availability check
 - **chat_mentions**: Google Chat mentions requiring attention
-- **instructions**: Pre-formatted suggestions (optional - you can format from JSON instead)
+- **instructions**: Reminder to follow this docstring (ignore - format from JSON)
 - **stats**: Processing statistics
 
 ### Email object example
@@ -168,8 +181,43 @@ Map the JSON to a table using the display-ready fields:
 | A3  | S 18JA | Amazon      | AirPods shipped, arriving Thu  |
 ...
 
-Respond: `agree` or `agree except do rev A2`
+Respond: `ok` or `ok except do rev A2`
 ```
+
+### Audience Icons (Workspace only)
+
+The `audience` field indicates how the email was addressed:
+- 👤 DIRECT - sent directly to user
+- 👥 GROUP - sent to a group/list
+- 🔔 MENTION - user was @mentioned
+- 📢 BROADCAST - mass distribution
+
+**When to show icons:** Only for Google Workspace accounts (non-gmail.com profiles).
+For @gmail.com accounts, almost everything is DIRECT - the icon column is noise.
+Skip it entirely for gmail.com profiles.
+
+**Workspace format (with icons):**
+```
+| Ref |   | When   | From        | Summary                   |
+|-----|---|--------|-------------|---------------------------|
+| A1  | 👥 | 10:06P | IT-announce | System maintenance Sat    |
+```
+
+### Debug View (on demand)
+
+If the user questions recommendations, re-display the current batch with rule/reason columns:
+
+```
+### Archive (5 receipts)
+| Ref | When   | From        | Summary              | Rule     | Reason                 |
+|-----|--------|-------------|----------------------|----------|------------------------|
+| A1  | 10:06P | Google Play | $32.46 Predator...   | receipts | purchase confirmation  |
+| A2  | Yester | DoorDash    | $23.54 Market St...  | receipts | delivery receipt       |
+...
+```
+
+Use `rule_or_reason` from each email object. Only add these columns when the user
+wants to understand why emails got their recommendations - they clutter the default view.
 
 ### recommended_action values
 

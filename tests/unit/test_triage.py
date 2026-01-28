@@ -101,5 +101,5 @@ def test_end_to_end(config_dir, tmp_path, monkeypatch):
     assert recs["msg-001"]["recommended_action"] == "archive"
     assert recs["msg-002"]["recommended_action"] == "review"
 
-    # Verify instructions were generated
-    assert "Triage Suggestions" in result["instructions"]
+    # Verify instructions point to docstring (actual formatting is agent's job)
+    assert "docstring" in result["instructions"]
