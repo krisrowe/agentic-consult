@@ -394,21 +394,29 @@ def get_user_timezone() -> str:
 
 
 def get_user_datetime() -> datetime:
-    """Get current datetime in user's configured timezone.
+    """Get current datetime in user's configured timezone."""
+    from datetime import timezone
+    return localize_datetime(datetime.now(timezone.utc))
 
-    Reads timezone from email.yaml settings. Falls back to UTC
-    if not configured or if timezone is invalid.
 
-    Returns:
-        datetime: Current datetime in user's timezone.
+def localize_datetime(dt: datetime) -> datetime:
+    """Convert a datetime object to the user's configured timezone.
+
+    If the input is naive, it is assumed to be UTC.
     """
     from zoneinfo import ZoneInfo
+    from datetime import timezone
+    
     tz_name = get_user_timezone()
     try:
-        return datetime.now(ZoneInfo(tz_name))
-    except Exception as e:
-        logger.debug(f"Invalid timezone {tz_name}: {e}")
-        return datetime.now(ZoneInfo("UTC"))
+        target_tz = ZoneInfo(tz_name)
+    except Exception:
+        target_tz = ZoneInfo("UTC")
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+        
+    return dt.astimezone(target_tz)
 
 
 def backup_config_file(file_path: Path) -> Optional[Path]:

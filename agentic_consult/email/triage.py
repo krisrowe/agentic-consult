@@ -16,7 +16,13 @@ from typing import Any, Callable, Literal, Optional, Union
 
 import yaml
 
-from agentic_consult.config import load_app_config, get_consult_config_dir, get_user_datetime, load_updateable
+from agentic_consult.config import (
+    load_app_config, 
+    get_consult_config_dir, 
+    get_user_datetime, 
+    load_updateable,
+    localize_datetime
+)
 from agentic_consult.gemini import GeminiAPIClient, GeminiJSONParseError, GeminiJSONExtractionError
 from agentic_consult.mcp.email_processing import load_email_rules, get_cache_dir
 from agentic_consult.chat.triage import get_chat_mentions
@@ -260,6 +266,26 @@ def _prepare_emails_for_prompt(emails: list[dict]) -> str:
 EXPECTED_ANALYSIS_FREQ_MINS = 30  # Warn if emails lack analysis longer than this
 
 
+def _localize_date(date_val: Union[str, datetime, None]) -> str:
+    """Convert a date (ISO string or obj) to the user's configured timezone."""
+    if date_val is None:
+        return get_user_datetime().isoformat()
+        
+    dt = None
+    if isinstance(date_val, datetime):
+        dt = date_val
+    elif isinstance(date_val, str):
+        try:
+            dt = datetime.fromisoformat(date_val)
+        except ValueError:
+            return date_val
+
+    if dt:
+        return localize_datetime(dt).isoformat()
+    
+    return str(date_val)
+
+
 def fetch_triage_pool(
     review_status: Literal["new", "reviewing", "all"] = "all",
     limit: int = 5,
@@ -275,7 +301,7 @@ def fetch_triage_pool(
 
     Returns:
         Dict containing:
-        - emails: List of email recommendations
+        - emails: List of email objects with dates localized to user config
         - invites: List of calendar invite recommendations
         - chat_mentions: List of chat mentions requiring attention
         - instructions: Agent instructions for processing
@@ -340,8 +366,9 @@ def fetch_triage_pool(
                 skipped_no_analysis += 1
                 continue
 
-            # Merge for frontend
-            item_date = raw.get('date', datetime.now(timezone.utc).isoformat())
+            # Merge for frontend and localize date
+            # Raw date is expected to be UTC ISO string from storage
+            item_date = _localize_date(raw.get('date'))
             entry = {**analysis, "id": msg_id, "date": item_date}
             entry["from"] = raw.get("from", "")
             entry["subject"] = raw.get("subject", "")
