@@ -728,10 +728,10 @@ The WARN logging alerts when drift exists so it can be resolved.
 
 ## 16. Core Design Principles
 
-### A. SDK/CLI Separation
-Business logic belongs in the SDK (`agentic_consult/sdk/` or appropriate domain modules). The CLI (`agentic_consult/cli/`) is a thin wrapper.
-*   **SDK**: Pure Python functions, dataclasses, and exceptions. No `click`, `argparse`, or `sys.exit`. Returns data.
-*   **CLI**: Handles user input, formatting, and exit codes. Calls SDK functions.
+### A. SDK Layering Strategy
+Business logic belongs exclusively in the SDK (`agentic_consult/sdk/` or appropriate domain modules). The SDK is the stable core; all external interfaces are thin clients.
+*   **SDK**: Pure Python functions, dataclasses, and exceptions. No `click`, `argparse`, `fastmcp`, or `sys.exit`. Returns data, not text.
+*   **Clients**: The CLI (`agentic_consult/cli/`), MCP Server (`agentic_consult/mcp/`), and other apps are equal consumers of the SDK. They handle transport, formatting, and user interaction, but delegation logic stays in the SDK.
 
 ### B. Sociable Unit Testing
 We prioritize tests that verify full features or SDK transactions end-to-end without network I/O over isolated, granular "Solitary" unit tests.
