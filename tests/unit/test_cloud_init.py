@@ -12,7 +12,8 @@ def test_init_fails_without_project(cloud_config):
     result = cloud_init(provider, options, {}, context)
 
     assert not result.success
-    assert "Could not determine Project ID" in result.error
+    assert "Could not find project with label 'agentic-consult=default'" in result.error
+    assert "active:  gcloud config set account" in result.error
 
 
 def test_init_fails_missing_secrets_non_interactive(cloud_config):

@@ -10,7 +10,7 @@ setup:
 	@if [ ! -d ".venv" ]; then \
 		echo "Virtual environment not found. Creating it..."; \
 		python3 -m venv .venv; \
-		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]'; \
+		. .venv/bin/activate && pip install --upgrade pip && pip install -e '.[dev]' --index-url https://pypi.org/simple; \
 	fi
 
 install:

@@ -41,7 +41,7 @@ class GCloudProvider(CloudProvider):
                 "gcloud", "config", "get-value", "account"
             ], capture=True)
             output = res.stdout.strip()
-            if output == "(unset)":
+            if output == "(unset)" or not output:
                 return "none (not logged in)"
             return output
         except FileNotFoundError:
