@@ -106,15 +106,15 @@ consult precommit --include-ignored
 
 ## Design Principles
 
-1.  **Favor Sociable Unit Tests**: Avoid mocking internal project collaborators. Mock only at the system boundary (Network I/O, Third-Party APIs). See [TESTING.md](TESTING.md).
-2.  **SDK/CLI Separation**: Business logic belongs in the SDK (`agentic_consult/sdk/` or appropriate domain modules). The CLI (`agentic_consult/cli/`) is a thin wrapper.
-3.  **Makefile-First Automation**: The `Makefile` is the primary interface for all development tasks.
-    *   **One Command to Rule Them All**: Every task (testing, building, scanning) should be achievable through a single `make` command.
-    *   **Zero Manual Setup**: Contributors should never need to manually create virtual environments, activate them, or install dependencies as separate steps.
-    *   **Auto-Initialization**: Targets must automatically detect and repair missing prerequisites (like a missing `.venv`) before running.
-    *   **Transparency**: While `make` provides a convenient shortcut, it should remain clear what is happening under the hood (e.g., by logging the steps being performed).
+See **[DESIGN.md](DESIGN.md)** for the project's core design principles, including:
+- SDK/CLI Separation
+- Sociable Unit Testing
+- Makefile-First Automation
+- Centralized Path Authority
 
 ## Development Workflow
+
+1. **Create feature branch**
 
 1. **Create feature branch**
    ```bash
@@ -146,32 +146,6 @@ consult precommit --include-ignored
    ```bash
    git push origin feature/your-feature
    ```
-
-## Official Gemini CLI Usage
-
-When using the `gemini` CLI for automated processing (e.g., in `customers refresh`), follow these best practices for clean, predictable, and fast output:
-
-### Disabling Extensions and MCP
-To prevent `gemini` from loading extensions or MCP servers (which is slow and can clutter output), use empty strings for the following flags. This reduces startup time from several seconds to milliseconds.
-
-```bash
-gemini --allowed-mcp-server-names "" --extensions "" "Your prompt"
-```
-
-### Requesting Raw JSON
-Do not use `--output-format json` if you need raw JSON without the metadata envelope. Instead, request raw JSON in the prompt and return it directly.
-
-**Example Prompt Snippet:**
-```
-Return ONLY a raw JSON object with the following structure. Do not include markdown code blocks, preamble, or any other text.
-{
-  "create": [...],
-  "update": [...]
-}
-```
-
-### Handling Output
-Redirect `stderr` to `/dev/null` if you want to hide any remaining warnings or loading messages.
 
 ## Common Issues
 
