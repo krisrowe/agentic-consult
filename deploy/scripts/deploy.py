@@ -93,8 +93,20 @@ def load_components_config(ref: str = None) -> dict:
 
 
 def check_docker_available() -> bool:
-    """Check if docker CLI is available."""
-    return shutil.which("docker") is not None
+    """Check if docker CLI is available and connected to a daemon."""
+    if shutil.which("docker") is None:
+        return False
+    try:
+        # Check if daemon is reachable (suppress output)
+        subprocess.run(
+            ["docker", "info"], 
+            capture_output=True, 
+            check=True, 
+            timeout=5
+        )
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return False
 
 
 def get_image_url(project_id: str, image_name: str, tag: str, registry: str = None) -> str:
