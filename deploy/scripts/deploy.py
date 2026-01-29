@@ -126,40 +126,45 @@ def get_image_url(project_id: str, image_name: str, tag: str, registry: str = No
 
 def registry_image_exists(image_url: str) -> bool:
     """Check if image exists in registry (GCR or GHCR)."""
+    print(f"  Checking registry for: {image_url}", file=sys.stderr)
+    
     if "ghcr.io" in image_url:
-        # Check GHCR via public API using curl (works for public repos without docker login)
-        # URL: ghcr.io/user/repo:tag -> https://ghcr.io/v2/user/repo/manifests/tag
         try:
             repo_path, tag = image_url.replace("ghcr.io/", "").split(":")
             check_url = f"https://ghcr.io/v2/{repo_path}/manifests/{tag}"
             
-            # Use curl -I (HEAD request)
             res = subprocess.run(
                 ["curl", "-I", "-s", "-o", "/dev/null", "-w", "%{{http_code}}", check_url],
                 capture_output=True, text=True
             )
-            return res.stdout.strip() == "200"
-        except Exception:
+            found = res.stdout.strip() == "200"
+            print(f"  GHCR check (via curl): {'FOUND' if found else 'MISSING'} ({res.stdout.strip()})", file=sys.stderr)
+            return found
+        except Exception as e:
+            print(f"  GHCR check error: {e}", file=sys.stderr)
             return False
 
     if not check_docker_available():
+        print(f"  Docker unavailable for GCR check -> MISSING", file=sys.stderr)
         return False
         
     try:
-        # For GCR or if docker is available and it's not GHCR
         subprocess.run(["docker", "manifest", "inspect", image_url], capture_output=True, check=True, timeout=10)
+        print(f"  Registry check (via docker): FOUND", file=sys.stderr)
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        print(f"  Registry check (via docker): MISSING", file=sys.stderr)
         return False
 
 
 def build_and_push_internal(image_full: str, ref: str, target: str):
     """Build internal image from git ref and push."""
     if not check_docker_available():
-        print(f"  Warning: Docker not found. Skipping build for {image_full}.", file=sys.stderr)
-        print(f"  Assuming image is built remotely (e.g. GitHub Actions).", file=sys.stderr)
-        return
+        print(f"Error: Image {image_full} missing from registry AND Docker unavailable locally.", file=sys.stderr)
+        print(f"  Cannot build. Please wait for CI to finish or install Docker.", file=sys.stderr)
+        sys.exit(1)
 
+    print(f"  Decision: Building locally...", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="deploy-build-") as tmp_dir:
         # Extract ref to temp dir
         print(f"  Extracting {ref} to temp dir...", file=sys.stderr)
