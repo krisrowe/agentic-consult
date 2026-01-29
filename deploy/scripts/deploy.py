@@ -92,23 +92,6 @@ def load_components_config(ref: str = None) -> dict:
     return images
 
 
-def check_docker_available() -> bool:
-    """Check if docker CLI is available and connected to a daemon."""
-    if shutil.which("docker") is None:
-        return False
-    try:
-        # Check if daemon is reachable (suppress output)
-        subprocess.run(
-            ["docker", "info"], 
-            capture_output=True, 
-            check=True, 
-            timeout=5
-        )
-        return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-        return False
-
-
 def get_image_url(project_id: str, image_name: str, tag: str, registry: str = None) -> str:
     """Construct full image URL.
     
@@ -123,6 +106,42 @@ def get_image_url(project_id: str, image_name: str, tag: str, registry: str = No
     base = registry or f"gcr.io/{project_id}"
     return f"{base}/{image_name}:{tag}"
 
+def run_terraform(
+    project_id: str,
+    bucket_name: str,
+    mcp_image: str,
+    fetcher_image: str,
+    target: str = None,
+    plan_only: bool = False,
+    dry_run: bool = False,
+):
+    """Run terraform init and apply/plan."""
+    # Init (skip backend config for now since GCS backend is disabled)
+    init_cmd = ["terraform", "init"]
+
+    # Apply/plan command
+    action = "plan" if plan_only else "apply"
+    action_cmd = [
+        "terraform", action,
+        f"-var=project_id={project_id}",
+        f"-var=bucket_name={bucket_name}",
+        f"-var=mcp_image={mcp_image}",
+        f"-var=fetcher_image={fetcher_image}",
+    ]
+    if not plan_only:
+        action_cmd.insert(2, "-auto-approve")
+    if target:
+        action_cmd.append(f"-target={target}")
+
+    if dry_run:
+        print(f"# Would run in {TERRAFORM_DIR}:")
+        print(" ".join(init_cmd))
+        print(" ".join(action_cmd))
+        return
+
+    run_cmd(init_cmd, cwd=TERRAFORM_DIR)
+    run_cmd(action_cmd, cwd=TERRAFORM_DIR)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -131,10 +150,10 @@ def main():
         epilog="""
 Examples:
   ./cloud deploy                    Deploy using remote images (default)
-  ./cloud deploy --build            Build images locally before deploying
   ./cloud deploy mcp                Deploy only MCP
   ./cloud deploy config             Sync config files only
-""")
+"""
+    )
     # Load components config to get valid choices
     components_config = load_components_config()
     component_targets = {name: cfg.get("terraform") for name, cfg in components_config.items() if cfg.get("terraform")}
@@ -147,10 +166,6 @@ Examples:
     parser.add_argument(
         "--ref",
         help="Git ref to deploy (default: HEAD SHA)"
-    )
-    parser.add_argument(
-        "--build", action="store_true",
-        help="Build images locally before deploying (requires Docker)"
     )
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -212,6 +227,25 @@ Examples:
     else:
         components = image_components  # All image components
 
+    # Config-only deploy
+    if args.component == "config":
+        print("\nSyncing config files only (no image build)...", file=sys.stderr)
+        
+        # Resolve full image URLs even for config-only (for TF variable validation)
+        mcp_info = components_config.get("mcp", {})
+        mcp_url = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag, mcp_info.get("registry"))
+        fetcher_info = components_config.get("fetcher", {})
+        fetcher_url = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag, fetcher_info.get("registry"))
+
+        run_terraform(
+            project_id, bucket_name, mcp_url, fetcher_url,
+            target=component_targets["config"],
+            plan_only=args.plan,
+            dry_run=args.dry_run
+        )
+        print("\n✓ Config sync complete" if not args.dry_run else "")
+        return
+
     # Track resolved URLs for terraform
     resolved_urls = {}
 
@@ -231,17 +265,7 @@ Examples:
         tag = image_tag if component in internal_components else fetcher_tag
         image_full = get_image_url(project_id, image_name, tag, registry)
 
-        if args.build:
-            print(f"\n[{component}] Building {image_full} locally...", file=sys.stderr)
-            if component in internal_components:
-                target = info.get("target")
-                build_and_push_internal(image_full, args.ref or "HEAD", target)
-            else:
-                repo_url = info.get("repo")
-                build_and_push_external(image_full, tag, repo_url)
-        else:
-            print(f"[{component}] Using remote image: {image_full}", file=sys.stderr)
-
+        print(f"[{component}] Using remote image: {image_full}", file=sys.stderr)
         resolved_urls[component] = image_full
 
     # Run terraform
