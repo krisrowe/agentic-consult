@@ -1,0 +1,74 @@
+name: Build and Publish Images
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- 1. Build MCP Image ---
+      - name: Extract metadata (tags, labels) for MCP
+        id: meta-mcp
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-mcp
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push MCP image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: mcp-http
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-mcp.outputs.tags }}
+          labels: ${{ steps.meta-mcp.outputs.labels }}
+
+      # --- 2. Build Analyzer Image ---
+      - name: Extract metadata (tags, labels) for Analyzer
+        id: meta-analyzer
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-analyzer
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Analyzer image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: analyzer
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-analyzer.outputs.tags }}
+          labels: ${{ steps.meta-analyzer.outputs.labels }}
