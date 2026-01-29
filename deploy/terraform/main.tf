@@ -33,13 +33,13 @@ variable "service_delete_protection" {
   default     = true
 }
 
-variable "image_tag" {
-  description = "Tag for internal images (mcp) - same repo, same ref"
+variable "mcp_image" {
+  description = "Full URL for MCP image (e.g. gcr.io/proj/img:tag or ghcr.io/...)"
   type        = string
 }
 
-variable "fetcher_tag" {
-  description = "Tag for fetcher image (from images.ini ref)"
+variable "fetcher_image" {
+  description = "Full URL for fetcher image"
   type        = string
 }
 
@@ -47,10 +47,6 @@ locals {
   project_id  = var.project_id
   bucket_name = var.bucket_name
   region      = "us-central1"
-
-  # Image references - tags passed via variables
-  fetcher_image = "gcr.io/${local.project_id}/gmex-fetcher:${var.fetcher_tag}"
-  mcp_image     = "gcr.io/${local.project_id}/consult-mcp:${var.image_tag}"
 }
 
 provider "google" {
@@ -177,7 +173,7 @@ resource "google_cloud_run_v2_job" "fetcher_job" {
       service_account = google_service_account.analyzer_sa.email
 
       containers {
-        image = local.fetcher_image
+        image = var.fetcher_image
 
         env {
           name  = "EMAIL_ARCHIVE_DATA_DIR"
@@ -232,7 +228,7 @@ resource "google_cloud_run_v2_service" "mcp_service" {
     service_account = google_service_account.analyzer_sa.email
 
     containers {
-      image = local.mcp_image
+      image = var.mcp_image
 
       env {
         name  = "EMAIL_ARCHIVE_DATA_DIR"

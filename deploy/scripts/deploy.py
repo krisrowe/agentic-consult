@@ -92,20 +92,56 @@ def load_components_config(ref: str = None) -> dict:
     return images
 
 
-def gcr_image_exists(project_id: str, image_name: str, tag: str) -> bool:
-    """Check if image:tag exists in GCR."""
-    result = subprocess.run(
-        ["gcloud", "container", "images", "list-tags",
-         f"gcr.io/{project_id}/{image_name}",
-         f"--filter=tags:{tag}", "--format=value(tags)"],
-        capture_output=True, text=True
-    )
-    return tag in result.stdout
+def check_docker_available() -> bool:
+    """Check if docker CLI is available."""
+    return shutil.which("docker") is not None
 
 
-def build_and_push_internal(project_id: str, image_name: str, tag: str, ref: str, target: str):
-    """Build internal image from git ref and push to GCR."""
-    image_full = f"gcr.io/{project_id}/{image_name}:{tag}"
+def get_image_url(project_id: str, image_name: str, tag: str, registry: str = None) -> str:
+    """Construct full image URL.
+    
+    If registry is provided, use it.
+    If image_name looks like a full URL (has domain), use it.
+    Otherwise default to gcr.io/project_id/image_name.
+    """
+    if "/" in image_name and "." in image_name.split("/")[0]:
+        # Fully qualified (e.g. ghcr.io/user/repo)
+        return f"{image_name}:{tag}"
+    
+    base = registry or f"gcr.io/{project_id}"
+    return f"{base}/{image_name}:{tag}"
+
+
+def gcr_image_exists(image_url: str) -> bool:
+    """Check if image exists in GCR using gcloud.
+    
+    Only works for gcr.io or pkg.dev images in the current project.
+    Returns False for external registries (like GHCR) unless we add specific logic.
+    """
+    if "gcr.io" not in image_url and "pkg.dev" not in image_url:
+        # Fallback: Assume external images exist if we can't check them easily via gcloud
+        return False
+
+    # Extract repo and tag
+    # URL: gcr.io/proj/img:tag
+    try:
+        repo, tag = image_url.rsplit(":", 1)
+        result = subprocess.run(
+            ["gcloud", "container", "images", "list-tags",
+             repo, f"--filter=tags:{tag}", "--format=value(tags)"],
+            capture_output=True, text=True
+        )
+        return tag in result.stdout
+    except Exception:
+        return False
+
+
+def build_and_push_internal(image_full: str, ref: str, target: str):
+    """Build internal image from git ref and push."""
+    if not check_docker_available():
+        print(f"  Warning: Docker not found. Skipping build for {image_full}.", file=sys.stderr)
+        print(f"  Assuming image is built remotely (e.g. GitHub Actions).", file=sys.stderr)
+        return
 
     with tempfile.TemporaryDirectory(prefix="deploy-build-") as tmp_dir:
         # Extract ref to temp dir
@@ -122,9 +158,11 @@ def build_and_push_internal(project_id: str, image_name: str, tag: str, ref: str
         run_cmd(["docker", "push", image_full])
 
 
-def build_and_push_external(project_id: str, image_name: str, tag: str, repo_url: str):
-    """Build external image from cloned repo and push to GCR."""
-    image_full = f"gcr.io/{project_id}/{image_name}:{tag}"
+def build_and_push_external(image_full: str, tag: str, repo_url: str):
+    """Build external image from cloned repo and push."""
+    if not check_docker_available():
+        print(f"  Warning: Docker not found. Skipping build for {image_full}.", file=sys.stderr)
+        return
 
     with tempfile.TemporaryDirectory(prefix="deploy-build-") as tmp_dir:
         # Clone external repo at ref
@@ -143,8 +181,8 @@ def build_and_push_external(project_id: str, image_name: str, tag: str, repo_url
 def run_terraform(
     project_id: str,
     bucket_name: str,
-    image_tag: str,
-    fetcher_tag: str,
+    mcp_image: str,
+    fetcher_image: str,
     target: str = None,
     plan_only: bool = False,
     dry_run: bool = False,
@@ -159,8 +197,8 @@ def run_terraform(
         "terraform", action,
         f"-var=project_id={project_id}",
         f"-var=bucket_name={bucket_name}",
-        f"-var=image_tag={image_tag}",
-        f"-var=fetcher_tag={fetcher_tag}",
+        f"-var=mcp_image={mcp_image}",
+        f"-var=fetcher_image={fetcher_image}",
     ]
     if not plan_only:
         action_cmd.insert(2, "-auto-approve")
@@ -312,8 +350,26 @@ Examples:
     # Run terraform
     print("\n[terraform]", file=sys.stderr)
     target = component_targets.get(args.component) if args.component else None
+
+    # Resolve full image URLs for terraform variables
+    mcp_info = components_config.get("mcp", {})
+    mcp_url = get_image_url(
+        project_id, 
+        mcp_info.get("image", "consult-mcp"), 
+        image_tag, 
+        mcp_info.get("registry")
+    )
+
+    fetcher_info = components_config.get("fetcher", {})
+    fetcher_url = get_image_url(
+        project_id, 
+        fetcher_info.get("image", "gmex-fetcher"), 
+        fetcher_tag, 
+        fetcher_info.get("registry")
+    )
+
     run_terraform(
-        project_id, bucket_name, image_tag, fetcher_tag,
+        project_id, bucket_name, mcp_url, fetcher_url,
         target=target,
         plan_only=args.plan,
         dry_run=args.dry_run

@@ -50,25 +50,3 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-mcp.outputs.tags }}
           labels: ${{ steps.meta-mcp.outputs.labels }}
-
-      # --- 2. Build Analyzer Image ---
-      - name: Extract metadata (tags, labels) for Analyzer
-        id: meta-analyzer
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-analyzer
-          tags: |
-            type=sha,format=long
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push Analyzer image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: analyzer
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta-analyzer.outputs.tags }}
-          labels: ${{ steps.meta-analyzer.outputs.labels }}
