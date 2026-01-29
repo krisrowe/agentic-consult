@@ -366,8 +366,8 @@ Examples:
         image_full = get_image_url(project_id, image_name, tag, registry)
         print(f"\n[{component}] Checking {image_full}...", file=sys.stderr)
 
-        if gcr_image_exists(image_full):
-            print(f"  Already in GCR, skipping build", file=sys.stderr)
+        if registry_image_exists(image_full):
+            print(f"  Already in registry, skipping build", file=sys.stderr)
         elif args.dry_run:
             print(f"  Would build and push", file=sys.stderr)
         else:
