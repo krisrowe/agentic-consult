@@ -1,0 +1,54 @@
+swagger: '2.0'
+info:
+  title: Agentic Consult MCP
+  description: Public API Gateway for private MCP service
+  version: 1.0.0
+schemes:
+  - https
+produces:
+  - application/json
+paths:
+  /sse:
+    get:
+      summary: SSE Endpoint
+      operationId: sse
+      x-google-backend:
+        address: ${mcp_url}/sse
+        protocol: h2
+      security:
+        - api_key: []
+      responses:
+        '200':
+          description: OK
+  /messages:
+    post:
+      summary: Messages Endpoint
+      operationId: messages
+      x-google-backend:
+        address: ${mcp_url}/messages
+        protocol: h2
+      security:
+        - api_key: []
+      responses:
+        '200':
+          description: OK
+  # Internal endpoints - pass through (secured by App Token anyway)
+  /internal/batch:
+    post:
+      summary: Batch Analysis
+      operationId: batch
+      x-google-backend:
+        address: ${mcp_url}/internal/batch
+        protocol: h2
+      security:
+        - api_key: []
+      responses:
+        '200':
+          description: OK
+
+securityDefinitions:
+  # This configures API Gateway to validate the 'key' query parameter
+  api_key:
+    type: "apiKey"
+    name: "key"
+    in: "query"

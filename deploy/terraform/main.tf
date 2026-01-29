@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.0"
     }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 6.0"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.0"
@@ -30,7 +34,7 @@ variable "bucket_name" {
 variable "service_delete_protection" {
   description = "Enable deletion protection for Cloud Run jobs"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "mcp_image" {
@@ -54,23 +58,15 @@ provider "google" {
   region  = local.region
 }
 
+provider "google-beta" {
+  project = local.project_id
+  region  = local.region
+}
+
 # 2. Shared Storage (GCS)
-# Import block: auto-imports if bucket was created by ./cloud init
-# import {
-#   to = google_storage_bucket.data_bucket
-#   id = var.bucket_name
-# }
-
-resource "google_storage_bucket" "data_bucket" {
-  name          = local.bucket_name
-  location      = "US"
-  force_destroy = false
-
-  labels = {
-    "agentic-consult" = "default"
-  }
-
-  uniform_bucket_level_access = true
+# Managed by ./cloud init (Bootstrapping Infrastructure)
+data "google_storage_bucket" "data_bucket" {
+  name = local.bucket_name
 }
 
 # 2b. Updateable App Resources
@@ -97,7 +93,7 @@ resource "google_storage_bucket_object" "app_resource" {
   for_each = local.resource_map
 
   name   = "config/app/${each.key}"
-  bucket = google_storage_bucket.data_bucket.name
+  bucket = data.google_storage_bucket.data_bucket.name
   source = "${local.repo_root}/${each.value.path}"
 
   # Infer content type from extension
@@ -112,14 +108,14 @@ resource "google_service_account" "analyzer_sa" {
 
 # IAM: SA needs to read/write GCS and read Secrets
 resource "google_storage_bucket_iam_member" "gcs_admin" {
-  bucket = google_storage_bucket.data_bucket.name
+  bucket = data.google_storage_bucket.data_bucket.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.analyzer_sa.email}"
 }
 
 # Project owners need explicit object access with uniform bucket-level access
 resource "google_storage_bucket_iam_member" "gcs_owner_access" {
-  bucket = google_storage_bucket.data_bucket.name
+  bucket = data.google_storage_bucket.data_bucket.name
   role   = "roles/storage.objectAdmin"
   member = "projectOwner:${local.project_id}"
 }
@@ -200,7 +196,7 @@ resource "google_cloud_run_v2_job" "fetcher_job" {
       volumes {
         name = "gcs-volume"
         gcs {
-          bucket = google_storage_bucket.data_bucket.name
+          bucket = data.google_storage_bucket.data_bucket.name
         }
       }
 
@@ -307,7 +303,7 @@ resource "google_cloud_run_v2_service" "mcp_service" {
     volumes {
       name = "gcs-volume"
       gcs {
-        bucket = google_storage_bucket.data_bucket.name
+        bucket = data.google_storage_bucket.data_bucket.name
       }
     }
 
@@ -324,12 +320,68 @@ resource "google_cloud_run_v2_service" "mcp_service" {
   }
 }
 
-# Allow unauthenticated access to MCP service (app handles token auth)
-resource "google_cloud_run_service_iam_member" "mcp_public" {
+# --- API Gateway (Public Facade) ---
+
+# Enable required APIs
+resource "google_project_service" "apigateway" {
+  project = local.project_id
+  service = "apigateway.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "servicecontrol" {
+  project = local.project_id
+  service = "servicecontrol.googleapis.com"
+  disable_on_destroy = false
+}
+
+# The API Resource
+resource "google_api_gateway_api" "mcp_api" {
+  provider = google-beta
+  api_id   = "consult-mcp-api"
+  project  = local.project_id
+  depends_on = [google_project_service.apigateway]
+}
+
+# The API Config (Immutable - changes create new one)
+resource "google_api_gateway_api_config" "mcp_cfg" {
+  provider = google-beta
+  api      = google_api_gateway_api.mcp_api.api_id
+  project  = local.project_id
+  
+  openapi_documents {
+    document {
+      path = "openapi.yaml"
+      contents = base64encode(templatefile("${path.module}/openapi.yaml.tftpl", {
+        mcp_url = google_cloud_run_v2_service.mcp_service.uri
+      }))
+    }
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# The Gateway (Deployment)
+resource "google_api_gateway_gateway" "mcp_gw" {
+  provider = google-beta
+  api_config = google_api_gateway_api_config.mcp_cfg.id
+  gateway_id = "consult-mcp-gw"
+  project    = local.project_id
+  region     = "us-central1"
+}
+
+# IAM: Gateway SA needs to invoke Cloud Run
+data "google_project" "current" {
+  project_id = local.project_id
+}
+
+resource "google_cloud_run_service_iam_member" "gateway_invoker" {
   service  = google_cloud_run_v2_service.mcp_service.name
   location = google_cloud_run_v2_service.mcp_service.location
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-apigateway.iam.gserviceaccount.com"
 }
 
 # 5a. Trigger: Fetcher (runs every 30 mins at :00, :30)
@@ -387,4 +439,3 @@ resource "google_cloud_scheduler_job" "periodic_analysis" {
 
   depends_on = [google_secret_manager_secret_version.batch_auth_token]
 }
-

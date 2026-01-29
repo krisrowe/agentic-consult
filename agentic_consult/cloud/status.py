@@ -113,6 +113,12 @@ def format_tf_resource(resource: Dict[str, Any]) -> Optional[Tuple[str, str, Opt
         svc_name = attrs.get("name", name)
         return (f"run:{svc_name}", "exists", svc_name)
 
+    # API Gateway
+    elif rtype == "google_api_gateway_gateway":
+        gw_name = attrs.get("gateway_id", name)
+        hostname = attrs.get("default_hostname")
+        return (f"gw:{gw_name}", "exists", hostname)
+
     # Scheduler Jobs
     elif rtype == "google_cloud_scheduler_job":
         job_name = attrs.get("name", name)
