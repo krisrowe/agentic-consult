@@ -306,8 +306,15 @@ Examples:
     # Config-only deploy: skip image building
     if args.component == "config":
         print("\nSyncing config files only (no image build)...", file=sys.stderr)
+        
+        # Resolve full image URLs even for config-only (for TF variable validation)
+        mcp_info = components_config.get("mcp", {})
+        mcp_url = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag, mcp_info.get("registry"))
+        fetcher_info = components_config.get("fetcher", {})
+        fetcher_url = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag, fetcher_info.get("registry"))
+
         run_terraform(
-            project_id, bucket_name, image_tag, fetcher_tag,
+            project_id, bucket_name, mcp_url, fetcher_url,
             target=component_targets["config"],
             plan_only=args.plan,
             dry_run=args.dry_run
@@ -345,10 +352,10 @@ Examples:
             # Build and push
             if component in internal_components:
                 target = info.get("target")
-                build_and_push_internal(project_id, image_name, tag, args.ref or "HEAD", target)
+                build_and_push_internal(image_full, args.ref or "HEAD", target)
             else:
                 repo_url = info.get("repo")
-                build_and_push_external(project_id, image_name, tag, repo_url)
+                build_and_push_external(image_full, tag, repo_url)
 
     # Run terraform
     print("\n[terraform]", file=sys.stderr)
