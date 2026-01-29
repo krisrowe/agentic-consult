@@ -29,7 +29,7 @@ build: clean setup
 	. .venv/bin/activate && pytest
 
 test: setup
-	@. .venv/bin/activate && PYTHONPATH=. pytest tests/unit
+	@. .venv/bin/activate && PYTHONPATH=. pytest tests/unit $(ARGS)
 
 test-integration: setup
 	@. .venv/bin/activate && PYTHONPATH=. pytest tests/integration

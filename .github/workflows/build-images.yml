@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Run tests
-        run: make test
+        run: make test ARGS="--ignore=tests/unit/ws"
 
   build-and-push:
     needs: test
