@@ -10,6 +10,7 @@ Usage:
 """
 import argparse
 import configparser
+import os
 import shutil
 import subprocess
 import sys
@@ -99,12 +100,82 @@ def get_image_url(project_id: str, image_name: str, tag: str, registry: str = No
     If image_name looks like a full URL (has domain), use it.
     Otherwise default to gcr.io/project_id/image_name.
     """
-    if "/" in image_name and "." in image_name.split("/")[0]:
+    if "/" in image_name and "." in image_name.split("/"[0]):
         # Fully qualified (e.g. ghcr.io/user/repo)
         return f"{image_name}:{tag}"
     
     base = registry or f"gcr.io/{project_id}"
     return f"{base}/{image_name}:{tag}"
+
+
+def check_gcr_image_exists(image_url: str) -> bool:
+    """Check if image exists in GCR/Artifact Registry using gcloud."""
+    if "gcr.io" not in image_url and "pkg.dev" not in image_url:
+        return False
+        
+    print(f"  Checking GCR: {image_url}...", file=sys.stderr)
+    try:
+        subprocess.run(
+            ["gcloud", "container", "images", "describe", image_url],
+            capture_output=True, check=True
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def transfer_ghcr_to_gcr(project_id: str, src_image: str, dest_image: str):
+    """Use Cloud Build to pull from GHCR and push to GCR."""
+    print(f"  Transferring {src_image} -> {dest_image} via Cloud Build...", file=sys.stderr)
+    
+    sa_email = f"terraform-deployer@{project_id}.iam.gserviceaccount.com"
+    
+    config = f"""
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['pull', '{src_image}']
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['tag', '{src_image}', '{dest_image}']
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', '{dest_image}']
+images: ['{dest_image}']
+"""
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".yaml") as f:
+        f.write(config)
+        config_path = f.name
+
+    try:
+        cmd = [
+            "gcloud", "builds", "submit",
+            f"--project={project_id}",
+            f"--config={config_path}",
+            f"--service-account=projects/{project_id}/serviceAccounts/{sa_email}",
+            "--no-source"
+        ]
+        run_cmd(cmd)
+    finally:
+        os.unlink(config_path)
+
+
+def build_from_source_on_cloud(project_id: str, repo_url: str, ref: str, dest_image: str):
+    """Use Cloud Build to build from a remote git repository."""
+    print(f"  Building from {repo_url}@{ref} -> {dest_image} via Cloud Build...", file=sys.stderr)
+    
+    sa_email = f"terraform-deployer@{project_id}.iam.gserviceaccount.com"
+
+    with tempfile.TemporaryDirectory(prefix="deploy-cloud-build-") as tmp_dir:
+        print(f"  Cloning repo to {tmp_dir}...", file=sys.stderr)
+        run_cmd(["git", "clone", "--depth", "1", "--branch", ref, repo_url, tmp_dir])
+        
+        cmd = [
+            "gcloud", "builds", "submit",
+            f"--project={project_id}",
+            f"--tag={dest_image}",
+            f"--service-account=projects/{project_id}/serviceAccounts/{sa_email}",
+            tmp_dir
+        ]
+        run_cmd(cmd)
+
 
 def run_terraform(
     project_id: str,
@@ -149,7 +220,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./cloud deploy                    Deploy using remote images (default)
+  ./cloud deploy                    Deploy using remote images (auto-transfer/build)
   ./cloud deploy mcp                Deploy only MCP
   ./cloud deploy config             Sync config files only
 """
@@ -207,35 +278,30 @@ Examples:
         image_tag = get_head_sha()
     print(f"Image tag: {image_tag}", file=sys.stderr)
 
-    # Reload config at the specified ref (may differ from HEAD)
+    # Reload config at the specified ref
     if args.ref:
         components_config = load_components_config(args.ref)
         component_targets = {name: cfg.get("terraform") for name, cfg in components_config.items() if cfg.get("terraform")}
 
-    # Derive component categories from config
     image_components = [name for name, cfg in components_config.items() if cfg.get("image")]
     internal_components = {name for name, cfg in components_config.items() if cfg.get("image") and not cfg.get("repo")}
-    external_components = {name for name, cfg in components_config.items() if cfg.get("image") and cfg.get("repo")}
 
     fetcher_config = components_config.get("fetcher", {})
     fetcher_tag = fetcher_config.get("ref", "latest")
     print(f"Fetcher tag: {fetcher_tag}", file=sys.stderr)
 
-    # Determine which components to deploy
     if args.component:
         components = [args.component]
     else:
-        components = image_components  # All image components
+        components = image_components
 
     # Config-only deploy
     if args.component == "config":
         print("\nSyncing config files only (no image build)...", file=sys.stderr)
-        
-        # Resolve full image URLs even for config-only (for TF variable validation)
         mcp_info = components_config.get("mcp", {})
-        mcp_url = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag, mcp_info.get("registry"))
+        mcp_url = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag)
         fetcher_info = components_config.get("fetcher", {})
-        fetcher_url = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag, fetcher_info.get("registry"))
+        fetcher_url = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag)
 
         run_terraform(
             project_id, bucket_name, mcp_url, fetcher_url,
@@ -243,11 +309,10 @@ Examples:
             plan_only=args.plan,
             dry_run=args.dry_run
         )
-        print("\n✓ Config sync complete" if not args.dry_run else "")
         return
 
-    # Track resolved URLs for terraform
-    resolved_urls = {}
+    # Track final GCR URLs for terraform
+    final_urls = {}
 
     # Image processing loop
     for component in components:
@@ -256,28 +321,54 @@ Examples:
 
         info = components_config.get(component, {})
         image_name = info.get("image")
-        registry = info.get("registry")
-        
         if not image_name:
             continue
 
-        # Determine tag for this component
+        # Target GCR Image
         tag = image_tag if component in internal_components else fetcher_tag
-        image_full = get_image_url(project_id, image_name, tag, registry)
+        target_gcr = get_image_url(project_id, image_name, tag)
 
-        print(f"[{component}] Using remote image: {image_full}", file=sys.stderr)
-        resolved_urls[component] = image_full
+        # Check if exists in GCR
+        if check_gcr_image_exists(target_gcr):
+            print(f"[{component}] Found in GCR: {target_gcr}", file=sys.stderr)
+            final_urls[component] = target_gcr
+            continue
+        
+        if args.dry_run:
+            print(f"[{component}] Would transfer/build -> {target_gcr}", file=sys.stderr)
+            final_urls[component] = target_gcr
+            continue
+
+        # Not found: Transfer or Build
+        if component in internal_components:
+            # Transfer from GHCR
+            ghcr_registry = info.get("registry", "ghcr.io")
+            ghcr_image = f"{ghcr_registry}/{image_name}"
+            src_tag = f"sha-{tag}" if len(tag) >= 7 and not tag.startswith("sha-") else tag
+            src_url = f"{ghcr_image}:{src_tag}"
+            
+            print(f"[{component}] Missing from GCR. Transferring from {src_url}...", file=sys.stderr)
+            transfer_ghcr_to_gcr(project_id, src_url, target_gcr)
+        else:
+            # External: Build from source
+            repo_url = info.get("repo")
+            ref = info.get("ref", "master")
+            print(f"[{component}] Missing from GCR. Building from {repo_url}...", file=sys.stderr)
+            build_from_source_on_cloud(project_id, repo_url, ref, target_gcr)
+
+        final_urls[component] = target_gcr
 
     # Run terraform
     print("\n[terraform]", file=sys.stderr)
     target = component_targets.get(args.component) if args.component else None
 
-    # Resolve full image URLs for terraform variables
     mcp_info = components_config.get("mcp", {})
-    mcp_url = resolved_urls.get("mcp", get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag, mcp_info.get("registry")))
+    mcp_default = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag)
+    mcp_url = final_urls.get("mcp", mcp_url if 'mcp_url' in locals() else mcp_default)
 
     fetcher_info = components_config.get("fetcher", {})
-    fetcher_url = resolved_urls.get("fetcher", get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag, fetcher_info.get("registry")))
+    fetcher_default = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag)
+    fetcher_url = final_urls.get("fetcher", fetcher_url if 'fetcher_url' in locals() else fetcher_default)
 
     run_terraform(
         project_id, bucket_name, mcp_url, fetcher_url,
