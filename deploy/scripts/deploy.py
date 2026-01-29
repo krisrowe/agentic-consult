@@ -322,6 +322,8 @@ Examples:
 
         info = components_config.get(component, {})
         image_name = info.get("image")
+        registry = info.get("registry")
+        
         if not image_name:
             print(f"Warning: No image config for {component}, skipping", file=sys.stderr)
             continue
@@ -332,7 +334,7 @@ Examples:
         else:
             tag = fetcher_tag
 
-        image_full = get_image_url(project_id, image_name, tag, registry_override)
+        image_full = get_image_url(project_id, image_name, tag, registry)
         print(f"\n[{component}] Checking {image_full}...", file=sys.stderr)
 
         if gcr_image_exists(image_full):
