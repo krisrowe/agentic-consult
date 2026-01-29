@@ -151,6 +151,8 @@ steps:
 - name: 'gcr.io/cloud-builders/docker'
   args: ['push', '{dest_image}']
 images: ['{dest_image}']
+options:
+  logging: CLOUD_LOGGING_ONLY
 """
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".yaml") as f:
         f.write(config)
@@ -162,7 +164,6 @@ images: ['{dest_image}']
             f"--project={project_id}",
             f"--config={config_path}",
             f"--service-account=projects/{project_id}/serviceAccounts/{sa_email}",
-            "--logging=cloud-logging-only",
             "--no-source"
         ]
         run_cmd(cmd)
@@ -176,19 +177,34 @@ def build_from_source_on_cloud(project_id: str, repo_url: str, ref: str, dest_im
     
     sa_email = f"terraform-deployer@{project_id}.iam.gserviceaccount.com"
 
-    with tempfile.TemporaryDirectory(prefix="deploy-cloud-build-") as tmp_dir:
-        print(f"  Cloning repo to {tmp_dir}...", file=sys.stderr)
-        run_cmd(["git", "clone", "--depth", "1", "--branch", ref, repo_url, tmp_dir])
-        
-        cmd = [
-            "gcloud", "builds", "submit",
-            f"--project={project_id}",
-            f"--tag={dest_image}",
-            f"--service-account=projects/{project_id}/serviceAccounts/{sa_email}",
-            "--logging=cloud-logging-only",
-            tmp_dir
-        ]
-        run_cmd(cmd)
+    # Use a YAML config to specify logging and image tag
+    config = f"""
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', '{dest_image}', '.']
+images: ['{dest_image}']
+options:
+  logging: CLOUD_LOGGING_ONLY
+"""
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".yaml") as f:
+        f.write(config)
+        config_path = f.name
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="deploy-cloud-build-") as tmp_dir:
+            print(f"  Cloning repo to {tmp_dir}...", file=sys.stderr)
+            run_cmd(["git", "clone", "--depth", "1", "--branch", ref, repo_url, tmp_dir])
+            
+            cmd = [
+                "gcloud", "builds", "submit",
+                f"--project={project_id}",
+                f"--config={config_path}",
+                f"--service-account=projects/{project_id}/serviceAccounts/{sa_email}",
+                tmp_dir
+            ]
+            run_cmd(cmd)
+    finally:
+        os.unlink(config_path)
 
 
 def run_terraform(
