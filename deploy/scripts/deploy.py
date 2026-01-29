@@ -332,9 +332,10 @@ Examples:
         else:
             tag = fetcher_tag
 
-        print(f"\n[{component}] Checking gcr.io/{project_id}/{image_name}:{tag}...", file=sys.stderr)
+        image_full = get_image_url(project_id, image_name, tag, registry_override)
+        print(f"\n[{component}] Checking {image_full}...", file=sys.stderr)
 
-        if gcr_image_exists(project_id, image_name, tag):
+        if gcr_image_exists(image_full):
             print(f"  Already in GCR, skipping build", file=sys.stderr)
         elif args.dry_run:
             print(f"  Would build and push", file=sys.stderr)
