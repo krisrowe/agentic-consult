@@ -124,27 +124,32 @@ def get_image_url(project_id: str, image_name: str, tag: str, registry: str = No
     return f"{base}/{image_name}:{tag}"
 
 
-def gcr_image_exists(image_url: str) -> bool:
-    """Check if image exists in GCR using gcloud.
-    
-    Only works for gcr.io or pkg.dev images in the current project.
-    Returns False for external registries (like GHCR) unless we add specific logic.
-    """
-    if "gcr.io" not in image_url and "pkg.dev" not in image_url:
-        # Fallback: Assume external images exist if we can't check them easily via gcloud
-        return False
+def registry_image_exists(image_url: str) -> bool:
+    """Check if image exists in registry (GCR or GHCR)."""
+    if "ghcr.io" in image_url:
+        # Check GHCR via public API using curl (works for public repos without docker login)
+        # URL: ghcr.io/user/repo:tag -> https://ghcr.io/v2/user/repo/manifests/tag
+        try:
+            repo_path, tag = image_url.replace("ghcr.io/", "").split(":")
+            check_url = f"https://ghcr.io/v2/{repo_path}/manifests/{tag}"
+            
+            # Use curl -I (HEAD request)
+            res = subprocess.run(
+                ["curl", "-I", "-s", "-o", "/dev/null", "-w", "%{{http_code}}", check_url],
+                capture_output=True, text=True
+            )
+            return res.stdout.strip() == "200"
+        except Exception:
+            return False
 
-    # Extract repo and tag
-    # URL: gcr.io/proj/img:tag
+    if not check_docker_available():
+        return False
+        
     try:
-        repo, tag = image_url.rsplit(":", 1)
-        result = subprocess.run(
-            ["gcloud", "container", "images", "list-tags",
-             repo, f"--filter=tags:{tag}", "--format=value(tags)"],
-            capture_output=True, text=True
-        )
-        return tag in result.stdout
-    except Exception:
+        # For GCR or if docker is available and it's not GHCR
+        subprocess.run(["docker", "manifest", "inspect", image_url], capture_output=True, check=True, timeout=10)
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
 
 
