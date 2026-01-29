@@ -36,7 +36,27 @@ import sys
 
 # Add deploy/scripts to path for imports
 SCRIPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deploy", "scripts")
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
+sys.path.insert(0, REPO_ROOT)
+
+try:
+    from agentic_consult.paths import load_settings
+except ImportError:
+    # Fallback if run before package is fully structured or during init
+    def load_settings(): return {}
+
+
+def inject_auth():
+    """Inject Service Account credentials if configured."""
+    settings = load_settings()
+    sa_key_path = settings.get("cloud_deploy_service_account")
+    
+    if sa_key_path and os.path.exists(sa_key_path):
+        # Terraform/Client libraries use this
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_key_path
+        # gcloud CLI uses this to override local user login
+        os.environ["CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE"] = sa_key_path
 
 
 def main():
@@ -50,6 +70,9 @@ def main():
     if command in ("-h", "--help"):
         print_usage()
         sys.exit(0)
+
+    # Inject auth globally
+    inject_auth()
 
     # Import and dispatch
     try:
@@ -88,6 +111,11 @@ def main():
             sys.argv = sys.argv[1:]
             cmd_main()
 
+        elif command == "svc-acct":
+            from svc_acct import main as cmd_main
+            sys.argv = sys.argv[1:]
+            cmd_main()
+
         else:
             print(f"Unknown command: {command}\n")
             print_usage()
@@ -109,6 +137,7 @@ Commands:
     images          Build and push container images
     secrets         Manage Cloud Run secrets
     user-auth       Manage user authentication (tokens for MCP access)
+    svc-acct        Manage infrastructure service accounts
 
 Examples:
     ./cloud status
