@@ -28,12 +28,24 @@ from agentic_consult.paths import load_settings
 
 
 def run_cmd(cmd: list, cwd=None, capture=False, check=True) -> subprocess.CompletedProcess:
-    """Run a shell command."""
+    """Run a shell command, injecting SA credentials if available."""
     print(f"→ {' '.join(cmd)}", file=sys.stderr)
+    
+    # Inject Service Account credentials if configured
+    env = os.environ.copy()
+    settings = load_settings()
+    sa_key_path = settings.get("cloud_deploy_service_account")
+    
+    if sa_key_path and os.path.exists(sa_key_path):
+        # Terraform/Client libraries use this
+        env["GOOGLE_APPLICATION_CREDENTIALS"] = sa_key_path
+        # gcloud CLI uses this to override local user login
+        env["CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE"] = sa_key_path
+
     if capture:
-        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+        result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
     else:
-        result = subprocess.run(cmd, cwd=cwd)
+        result = subprocess.run(cmd, cwd=cwd, env=env)
     if check and result.returncode != 0:
         if capture:
             print(result.stderr, file=sys.stderr)
@@ -150,6 +162,7 @@ images: ['{dest_image}']
             f"--project={project_id}",
             f"--config={config_path}",
             f"--service-account=projects/{project_id}/serviceAccounts/{sa_email}",
+            "--logging=cloud-logging-only",
             "--no-source"
         ]
         run_cmd(cmd)
@@ -172,6 +185,7 @@ def build_from_source_on_cloud(project_id: str, repo_url: str, ref: str, dest_im
             f"--project={project_id}",
             f"--tag={dest_image}",
             f"--service-account=projects/{project_id}/serviceAccounts/{sa_email}",
+            "--logging=cloud-logging-only",
             tmp_dir
         ]
         run_cmd(cmd)
