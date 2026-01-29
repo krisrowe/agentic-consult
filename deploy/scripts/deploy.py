@@ -124,51 +124,41 @@ def get_image_url(project_id: str, image_name: str, tag: str, registry: str = No
     return f"{base}/{image_name}:{tag}"
 
 
-def registry_image_exists(image_url: str) -> bool:
-    """Check if image exists in registry (GCR or GHCR)."""
+from typing import Optional
+
+# ... imports ...
+
+def registry_image_exists(image_url: str) -> Optional[str]:
+    """Check if image exists in GHCR using curl. Returns resolved URL or None."""
     print(f"  Checking registry for: {image_url}", file=sys.stderr)
     
-    if "ghcr.io" in image_url:
-        try:
-            repo_path, tag = image_url.replace("ghcr.io/", "").split(":")
-            
-            # GitHub Actions often prefixes SHA tags with 'sha-'
-            # We try both the original tag and 'sha-<tag>'
-            tags_to_try = [tag]
-            if len(tag) >= 7 and not tag.startswith("sha-"):
-                tags_to_try.append(f"sha-{tag}")
-            
-            for t in tags_to_try:
-                check_url = f"https://ghcr.io/v2/{repo_path}/manifests/{t}"
-                res = subprocess.run(
-                    ["curl", "-I", "-s", "-o", "/dev/null", "-w", "%{http_code}", check_url],
-                    capture_output=True, text=True
-                )
-                if res.stdout.strip() == "200":
-                    print(f"  GHCR check (via curl) for tag '{t}': FOUND", file=sys.stderr)
-                    # If we found it via sha- prefix, we must return True but the 
-                    # caller might need the updated URL. However, Terraform just needs
-                    # A valid URL.
-                    # TODO: If we found it via fallback, we should really update image_url.
-                    return True
-            
-            print(f"  GHCR check (via curl): MISSING", file=sys.stderr)
-            return False
-        except Exception as e:
-            print(f"  GHCR check error: {e}", file=sys.stderr)
-            return False
+    if "ghcr.io" not in image_url:
+        return None
 
-    if not check_docker_available():
-        print(f"  Docker unavailable for GCR check -> MISSING", file=sys.stderr)
-        return False
-        
     try:
-        subprocess.run(["docker", "manifest", "inspect", image_url], capture_output=True, check=True, timeout=10)
-        print(f"  Registry check (via docker): FOUND", file=sys.stderr)
-        return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        print(f"  Registry check (via docker): MISSING", file=sys.stderr)
-        return False
+        repo_path, tag = image_url.replace("ghcr.io/", "").split(":")
+        
+        # Try both raw tag and sha- prefix
+        tags_to_try = [tag]
+        if len(tag) >= 7 and not tag.startswith("sha-"):
+            tags_to_try.append(f"sha-{tag}")
+        
+        for t in tags_to_try:
+            check_url = f"https://ghcr.io/v2/{repo_path}/manifests/{t}"
+            res = subprocess.run(
+                ["curl", "-I", "-s", "-o", "/dev/null", "-w", "%{http_code}", check_url],
+                capture_output=True, text=True
+            )
+            if res.stdout.strip() == "200":
+                resolved = f"ghcr.io/{repo_path}:{t}"
+                print(f"  Found: {resolved}", file=sys.stderr)
+                return resolved
+        
+        print(f"  Missing from GHCR", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"  Check error: {e}", file=sys.stderr)
+        return None
 
 
 def build_and_push_internal(image_full: str, ref: str, target: str):
@@ -358,6 +348,9 @@ Examples:
         print("\n✓ Config sync complete" if not args.dry_run else "")
         return
 
+    # Track resolved URLs for terraform
+    resolved_urls = {}
+
     # Check GCR and build/push if needed
     for component in components:
         if component == "config":
@@ -380,10 +373,15 @@ Examples:
         image_full = get_image_url(project_id, image_name, tag, registry)
         print(f"\n[{component}] Checking {image_full}...", file=sys.stderr)
 
-        if registry_image_exists(image_full):
-            print(f"  Already in registry, skipping build", file=sys.stderr)
+        # Check existence and get resolved URL (handling sha- prefix if needed)
+        found_url = registry_image_exists(image_full)
+        
+        if found_url:
+            print(f"  Already in registry: {found_url}, skipping build", file=sys.stderr)
+            resolved_urls[component] = found_url
         elif args.dry_run:
             print(f"  Would build and push", file=sys.stderr)
+            resolved_urls[component] = image_full
         else:
             # Build and push
             if component in internal_components:
@@ -392,27 +390,21 @@ Examples:
             else:
                 repo_url = info.get("repo")
                 build_and_push_external(image_full, tag, repo_url)
+            resolved_urls[component] = image_full
 
     # Run terraform
     print("\n[terraform]", file=sys.stderr)
     target = component_targets.get(args.component) if args.component else None
 
     # Resolve full image URLs for terraform variables
+    # Use resolved URL if available, otherwise recalculate (fallback)
     mcp_info = components_config.get("mcp", {})
-    mcp_url = get_image_url(
-        project_id, 
-        mcp_info.get("image", "consult-mcp"), 
-        image_tag, 
-        mcp_info.get("registry")
-    )
+    mcp_default = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag, mcp_info.get("registry"))
+    mcp_url = resolved_urls.get("mcp", mcp_default)
 
     fetcher_info = components_config.get("fetcher", {})
-    fetcher_url = get_image_url(
-        project_id, 
-        fetcher_info.get("image", "gmex-fetcher"), 
-        fetcher_tag, 
-        fetcher_info.get("registry")
-    )
+    fetcher_default = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag, fetcher_info.get("registry"))
+    fetcher_url = resolved_urls.get("fetcher", fetcher_default)
 
     run_terraform(
         project_id, bucket_name, mcp_url, fetcher_url,
