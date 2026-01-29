@@ -56,10 +56,10 @@ provider "google" {
 
 # 2. Shared Storage (GCS)
 # Import block: auto-imports if bucket was created by ./cloud init
-import {
-  to = google_storage_bucket.data_bucket
-  id = var.bucket_name
-}
+# import {
+#   to = google_storage_bucket.data_bucket
+#   id = var.bucket_name
+# }
 
 resource "google_storage_bucket" "data_bucket" {
   name          = local.bucket_name
