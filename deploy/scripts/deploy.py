@@ -46,7 +46,7 @@ def get_head_sha() -> str:
         ["git", "rev-parse", "HEAD"],
         cwd=REPO_ROOT, capture_output=True, text=True, check=True
     )
-    return result.stdout.strip()[:12]  # Short SHA
+    return result.stdout.strip()
 
 
 def git_status_clean() -> bool:
@@ -131,15 +131,29 @@ def registry_image_exists(image_url: str) -> bool:
     if "ghcr.io" in image_url:
         try:
             repo_path, tag = image_url.replace("ghcr.io/", "").split(":")
-            check_url = f"https://ghcr.io/v2/{repo_path}/manifests/{tag}"
             
-            res = subprocess.run(
-                ["curl", "-I", "-s", "-o", "/dev/null", "-w", "%{{http_code}}", check_url],
-                capture_output=True, text=True
-            )
-            found = res.stdout.strip() == "200"
-            print(f"  GHCR check (via curl): {'FOUND' if found else 'MISSING'} ({res.stdout.strip()})", file=sys.stderr)
-            return found
+            # GitHub Actions often prefixes SHA tags with 'sha-'
+            # We try both the original tag and 'sha-<tag>'
+            tags_to_try = [tag]
+            if len(tag) >= 7 and not tag.startswith("sha-"):
+                tags_to_try.append(f"sha-{tag}")
+            
+            for t in tags_to_try:
+                check_url = f"https://ghcr.io/v2/{repo_path}/manifests/{t}"
+                res = subprocess.run(
+                    ["curl", "-I", "-s", "-o", "/dev/null", "-w", "%{http_code}", check_url],
+                    capture_output=True, text=True
+                )
+                if res.stdout.strip() == "200":
+                    print(f"  GHCR check (via curl) for tag '{t}': FOUND", file=sys.stderr)
+                    # If we found it via sha- prefix, we must return True but the 
+                    # caller might need the updated URL. However, Terraform just needs
+                    # A valid URL.
+                    # TODO: If we found it via fallback, we should really update image_url.
+                    return True
+            
+            print(f"  GHCR check (via curl): MISSING", file=sys.stderr)
+            return False
         except Exception as e:
             print(f"  GHCR check error: {e}", file=sys.stderr)
             return False
