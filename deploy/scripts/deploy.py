@@ -62,6 +62,24 @@ def get_head_sha() -> str:
     return result.stdout.strip()
 
 
+def get_git_repo_slug() -> str:
+    """Get 'user/repo' from git remote origin."""
+    try:
+        res = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=True
+        )
+        url = res.stdout.strip()
+        # Parse: https://github.com/user/repo.git or git@github.com:user/repo.git
+        if url.endswith(".git"):
+            url = url[:-4]
+        if ":" in url:
+            return url.split(":")[-1]  # user/repo
+        return "/".join(url.split("/")[-2:]) # user/repo
+    except subprocess.CalledProcessError:
+        return "unknown/unknown"
+
+
 def git_status_clean() -> bool:
     """Check if working tree is clean (no uncommitted or untracked files)."""
     result = subprocess.run(
@@ -312,6 +330,17 @@ Examples:
     if args.ref:
         components_config = load_components_config(args.ref)
         component_targets = {name: cfg.get("terraform") for name, cfg in components_config.items() if cfg.get("terraform")}
+
+    # Auto-detect image names
+    git_slug = get_git_repo_slug()
+    for name, cfg in components_config.items():
+        if cfg.get("image") == "auto":
+            # Default convention: user/repo-mcp (for mcp component)
+            if name == "mcp":
+                cfg["image"] = f"{git_slug}-mcp"
+            else:
+                # Fallback for others?
+                cfg["image"] = f"{git_slug}-{name}"
 
     image_components = [name for name, cfg in components_config.items() if cfg.get("image")]
     internal_components = {name for name, cfg in components_config.items() if cfg.get("image") and not cfg.get("repo")}
