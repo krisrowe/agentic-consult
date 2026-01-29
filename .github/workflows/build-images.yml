@@ -62,3 +62,5 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-mcp.outputs.tags }}
           labels: ${{ steps.meta-mcp.outputs.labels }}
+          build-args: |
+            REPO_URL=https://github.com/${{ github.repository }}

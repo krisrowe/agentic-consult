@@ -2,6 +2,8 @@
 
 # --- Base Stage (Shared Dependencies) ---
 FROM python:3.11-slim AS base
+ARG REPO_URL
+LABEL org.opencontainers.image.source $REPO_URL
 WORKDIR /app
 
 # Install system dependencies
