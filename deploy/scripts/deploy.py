@@ -321,7 +321,16 @@ Examples:
 
     # Determine image_tag
     if args.ref:
-        image_tag = args.ref
+        # Resolve ref to full SHA to match GH Actions 'sha-LONG' convention
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", args.ref],
+                cwd=REPO_ROOT, capture_output=True, text=True, check=True
+            )
+            image_tag = res.stdout.strip()
+        except subprocess.CalledProcessError:
+            # Fallback to provided string if not a local git ref (e.g. tag not fetched)
+            image_tag = args.ref
     else:
         image_tag = get_head_sha()
     print(f"Image tag: {image_tag}", file=sys.stderr)
