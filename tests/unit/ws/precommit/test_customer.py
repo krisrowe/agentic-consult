@@ -10,7 +10,7 @@ import sys as _sys
 # package import machinery
 _spec = importlib.util.spec_from_file_location(
     "tests_util_synthetic",
-    str(_Path(__file__).resolve().parents[2] / 'util' / 'synthetic.py'),
+    str(_Path(__file__).resolve().parents[3] / 'util' / 'synthetic.py'),
 )
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)

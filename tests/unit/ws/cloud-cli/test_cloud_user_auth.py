@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 # Add deploy/scripts to path for imports
-REPO_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "deploy" / "scripts"))
 
 from user_auth import cmd_status, cmd_init, cmd_export, generate_token, SECRET_ID
