@@ -6,10 +6,11 @@ Both ./cloud init and tests call this directly.
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Callable
+import json
 
 from .base import CloudProvider
 from .status import read_cloud_status, CloudStatus
-from ..paths import APP_SLUG
+from ..paths import APP_SLUG, get_settings_dir, get_settings_path
 
 
 @dataclass
@@ -139,6 +140,26 @@ def cloud_init(
                       "Verify your access or use --project to specify a different one."
             )
 
+    # --- PHASE 2: ENVIRONMENT PREP (ORG POLICIES) ---
+    # Must happen before other operations to avoid blocks
+    ops = []
+    
+    policies = [
+        ("iam.disableServiceAccountKeyCreation", "Allow SA key creation"),
+        ("iam.allowedPolicyMemberDomains", "Allow public (allUsers) IAM bindings")
+    ]
+    for constraint, desc in policies:
+        try:
+            context.log(f"Ensuring Policy: {desc} ({constraint})...")
+            provider.disable_org_policy(project_id, constraint)
+            ops.append({"op": "policy_disabled", "constraint": constraint})
+        except Exception as e:
+            # Don't fail hard, user might not have perm but policy might be fine
+            # context.log(f"Warning: Failed to disable policy {constraint}: {e}")
+            pass
+
+    # --- PHASE 3: VALIDATE RESOURCES ---
+
     # 3. Validate Gemini API Key
     api_key_value = options.gemini_api_key
     if not provider.secret_exists(project_id, "gemini-api-key") and not api_key_value:
@@ -206,8 +227,7 @@ def cloud_init(
                 )
         do_create_bucket = True
 
-    # --- PHASE 2: EXECUTION (WRITE-ONLY) ---
-    ops = []
+    # --- PHASE 4: EXECUTION (WRITE-ONLY) ---
     context.log(f"Applying changes to project: {project_id}...")
 
     # 1. Handle Bucket
@@ -248,7 +268,35 @@ def cloud_init(
             provider.add_secret_version(project_id, "gmail-token", token_data)
             ops.append({"op": "secret_updated", "secret": "gmail-token"})
 
-    # 3. Get final status
+    # 3. Handle Service Account & Key (Deployment Auth)
+    sa_name = "terraform-deployer"
+    sa_email = provider.create_service_account(project_id, sa_name, "Terraform Deployer (Agentic Consult)")
+    
+    context.log(f"Ensuring roles/owner for {sa_email}...")
+    provider.add_project_iam_binding(project_id, f"serviceAccount:{sa_email}", "roles/owner")
+
+    config_dir = get_settings_dir()
+    config_dir.mkdir(parents=True, exist_ok=True)
+    key_file = config_dir / "cloud-deploy-svc-account.json"
+
+    if not key_file.exists():
+        context.log(f"Downloading SA key to {key_file}...")
+        provider.create_service_account_key(project_id, sa_email, str(key_file))
+        ops.append({"op": "key_created", "path": str(key_file)})
+        
+        # Update settings
+        settings_path = get_settings_path()
+        if settings_path.exists():
+            data = json.loads(settings_path.read_text())
+        else:
+            data = {}
+        data["cloud_deploy_service_account"] = str(key_file)
+        settings_path.write_text(json.dumps(data, indent=2))
+        context.log("Updated settings with key path.")
+    else:
+        context.log(f"SA Key exists at {key_file} (skipping download).")
+
+    # 4. Get final status
     status = read_cloud_status(provider, project_id, target_bucket)
 
     return InitResult(

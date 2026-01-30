@@ -111,11 +111,6 @@ def main():
             sys.argv = sys.argv[1:]
             cmd_main()
 
-        elif command == "svc-acct":
-            from svc_acct import main as cmd_main
-            sys.argv = sys.argv[1:]
-            cmd_main()
-
         else:
             print(f"Unknown command: {command}\n")
             print_usage()
@@ -137,7 +132,6 @@ Commands:
     images          Build and push container images
     secrets         Manage Cloud Run secrets
     user-auth       Manage user authentication (tokens for MCP access)
-    svc-acct        Manage infrastructure service accounts
 
 Examples:
     ./cloud status

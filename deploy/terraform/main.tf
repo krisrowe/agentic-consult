@@ -377,8 +377,9 @@ resource "google_cloud_scheduler_job" "periodic_analysis" {
     uri         = "${google_cloud_run_v2_service.mcp_service.uri}/internal/batch"
 
     # Use OIDC for Service-to-Service Auth
-    oauth_token {
+    oidc_token {
       service_account_email = google_service_account.analyzer_sa.email
+      audience              = google_cloud_run_v2_service.mcp_service.uri
     }
   }
 

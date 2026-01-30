@@ -105,15 +105,8 @@ def cmd_export(args, provider, project_id):
 
     Output format:
         url: https://...
-        access_token: abc123...
         api_key: AIza...
     """
-    # Get token
-    token = provider.get_secret_value(project_id, SECRET_ID)
-    if not token:
-        error("No access token found. Run: ./cloud user-auth init")
-        sys.exit(1)
-
     # Get URL (Gateway preferred)
     url = get_gateway_url(project_id)
     api_key = None
@@ -124,19 +117,16 @@ def cmd_export(args, provider, project_id):
         sys.exit(1)
 
     if not api_key:
-         warn("API Key not found. Client may fail.")
+         error("API Key not found. Run: ./cloud deploy")
+         sys.exit(1)
 
     # Output format
     if args.format == "json":
-        data = {"url": url, "access_token": token}
-        if api_key:
-            data["api_key"] = api_key
+        data = {"url": url, "api_key": api_key}
         output = json.dumps(data, indent=2)
     else:
         # YAML format
-        output = f"url: {url}\naccess_token: {token}"
-        if api_key:
-            output += f"\napi_key: {api_key}"
+        output = f"url: {url}\napi_key: {api_key}"
 
     print(output)
 

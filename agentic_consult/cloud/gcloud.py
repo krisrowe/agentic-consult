@@ -89,7 +89,10 @@ class GCloudProvider(CloudProvider):
     def create_bucket(self, project_id: str, bucket_name: str) -> None:
         _run_cmd([
             "gcloud", "storage", "buckets", "create",
-            f"gs://{bucket_name}", f"--project={project_id}"
+            f"gs://{bucket_name}",
+            f"--project={project_id}",
+            "--location=US",
+            "--uniform-bucket-level-access"
         ])
 
     def update_bucket_labels(self, bucket_name: str, labels: Dict[str, str]) -> None:
@@ -209,4 +212,47 @@ class GCloudProvider(CloudProvider):
         _run_cmd([
             "gcloud", "scheduler", "jobs", "run", job_name,
             f"--project={project_id}", f"--location={location}"
+        ])
+
+    # --- IAM & Org Policy Operations (Init Phase) ---
+
+    def disable_org_policy(self, project_id: str, constraint: str) -> None:
+        """Disable enforcement of an org policy constraint on the project."""
+        _run_cmd([
+            "gcloud", "resource-manager", "org-policies", "disable-enforce",
+            constraint, f"--project={project_id}"
+        ])
+
+    def service_account_exists(self, project_id: str, email: str) -> bool:
+        try:
+            _run_cmd([
+                "gcloud", "iam", "service-accounts", "describe", email,
+                f"--project={project_id}"
+            ], capture=True)
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def create_service_account(self, project_id: str, name: str, display_name: str) -> str:
+        """Create SA and return its email."""
+        email = f"{name}@{project_id}.iam.gserviceaccount.com"
+        if not self.service_account_exists(project_id, email):
+            _run_cmd([
+                "gcloud", "iam", "service-accounts", "create", name,
+                f"--project={project_id}", f"--display-name={display_name}"
+            ])
+        return email
+
+    def add_project_iam_binding(self, project_id: str, member: str, role: str) -> None:
+        _run_cmd([
+            "gcloud", "projects", "add-iam-policy-binding", project_id,
+            f"--member={member}", f"--role={role}"
+        ])
+
+    def create_service_account_key(self, project_id: str, email: str, output_path: str) -> None:
+        """Create/Download JSON key for SA."""
+        # Note: gcloud iam service-accounts keys create fails if file exists, caller must handle
+        _run_cmd([
+            "gcloud", "iam", "service-accounts", "keys", "create", output_path,
+            f"--iam-account={email}", f"--project={project_id}"
         ])
