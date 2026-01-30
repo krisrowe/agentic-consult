@@ -19,11 +19,12 @@ class RemoteConfig:
     """Remote server configuration."""
     url: Optional[str] = None
     access_token: Optional[str] = None
+    api_key: Optional[str] = None
 
     @property
     def is_configured(self) -> bool:
-        """Returns True if both url and access_token are set."""
-        return bool(self.url and self.access_token)
+        """Returns True if url is set. API Key or Token might be optional depending on auth mode."""
+        return bool(self.url)
 
     @property
     def masked_token(self) -> Optional[str]:
@@ -31,6 +32,13 @@ class RemoteConfig:
         if not self.access_token:
             return None
         return f"{self.access_token[:8]}..."
+        
+    @property
+    def masked_key(self) -> Optional[str]:
+        """Returns masked API key."""
+        if not self.api_key:
+            return None
+        return f"{self.api_key[:8]}..."
 
 
 def get_remote_config() -> RemoteConfig:
@@ -41,11 +49,12 @@ def get_remote_config() -> RemoteConfig:
     # Migration: check for legacy keys at root level
     url = remote.get("url") or config.get("mcp_url")
     token = remote.get("access_token") or config.get("personal_access_token")
+    key = remote.get("api_key")
 
-    return RemoteConfig(url=url, access_token=token)
+    return RemoteConfig(url=url, access_token=token, api_key=key)
 
 
-def set_remote_config(url: Optional[str] = None, access_token: Optional[str] = None) -> None:
+def set_remote_config(url: Optional[str] = None, access_token: Optional[str] = None, api_key: Optional[str] = None) -> None:
     """
     Update remote configuration in settings.json.
 
@@ -61,6 +70,8 @@ def set_remote_config(url: Optional[str] = None, access_token: Optional[str] = N
         config["remote"]["url"] = url
     if access_token is not None:
         config["remote"]["access_token"] = access_token
+    if api_key is not None:
+        config["remote"]["api_key"] = api_key
 
     save_main_config(config)
 
@@ -90,12 +101,12 @@ def get_registration_info(include_token: bool = False) -> dict:
     Get registration info for display.
 
     Returns structured dict with:
-    - config: URL and token (masked unless include_token=True)
+    - config: URL, token, key
     - commands: claude and gemini mcp add commands
-    - manual: header and query string auth options
+    - manual: auth options
 
     Args:
-        include_token: If True, include full token; otherwise mask it
+        include_token: If True, include full secrets; otherwise mask them
 
     Returns:
         Dict with all registration info for CLI display
@@ -110,28 +121,36 @@ def get_registration_info(include_token: bool = False) -> dict:
 
     token_display = cfg.access_token if include_token else "****"
     token_masked = cfg.masked_token
+    key_display = cfg.api_key if include_token else "****"
+    key_masked = cfg.masked_key
 
-    # MCP endpoint URL (base URL + /mcp path)
-    mcp_url = f"{cfg.url.rstrip('/')}/mcp"
+    # MCP SSE endpoint is at /sse
+    base_url = cfg.url.rstrip('/')
+    sse_url = f"{base_url}/sse"
+    
+    # Construct auth query params
+    # We use API Key ONLY.
+    query_params = []
+    if cfg.api_key:
+        query_params.append(f"key={key_display}")
+         
+    query_str = "&".join(query_params)
+    full_url = f"{sse_url}?{query_str}" if query_str else sse_url
 
     return {
         "configured": True,
         "config": {
             "url": cfg.url,
-            "token_masked": token_masked,
-            "token_full": cfg.access_token if include_token else None,
+            "key_masked": key_masked,
+            "key_full": cfg.api_key if include_token else None,
         },
         "commands": {
-            "claude": f'claude mcp add --transport http --header "Authorization: Bearer {token_display}" -s user consult {mcp_url}',
-            "gemini": f'gemini mcp add consult "{mcp_url}?token={token_display}" --scope user',
+            "claude": f'claude mcp add --transport http -s user consult "{full_url}"',
+            "gemini": f'gemini mcp add consult "{full_url}" --scope user',
         },
         "manual": {
-            "header_auth": {
-                "url": mcp_url,
-                "header": f"Authorization: Bearer {token_display}",
-            },
-            "query_auth": {
-                "url": f"{mcp_url}?token={token_display}",
+            "simple": {
+                "url": full_url,
             },
         },
     }

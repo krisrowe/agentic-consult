@@ -109,21 +109,25 @@ def auth_import():
 
     # Validate required fields
     url = config.get("url")
-    token = config.get("access_token")
+    token = config.get("access_token") # Optional legacy
+    key = config.get("api_key")
 
     if not url:
         click.secho("Error: 'url' not found in input.", fg="red")
         sys.exit(1)
-    if not token:
-        click.secho("Error: 'access_token' not found in input.", fg="red")
+    
+    # We require API Key now
+    if not key and not token:
+        click.secho("Error: 'api_key' not found in input.", fg="red")
         sys.exit(1)
 
     # Save to config
-    set_remote_config(url=url, access_token=token)
+    set_remote_config(url=url, access_token=token, api_key=key)
 
     click.secho("Credentials imported.", fg="green")
-    click.echo(f"URL:   {url}")
-    click.echo(f"Token: {token[:8]}...")
+    click.echo(f"URL:     {url}")
+    if key:
+        click.echo(f"API Key:  {key[:8]}...")
     click.echo()
     click.echo("Next: consult remote test")
 
@@ -134,57 +138,20 @@ def auth_show(include_token: bool):
     """Show current authentication credentials."""
     config = get_remote_config()
 
-    if not config.url and not config.access_token:
+    if not config.url:
         click.echo("No credentials configured.")
         click.echo()
         click.echo("Import with: cat config.yaml | consult remote auth import")
         sys.exit(1)
 
-    click.echo(f"URL:   {config.url or '(not set)'}")
-    if config.access_token:
-        token_display = config.access_token if include_token else config.masked_token
-        click.echo(f"Token: {token_display}")
-    else:
-        click.echo("Token: (not set)")
+    click.echo(f"URL:       {config.url}")
+    
+    key_display = config.api_key if include_token else config.masked_key
+    click.echo(f"API Key:   {key_display or '(not set)'}")
 
 
 # --- Config subgroup ---
-
-@remote.group()
-def config():
-    """Manage remote server configuration."""
-    pass
-
-
-@config.command("set")
-@click.argument("key", type=click.Choice(["url"]))
-@click.argument("value")
-def config_set(key: str, value: str):
-    """Set a configuration value.
-
-    \b
-    Examples:
-        consult remote config set url https://consult-mcp-xxx.run.app
-    """
-    if key == "url":
-        set_remote_config(url=value)
-        click.echo(f"Set remote.url = {value}")
-
-
-@config.command("show")
-def config_show():
-    """Show current remote configuration."""
-    cfg = get_remote_config()
-    click.echo("Remote Configuration")
-    click.echo("────────────────────")
-    click.echo(f"URL:   {cfg.url or '(not set)'}")
-    click.echo(f"Token: {cfg.masked_token or '(not set)'}")
-
-    if not cfg.is_configured:
-        click.echo()
-        click.secho("Not fully configured.", fg="yellow")
-        click.echo("Import credentials: cat config.yaml | consult remote auth import")
-
+# ... (omitting config group) ...
 
 # --- Show command ---
 
@@ -196,9 +163,8 @@ def show(include_token: bool, output_format: str):
 
     \b
     Displays:
-    - Current URL and token (masked by default)
+    - Current URL and keys
     - Commands to register with Claude and Gemini
-    - Manual registration info for other MCP clients
 
     \b
     Examples:
@@ -226,8 +192,8 @@ def show(include_token: bool, output_format: str):
 
     click.echo("Remote Configuration")
     click.echo("────────────────────")
-    click.echo(f"URL:   {info['config']['url']}")
-    click.echo(f"Token: {info['config']['token_masked']} ✓")
+    click.echo(f"URL:       {info['config']['url']}")
+    click.echo(f"API Key:   {info['config']['key_masked']} ✓")
 
     click.echo()
     click.echo("Register with Claude:")
@@ -238,17 +204,12 @@ def show(include_token: bool, output_format: str):
     click.echo(f"  {info['commands']['gemini']}")
 
     click.echo()
-    click.echo("Other MCP clients:")
-    click.echo("  Option 1 (header auth - preferred):")
-    click.echo(f"    URL:    {info['manual']['header_auth']['url']}")
-    click.echo(f"    Header: {info['manual']['header_auth']['header']}")
-    click.echo()
-    click.echo("  Option 2 (query string auth):")
-    click.echo(f"    URL:    {info['manual']['query_auth']['url']}")
+    click.echo("Manual URL (Browser/Curl):")
+    click.echo(f"  {info['manual']['simple']['url']}")
 
     if not include_token:
         click.echo()
-        click.secho("Use --include-token to reveal full token in commands.", fg="yellow")
+        click.secho("Use --include-token to reveal full credentials in commands.", fg="yellow")
 
 
 # --- Test command ---
