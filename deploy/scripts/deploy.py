@@ -10,11 +10,13 @@ Usage:
 """
 import argparse
 import configparser
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 # Resolve paths
@@ -130,12 +132,61 @@ def get_image_url(project_id: str, image_name: str, tag: str, registry: str = No
     If image_name looks like a full URL (has domain), use it.
     Otherwise default to gcr.io/project_id/image_name.
     """
-    if "/" in image_name and "." in image_name.split("/"[0]):
+    if "/" in image_name and "." in image_name.split("/")[0]:
         # Fully qualified (e.g. ghcr.io/user/repo)
         return f"{image_name}:{tag}"
     
     base = registry or f"gcr.io/{project_id}"
     return f"{base}/{image_name}:{tag}"
+
+
+def wait_for_gh_build(ref: str, timeout: int = 300) -> bool:
+    """Check and wait for GitHub Actions build for the given ref."""
+    if shutil.which("gh") is None:
+        return False
+
+    print(f"  Checking GitHub Actions for {ref}...", file=sys.stderr)
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout:
+        try:
+            # List runs for this commit
+            res = subprocess.run(
+                ["gh", "run", "list", "--commit", ref, "--json", "status,conclusion,databaseId", "--limit", "1"],
+                cwd=REPO_ROOT, capture_output=True, text=True
+            )
+            if res.returncode != 0:
+                return False
+                
+            runs = json.loads(res.stdout)
+            if not runs:
+                # No run found yet - maybe just pushed? Wait a bit.
+                if time.time() - start_time < 30: 
+                    time.sleep(5)
+                    continue
+                return False # Give up if not found quickly
+
+            run = runs[0]
+            status = run.get("status")
+            conclusion = run.get("conclusion")
+            
+            if status == "completed":
+                if conclusion == "success":
+                    print(f"  GitHub Build passed (Run {run.get('databaseId')}).", file=sys.stderr)
+                    return True
+                else:
+                    print(f"  GitHub Build failed/cancelled ({conclusion}).", file=sys.stderr)
+                    return False
+            
+            # Still running/queued
+            print(f"  GitHub Build in progress ({status})... waiting...", end="\r", file=sys.stderr)
+            time.sleep(10)
+            
+        except (json.JSONDecodeError, Exception) as e:
+            pass
+
+    print(f"\n  Timed out waiting for GitHub Build.", file=sys.stderr)
+    return False
 
 
 def check_gcr_image_exists(image_url: str) -> bool:
@@ -235,10 +286,8 @@ def run_terraform(
     dry_run: bool = False,
 ):
     """Run terraform init and apply/plan."""
-    # Init (skip backend config for now since GCS backend is disabled)
     init_cmd = ["terraform", "init"]
 
-    # Apply/plan command
     action = "plan" if plan_only else "apply"
     action_cmd = [
         "terraform", action,
@@ -300,15 +349,8 @@ Examples:
     if not args.ref:
         if not git_status_clean():
             print("Error: Working tree has uncommitted changes.", file=sys.stderr)
-            print("Either:", file=sys.stderr)
-            print("  1. Commit your changes first", file=sys.stderr)
-            print("  2. Run with --ref HEAD to deploy current HEAD anyway", file=sys.stderr)
             sys.exit(1)
         print(f"Deploying from HEAD (working tree clean)", file=sys.stderr)
-
-    # Warn about unpushed commits
-    if git_has_unpushed():
-        print("Warning: HEAD has unpushed commits. Proceeding anyway.", file=sys.stderr)
 
     # Load settings
     settings = load_settings()
@@ -321,7 +363,6 @@ Examples:
 
     # Determine image_tag
     if args.ref:
-        # Resolve ref to full SHA to match GH Actions 'sha-LONG' convention
         try:
             res = subprocess.run(
                 ["git", "rev-parse", args.ref],
@@ -329,7 +370,6 @@ Examples:
             )
             image_tag = res.stdout.strip()
         except subprocess.CalledProcessError:
-            # Fallback to provided string if not a local git ref (e.g. tag not fetched)
             image_tag = args.ref
     else:
         image_tag = get_head_sha()
@@ -344,16 +384,14 @@ Examples:
     git_slug = get_git_repo_slug()
     for name, cfg in components_config.items():
         if cfg.get("image") == "auto":
-            # Default convention: user/repo-mcp (for mcp component)
             if name == "mcp":
                 cfg["image"] = f"{git_slug}-mcp"
             else:
-                # Fallback for others?
                 cfg["image"] = f"{git_slug}-{name}"
 
     image_components = [name for name, cfg in components_config.items() if cfg.get("image")]
     internal_components = {name for name, cfg in components_config.items() if cfg.get("image") and not cfg.get("repo")}
-
+    
     fetcher_config = components_config.get("fetcher", {})
     fetcher_tag = fetcher_config.get("ref", "latest")
     print(f"Fetcher tag: {fetcher_tag}", file=sys.stderr)
@@ -367,9 +405,9 @@ Examples:
     if args.component == "config":
         print("\nSyncing config files only (no image build)...", file=sys.stderr)
         mcp_info = components_config.get("mcp", {})
-        mcp_url = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag)
+        mcp_url = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag, mcp_info.get("registry"))
         fetcher_info = components_config.get("fetcher", {})
-        fetcher_url = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag)
+        fetcher_url = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag, fetcher_info.get("registry"))
 
         run_terraform(
             project_id, bucket_name, mcp_url, fetcher_url,
@@ -392,11 +430,9 @@ Examples:
         if not image_name:
             continue
 
-        # Target GCR Image
         tag = image_tag if component in internal_components else fetcher_tag
         target_gcr = get_image_url(project_id, image_name, tag)
 
-        # Check if exists in GCR
         if check_gcr_image_exists(target_gcr):
             print(f"[{component}] Found in GCR: {target_gcr}", file=sys.stderr)
             final_urls[component] = target_gcr
@@ -409,7 +445,10 @@ Examples:
 
         # Not found: Transfer or Build
         if component in internal_components:
-            # Transfer from GHCR
+            # Check GH Actions Status first
+            if len(tag) >= 40: # Only wait for full SHAs
+                 wait_for_gh_build(tag)
+
             ghcr_registry = info.get("registry", "ghcr.io")
             ghcr_image = f"{ghcr_registry}/{image_name}"
             src_tag = f"sha-{tag}" if len(tag) >= 7 and not tag.startswith("sha-") else tag
@@ -418,7 +457,6 @@ Examples:
             print(f"[{component}] Missing from GCR. Transferring from {src_url}...", file=sys.stderr)
             transfer_ghcr_to_gcr(project_id, src_url, target_gcr)
         else:
-            # External: Build from source
             repo_url = info.get("repo")
             ref = info.get("ref", "master")
             print(f"[{component}] Missing from GCR. Building from {repo_url}...", file=sys.stderr)
@@ -431,12 +469,12 @@ Examples:
     target = component_targets.get(args.component) if args.component else None
 
     mcp_info = components_config.get("mcp", {})
-    mcp_default = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag)
-    mcp_url = final_urls.get("mcp", mcp_url if 'mcp_url' in locals() else mcp_default)
+    mcp_default = get_image_url(project_id, mcp_info.get("image", "consult-mcp"), image_tag, mcp_info.get("registry"))
+    mcp_url = final_urls.get("mcp", mcp_default)
 
     fetcher_info = components_config.get("fetcher", {})
-    fetcher_default = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag)
-    fetcher_url = final_urls.get("fetcher", fetcher_url if 'fetcher_url' in locals() else fetcher_default)
+    fetcher_default = get_image_url(project_id, fetcher_info.get("image", "gmex-fetcher"), fetcher_tag, fetcher_info.get("registry"))
+    fetcher_url = final_urls.get("fetcher", fetcher_default)
 
     run_terraform(
         project_id, bucket_name, mcp_url, fetcher_url,
