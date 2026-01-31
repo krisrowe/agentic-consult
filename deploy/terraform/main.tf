@@ -276,6 +276,12 @@ resource "google_api_gateway_api" "mcp_api" {
   depends_on = [google_project_service.apigateway]
 }
 
+resource "google_project_service" "mcp_api_service" {
+  project = local.project_id
+  service = google_api_gateway_api.mcp_api.managed_service
+  disable_on_destroy = false
+}
+
 resource "google_api_gateway_api_config" "mcp_cfg" {
   provider = google-beta
   api      = google_api_gateway_api.mcp_api.api_id
