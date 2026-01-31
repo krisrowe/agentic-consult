@@ -3,8 +3,24 @@
 This module provides functions to check the status of cloud resources
 without modifying any state. Safe for repeated calls.
 """
+import argparse
+import json
+import logging
+import os
+import sys
+import subprocess
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any, Tuple
+
+# Set up logging based on env var
+_log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, _log_level, logging.INFO),
+    format='%(message)s',
+    stream=sys.stderr
+)
+logger = logging.getLogger(__name__)
 
 from .base import CloudProvider
 
@@ -143,6 +159,53 @@ def format_tf_resource(resource: Dict[str, Any]) -> Optional[Tuple[str, str, Opt
         return (f"{rtype}.{name}", "exists", None)
 
 
+def load_images_config() -> dict:
+    """Load image definitions from deploy/components.ini."""
+    import configparser
+    from pathlib import Path
+    config_path = Path(__file__).parent.parent.parent / "deploy" / "components.ini"
+    parser = configparser.ConfigParser()
+    parser.read(config_path)
+
+    images = {}
+    for section in parser.sections():
+        # Only include sections that define an image
+        if parser.has_option(section, "image"):
+            images[section] = dict(parser[section])
+    return images
+
+
+def is_internal_image(info: dict) -> bool:
+    """Check if image is internal (has target = built in this repo)."""
+    return "target" in info or "terraform" in info
+
+
+def get_git_repo_slug() -> str:
+    """Get 'user/repo' from git remote origin."""
+    try:
+        repo_root = Path(__file__).parent.parent.parent
+        res = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=repo_root, capture_output=True, text=True, check=True
+        )
+        url = res.stdout.strip()
+        if url.endswith(".git"):
+            url = url[:-4]
+        
+        # Handle SSH: git@github.com:user/repo
+        if "@" in url and ":" in url:
+            return url.split(":")[-1]
+            
+        # Handle HTTPS: https://github.com/user/repo
+        parts = url.split("/")
+        if len(parts) >= 2:
+            return f"{parts[-2]}/{parts[-1]}"
+            
+        return "unknown/unknown"
+    except subprocess.CalledProcessError:
+        return "unknown/unknown"
+
+
 def refresh_terraform_state(project_id: str, bucket_name: str) -> Tuple[bool, Optional[str]]:
     """Run terraform refresh to update state from cloud.
 
@@ -162,11 +225,38 @@ def refresh_terraform_state(project_id: str, bucket_name: str) -> Tuple[bool, Op
     if not (terraform_dir / ".terraform").exists():
         return False, "Terraform not initialized. Run ./cloud deploy first."
 
+    # Load image config to construct image variables
+    images = load_images_config()
+    git_slug = get_git_repo_slug()
+    
+    # Helper to resolve image name
+    def resolve_image(section_name: str, config: dict) -> str:
+        name = config.get('image', '')
+        if name == "auto":
+            if section_name == "mcp":
+                return f"{git_slug}-mcp"
+            return f"{git_slug}-{section_name}"
+        return name
+
+    # Construct placeholder URLs to satisfy terraform inputs
+    # The actual running images will be pulled into state by refresh
+    mcp_info = images.get("mcp", {})
+    mcp_name = resolve_image("mcp", mcp_info)
+    mcp_image = f"gcr.io/{project_id}/{mcp_name}:latest"
+    
+    fetcher_info = images.get("fetcher", {})
+    fetcher_name = resolve_image("fetcher", fetcher_info)
+    fetcher_image = f"gcr.io/{project_id}/{fetcher_name}:latest"
+
     cmd = [
         "terraform", "refresh",
         f"-var=project_id={project_id}",
         f"-var=bucket_name={bucket_name}",
+        f"-var=mcp_image={mcp_image}",
+        f"-var=fetcher_image={fetcher_image}",
     ]
+
+    logger.debug(f"Running command: {' '.join(cmd)} (in {terraform_dir})")
 
     try:
         result = subprocess.run(
@@ -193,27 +283,6 @@ def refresh_terraform_state(project_id: str, bucket_name: str) -> Tuple[bool, Op
         return False, "Terraform not found in PATH"
     except Exception as e:
         return False, str(e)
-
-
-def load_images_config() -> dict:
-    """Load image definitions from deploy/images.ini."""
-    import configparser
-    from pathlib import Path
-    config_path = Path(__file__).parent.parent.parent / "deploy" / "images.ini"
-    parser = configparser.ConfigParser()
-    parser.read(config_path)
-
-    images = {}
-    for section in parser.sections():
-        images[section] = dict(parser[section])
-    return images
-
-
-def is_internal_image(info: dict) -> bool:
-    """Check if image is internal (has target = built in this repo)."""
-    return "target" in info
-
-
 def read_cloud_status(
     provider: Optional[CloudProvider] = None,
     project_id: Optional[str] = None,
@@ -329,10 +398,19 @@ def read_cloud_status(
             needs_init = True
             pre_deploy_complete = False
 
-    # 4. Check images (from deploy/images.ini)
+    # 4. Check images (from deploy/components.ini)
     images_config = load_images_config()
+    git_slug = get_git_repo_slug()
+
     for name, info in images_config.items():
         image_name = info["image"]
+        
+        # Resolve 'auto' image names
+        if image_name == "auto":
+            if name == "mcp":
+                image_name = f"{git_slug}-mcp"
+            else:
+                image_name = f"{git_slug}-{name}"
 
         if provider.image_exists(project_id, image_name):
             pre_deploy.append(ResourceStatus(
@@ -343,7 +421,7 @@ def read_cloud_status(
             pre_deploy.append(ResourceStatus(
                 name=image_name,
                 status="missing",
-                guidance=f"./cloud images deploy {name}",
+                guidance=f"./cloud deploy (auto-builds images)",
             ))
             missing_images.append(name)
             pre_deploy_complete = False
@@ -408,7 +486,7 @@ def read_cloud_status(
         if needs_init:
             items.append("./cloud init")
         if missing_images:
-            items.append("./cloud images deploy all --if-missing")
+            items.append("./cloud deploy (auto-builds missing images)")
         guidance.append(GuidanceGroup(items=items))
 
     # Deploy guidance
@@ -452,7 +530,6 @@ def read_cloud_status(
         guidance.append(GuidanceGroup(
             heading="Redeploy:",
             items=[
-                "./cloud images deploy all",
                 "./cloud deploy",
             ]
         ))

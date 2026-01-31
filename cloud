@@ -96,11 +96,6 @@ def main():
             sys.argv = sys.argv[1:]
             cmd_main()
 
-        elif command == "images":
-            from images import main as cmd_main
-            sys.argv = sys.argv[1:]
-            cmd_main()
-
         elif command == "secrets":
             from secrets import main as cmd_main
             sys.argv = sys.argv[1:]
@@ -129,7 +124,6 @@ Commands:
     init            Initialize cloud configuration
     deploy          Deploy infrastructure via terraform
     scheduler       Manage Cloud Scheduler jobs
-    images          Build and push container images
     secrets         Manage Cloud Run secrets
     user-auth       Manage user authentication (tokens for MCP access)
 
