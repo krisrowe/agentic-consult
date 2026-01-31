@@ -31,7 +31,8 @@ from agentic_consult.cloud.deployment import (
     get_head_sha,
     get_git_repo_slug,
     load_components_config,
-    get_image_url
+    get_image_url,
+    git_status_clean
 )
 
 

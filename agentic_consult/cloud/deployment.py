@@ -21,6 +21,11 @@ def get_head_sha() -> str:
     """Get current HEAD SHA."""
     return run_git_cmd(["git", "rev-parse", "HEAD"])
 
+def git_status_clean() -> bool:
+    """Check if working tree is clean (no uncommitted or untracked files)."""
+    result = run_git_cmd(["git", "status", "--porcelain"])
+    return not result.strip()
+
 def get_git_repo_slug() -> str:
     """Get 'user/repo' from git remote origin."""
     try:

@@ -8,6 +8,17 @@ schemes:
 produces:
   - application/json
 paths:
+  /health:
+    get:
+      summary: Health Check
+      operationId: health
+      x-google-backend:
+        address: ${mcp_url}/health
+        protocol: h2
+      # No security - public health check
+      responses:
+        '200':
+          description: OK
   /sse:
     get:
       summary: SSE Endpoint
