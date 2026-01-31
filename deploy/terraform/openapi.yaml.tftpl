@@ -1,24 +1,33 @@
-swagger: '2.0'
+openapi: 3.0.3
 info:
   title: Agentic Consult MCP
   description: Public API Gateway for private MCP service
   version: 1.0.0
-schemes:
-  - https
-produces:
-  - application/json
+
+x-google-api-management:
+  backends:
+    mcp_backend:
+      address: ${mcp_url}
+      pathTranslation: APPEND_PATH_TO_ADDRESS
+      protocol: "h2"
+
+x-google-backend: mcp_backend
+
+components:
+  securitySchemes:
+    api_key:
+      type: apiKey
+      name: key
+      in: query
+
+security:
+  - api_key: []
+
 paths:
   /:
     post:
       summary: MCP JSON-RPC Endpoint
       operationId: mcp_root
-      x-google-backend:
-        address: ${mcp_url}/
-        jwt_audience: ${mcp_url}
-        path_translation: CONSTANT_ADDRESS
-        protocol: h2
-      security:
-        - api_key: []
       responses:
         '200':
           description: OK
@@ -26,27 +35,8 @@ paths:
     get:
       summary: Health Check
       operationId: health
-      x-google-backend:
-        address: ${mcp_url}/health
-        jwt_audience: ${mcp_url}
-        path_translation: CONSTANT_ADDRESS
-        protocol: h2
       # Public health check
       security: []
-      responses:
-        '200':
-          description: OK
-  /sse:
-    get:
-      summary: SSE Endpoint
-      operationId: sse
-      x-google-backend:
-        address: ${mcp_url}/sse
-        jwt_audience: ${mcp_url}
-        path_translation: CONSTANT_ADDRESS
-        protocol: h2
-      security:
-        - api_key: []
       responses:
         '200':
           description: OK
@@ -54,20 +44,6 @@ paths:
     post:
       summary: Batch Analysis
       operationId: batch
-      x-google-backend:
-        address: ${mcp_url}/internal/batch
-        jwt_audience: ${mcp_url}
-        path_translation: CONSTANT_ADDRESS
-        protocol: h2
-      security:
-        - api_key: []
       responses:
         '200':
           description: OK
-
-securityDefinitions:
-  # This configures API Gateway to validate the 'key' query parameter
-  api_key:
-    type: "apiKey"
-    name: "key"
-    in: "query"
