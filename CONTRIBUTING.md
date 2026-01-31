@@ -236,3 +236,99 @@ This prevents accidental leaks of employer or client emails in public repositori
 ## Questions?
 
 Open an issue or contact the repository owner.
+
+---
+
+# Architecture & Design Philosophy
+
+This project captures the foundational theory, architectural patterns, and strategic trade-offs chosen for the `agentic-consult` toolkit.
+
+## 1. Core Vision: The Cognitive Perception Architecture
+
+The goal is to evolve from a "chatbot with tools" not into a rigid script-runner, but into a **highly situational, context-aware partner**. We aim to give the Primary Agent (Gemini CLI) "Super-Senses"—the ability to instantly perceive, synthesize, and reason about massive amounts of historical data (emails, tasks, code) without being overwhelmed by it.
+
+## 2. Core Design Pattern: Cognitive Tools (The Perception Layer)
+
+We utilize a **Cognitive Tool** pattern. Instead of the Primary Agent managing low-level data fetching, we expose "Smart Views" via tools.
+
+-   **The Hub (Orchestrator)**: The Gemini CLI (You + LLM). It holds the initiative and high-level reasoning.
+-   **The Spokes (Perception Engines)**: Specialized modules/MCP tools (`ticktick-access`, `gwsa`) that act as "Sensors".
+    *   *Input:* High-level intent ("What is the status of Project X?").
+    *   *Process:* The tool accesses its cached "Long-Term Memory" (Gemini Context Cache) to analyze thousands of records.
+    *   *Output:* A synthesized **Situation Report** (not raw data). "Project X is waiting on Alice. Last email was 2 days ago. Related task #102 is overdue."
+
+### Why this reduces complexity:
+*   **Decoupling:** The Primary Agent doesn't need to know *how* to filter TickTick tasks or parse Gmail threads. It just asks for a summary.
+*   **Stability:** We avoid complex "Agent Swarms" or rigid "Workflow Scripts" (`orchestrator.py`) that break easily. The intelligence lives in the *tool's response*, empowering the LLM to make the final decision.
+
+## 3. Division of Labor: CLI vs. API
+
+It is critical to distinguish between the **Gemini CLI** (the user interface) and the **Gemini API** (the backend intelligence).
+
+| Role | **Gemini CLI (Primary Agent)** | **Gemini API (Cognitive Tools)** |
+| :--- | :--- | :--- |
+| **Function** | **The CEO / Orchestrator** | **The Analyst / Deep Memory** |
+| **Context** | **Dynamic & Small.** Focused on the active conversation, immediate intent, and synthesized summaries. | **Static & Massive.** Holds 500k+ tokens of project history, logs, and emails via Context Caching. |
+| **Interaction** | Multi-turn conversation with the user. | Single-shot queries ("Reason over this data and answer X"). |
+| **Constraint** | Expensive/Slow to reload massive context on every turn. | Cheap/Fast to query once cached. |
+
+**The Strategy:**
+We use the **API** (via Python scripts exposed as Tools) to do the heavy lifting of reading/reasoning over massive datasets. We use the **CLI** to receive the distilled insights and make the final decision. This avoids "Context Pollution" where the active agent becomes overwhelmed, slow, and expensive.
+
+## 4. The Paradigm: Long-Context Native vs. Vector RAG
+
+The most significant architectural choice is the use of **Google Gemini Context Caching** instead of traditional **Vector Search (RAG)**.
+
+| Feature | Traditional RAG (Vector DB) | Long-Context Native (Caching) |
+| :--- | :--- | :--- |
+| **Data Visibility** | Fragmented (top-k chunks only) | Holistic (the entire dataset) |
+| **Reasoning** | Localized to specific keywords | Global (connects dots across time) |
+| **Complexity** | High (Embeddings, Indexing, Retrieval) | Low (Direct data upload to model) |
+| **Performance** | Variable (depends on retrieval quality) | Consistent (model "sees" everything) |
+
+### Decision: Holistic Reasoning
+We chose Long-Context Native because personal productivity (summarizing a project's evolution, finding subtle threads across months) requires **Global Reasoning**. Vector Search often misses the logical relationship between tasks/emails that are semantically similar but chronologically or logically distinct.
+
+---
+
+# Detailed Testing Strategy
+
+This project adheres to a **["Sociable Unit Testing"](https://martinfowler.com/bliki/UnitTest.html)** philosophy (also known as Component Testing). We prioritize tests that verify full features or SDK transactions end-to-end without network I/O over isolated, granular "Solitary" unit tests that mock internal collaborators.
+
+## Core Philosophy: Why Sociable?
+
+We subscribe to the mantra: **"Functionality is an asset, code is a liability."** This extends to the test suite itself.
+
+A test suite is code that demands maintenance and cognitive load. If we create a sprawling suite of "Solitary" tests (one for every internal function/class), we increase our liability without necessarily increasing our confidence in the system's behavior. Such suites become unwieldy, opaque, and eventually unmaintained because it becomes impossible to look at them and quickly assess "what functionality is covered?" versus "what implementation details are we testing?"
+
+Instead, our "Core Tests" focus on **functional ROI**:
+1.  **Test the Interface, Not the Internals**: We test from the public entry point (e.g., an SDK function or CLI command) down to the system boundary. This keeps the test suite readable as a specification of *capabilities*.
+2.  **Use Real Collaborators**: If an SDK function calls a helper class, we let it use the *real* helper class. We only mock the final "edge" of the system (Network I/O, Third-Party APIs). This ensures refactoring internal helpers doesn't break tests unless the *outcome* changes.
+3.  **Embrace the File System**: We do **not** shy away from real file system operations. We use isolated temporary directories (`tempfile` fixtures) for setup and teardown. This ensures our file handling logic is proven correct.
+    *   *Exception*: If data is massive or practically impossible to generate/clean up in a test (e.g., huge binary assets), we may mock the file access layer, but this is rare.
+
+## Tier 1: Core Tests ("Sociable Unit Tests")
+*   **Location**: `tests/unit/`
+*   **Execution**: Fast, deterministic, run by default.
+*   **What to Mock**:
+    *   Network calls (Google Drive, Gmail, TickTick API).
+    *   System clocks/Time (if precision is required).
+    *   Heavy external processes.
+*   **What NOT to Mock**:
+    *   Internal helper functions/classes.
+    *   File system (read/write to temp dirs).
+    *   Configuration parsers (write real config files to temp dirs).
+
+## Tier 2: External Tests ("Integration Tests")
+*   **Location**: `tests/integration/` (or marked as `external`)
+*   **Philosophy**: Verify the contract with the outside world. These tests hit **REAL** external APIs.
+*   **Execution**: Slow, flaky, require credentials. Excluded by default.
+*   **Usage**: Write these sparingly to verify that our API client code actually works against the real provider.
+
+### Integration Prerequisites
+Running integration tests (`tests/integration/`) requires:
+1.  **Authentication**: You must be authenticated with Google Drive via Application Default Credentials (ADC).
+    *   Run `gcloud auth application-default login` OR set `GOOGLE_APPLICATION_CREDENTIALS`.
+    *   The tests need permission to read/write/create files and folders on Drive.
+2.  **Artifacts**: These tests **WILL** create temporary folders and files on your Google Drive (e.g., `Consult_Test_Backup_...`).
+    *   Tests attempt to clean up, but failures may leave artifacts behind. You may need to manually prune them occasionally.

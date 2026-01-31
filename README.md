@@ -42,7 +42,90 @@ The `analyze_files` tool allows an agent to request analysis of local files by d
 2.  **Isolation**: You can ask a targeted question ("Check these logs for errors") in an isolated context. The main agent receives only the answer, not the noise.
 3.  **Precision**: It provides a standard, predictable syntax (using `.gitignore` style patterns) to control exactly which files are considered, ensuring the model focuses only on relevant data.
 
-For installation, configuration, and a full list of tools, see **[MCP-SERVER.md](MCP-SERVER.md)**.
+For installation, configuration, and a full list of tools, see below.
+
+### Available Tools
+
+The MCP server exposes a comprehensive toolkit for consulting and development workflows.
+
+#### 📁 Backup & Metadata
+| Tool | Description |
+|------|-------------|
+| `assess_workstation_backup_state` | Dry-run assessment of all configured backup providers. |
+| `backup_local_repo` | Backup a single git repository to Google Drive. |
+| `check_repo_status` | Detailed backup and sync status for a specific repository. |
+| `get_backup_metadata` | Retrieve description and keywords for a repository. |
+| `set_backup_metadata` | Set description/keywords in local git config. |
+| `generate_backup_metadata` | Propose metadata using Gemini analysis of the repo. |
+| `clear_backup_metadata` | Remove backup metadata from local config. |
+
+#### 📧 Email Triage & Analysis
+| Tool | Description |
+|------|-------------|
+| `triage_emails` | **Primary Entrypoint.** Fetch and analyze unread emails for triage. |
+| `get_cached_emails` | Retrieve full content for emails analyzed in the current session. |
+| `archive_email` | Archive an email and log the action for rule efficiency. |
+| `mark_email_in_review` | Apply/remove the 'Reviewing' label. |
+| `analyze_emails` | On-demand Gemini analysis for specific message IDs. |
+| `reset_analysis` | Force re-analysis of all emails for a specific date. |
+| `flag_for_reanalysis` | Flag specific emails to be re-processed by the background analyzer. |
+| `email_triage_stats` | Triage health metrics and rule effectiveness report. |
+
+#### ⚙️ Configuration & Rules
+| Tool | Description |
+|------|-------------|
+| `list_email_rules` | List active processing rules with usage statistics. |
+| `add_email_rule` | Add a new auto-archive or review rule. |
+| `remove_email_rule` | Delete an email processing rule. |
+| `configure_email_rules` | Batch update rules (add, update, delete, enable/disable). |
+| `configure_triage_batching` | Adjust fetch pool and presentation batch sizes. |
+
+#### 🧠 Analysis & Context
+| Tool | Description |
+|------|-------------|
+| `analyze_files` | Reason about local files with recursive context and exclusions. |
+| `analyze_context` | Query the `GEMINI.md` context file directly. |
+| `workspace_status` | Multi-repo health check (identity, sync state, dirtiness). |
+
+#### 👥 Customer & Chat
+| Tool | Description |
+|------|-------------|
+| `list_customers` | List all registered consulting customers. |
+| `get_customer_info` | Detailed local and cloud status for a customer. |
+| `register_customer` | Initialize a new customer configuration (local + Drive). |
+| `get_chat_mentions` | Scan Google Chat for actionable mentions and unread DMs. |
+| `get_recent_group_chats` | List recent active spaces and group DMs. |
+
+#### 🛡️ Security & Privacy
+| Tool | Description |
+|------|-------------|
+| `run_precommit_scan` | Comprehensive PII and secret detection for code repos. |
+| `get_fake_email_addresses` | Whitelisted placeholder emails for safe documentation/tests. |
+
+### Usage Examples
+
+**Gemini CLI:**
+
+```bash
+# Backup the current repo
+gemini "backup this repo"
+
+# Run a security scan
+gemini "scan this directory for secrets"
+
+# Analyze documentation
+gemini "Summarize the architecture from docs/"
+```
+
+### Registration (Local)
+
+To run the MCP server locally (stdio transport):
+
+```bash
+gemini mcp add consult consult-mcp --stdio --scope user
+```
+
+For Cloud MCP (HTTP transport), see the [Cloud Deployment](#cloud-deployment) section.
 
 ## Installation
 
@@ -252,31 +335,100 @@ consult config set local_data /home/user/private-config-repo/agentic-consult/dat
 
 ## Cloud Deployment
 
-Deploy the email triage system to Google Cloud for automated background processing. See [deploy/README.md](deploy/README.md) for full operational guide.
+Deploy the email triage system to Google Cloud for automated background processing. This project uses a "Zero-Install" deployment system that runs entirely from the repository using `python3` and `gcloud`, with no local Docker required.
 
-> **Zero-install**: All deployment commands work immediately after `git clone` via `./cloud` - no pip, venv, local Docker, or pipx needed. Just Python 3.10+.
+### Architecture
 
-### Quick Start
+The system uses a **Private Cloud Run** backend fronted by a **Public API Gateway** for secure, serverless operation.
 
-1.  **Initialize:**
-    ```bash
-    ./cloud init --project=my-project-id
-    ```
+```
+  INTERNET                                  GCP PROJECT (Private Network)
+┌──────────┐                            ┌──────────────────────────────┐
+│  Client  │  https://gateway/sse?key=X │                              │
+│ (Claude/ │ ──────────────────────────►│        API Gateway           │
+│  Gemini) │                            │      (Public Facade)         │
+└──────────┘                            └──────────────┬───────────────┘
+                                                       │
+                                                       │ (OIDC Auth)
+                                                       ▼
+┌──────────┐                            ┌──────────────────────────────┐
+│  Cloud   │                            │         consult-mcp          │
+│ Scheduler│ ──────────────────────────►│     (Cloud Run Service)      │
+│          │        (OIDC Auth)         │          [PRIVATE]           │
+└──────────┘                            └──────────────────────────────┘
+```
 
-2.  **Deploy:**
-    ```bash
-    ./cloud deploy
-    ```
-    (Automatically handles image transfer via Cloud Build and infrastructure provisioning via Terraform).
+**Security Model:**
+1.  **Public Access (API Gateway):** Secured by an **API Key**. Only clients with the key can pass the gateway. Exposes `/sse` and `/messages` endpoints.
+2.  **Service Access (Cloud Run):** Secured by **IAM**. Only the API Gateway and Cloud Scheduler Service Accounts have `roles/run.invoker`. Direct internet access is blocked.
+3.  **Deployment:** Managed by a dedicated `terraform-deployer` Service Account with `roles/owner`, bypassing local user permission issues.
 
-3.  **Connect:**
-    ```bash
-    ./cloud user-auth export > creds.yaml
-    cat creds.yaml | consult remote auth import
-    consult remote register
-    ```
+### Prerequisites
 
-See [deploy/README.md](deploy/README.md) for architecture, prerequisites, and advanced usage.
+**GCP Setup:**
+- A GCP project with billing enabled
+- `gcloud` CLI installed and authenticated (`gcloud auth login`)
+- User must be **Owner** (to set org policies and create service accounts during init)
+
+### Step-by-Step Deployment
+
+**1. Initialize cloud environment:**
+
+```bash
+# First time setup (interactive)
+./cloud init --project=my-project-id
+```
+
+`init` will:
+- Enable required APIs and Org Policy overrides (e.g., enabling public access for Gateway)
+- Create the `terraform-deployer` Service Account and key
+- Validate or prompt for required secrets (`gemini-api-key`, `gmail-token`)
+- Create the storage bucket
+- Save the deployment key to `~/.config/agentic-consult/cloud-deploy-svc-account.json`
+
+**2. Deploy Infrastructure:**
+
+```bash
+./cloud deploy
+```
+
+This automated command:
+- **Checks Images:** Verifies if images exist in GCR/Artifact Registry.
+- **Transfers Images:** If missing, triggers **Cloud Build** to transfer the MCP image from GHCR to GCR.
+- **Builds Images:** Triggers **Cloud Build** to build the Fetcher image from source (if needed).
+- **Runs Terraform:** Provisions API Gateway, Cloud Run, and Scheduler using the specific git SHA as the image tag.
+
+**3. Connect Client:**
+
+```bash
+# Export connection info
+./cloud user-auth export > creds.yaml
+
+# Import to local CLI
+cat creds.yaml | consult remote auth import
+
+# Register with AI Agent
+consult remote register
+```
+
+### Management Commands
+
+| Command | Description |
+|---------|-------------|
+| `./cloud status` | Check health of project, secrets, and images. |
+| `./cloud scheduler list` | View active background jobs. |
+| `./cloud user-auth export` | Get client connection info (Gateway URL + API Key). |
+| `./cloud deploy --ref <SHA>` | Deploy a specific git commit. |
+
+### Internals
+
+**Zero Local Docker:**
+The deployment script serves as a bridge. You never run `docker build` locally.
+- **Internal Components (MCP):** Built by GitHub Actions -> GHCR. Script moves them to GCR via Cloud Build.
+- **External Components (Fetcher):** Built by Cloud Build directly from source.
+
+**Idempotency:**
+The script is designed to be run repeatedly. It checks existence before creating/transferring, ensuring fast deploys when images are already present.
 
 ## Development
 
