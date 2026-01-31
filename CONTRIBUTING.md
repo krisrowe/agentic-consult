@@ -335,6 +335,16 @@ To enable a "Day 1 / Minute 1" experience where the agent immediately takes init
 3.  **`get_situational_awareness` (The Bridge)**: A Cognitive Tool that reads the Bookmark and queries the Super-Context to generate a real-time briefing.
     *   *Effect:* The agent wakes up, reads its instructions, checks the state, and immediately asks: "Welcome back. We were working on Project X. 3 new emails have arrived since. Shall we resume?"
 
+## 8. MCP Tool Design & UX Guidelines
+
+When implementing features or changes that involve a specific user experience (UX) at the agent touchpoint:
+
+1. **Lean on Tool Docstrings:** Use the tool's docstring to provide instructions to the agent on how to interpret, format, and present the tool's output to the user. This ensures consistent behavior across different client agents.
+2. **Minimal Schema Expansion:** Expand the tool's response JSON schema only when necessary for structural clarity. If the guidance can be handled via the docstring or a specific instruction within the response (like an `instructions` field), prefer that over complex schema changes.
+3. **Task-Specific Commands:** Design the agent's interaction to suggest and handle concise "DSL" style commands (e.g., `do accept A1`) for common multi-step operations.
+4. **Agent Flexibility:** Allow the MCP client agent to adapt to circumstances with creative problem solving. Do not be overly prescriptive in how it must work with the end user in presenting and acting upon responses. The goal is to orchestrate workflows, not to rigidly script every interaction.
+5. **Runtime Schema Validation:** Ensure that defined JSON schemas (`schemas/*.json`) are actively used at runtime to validate data entering or leaving the system. This prevents "interface drift" where code and documentation diverge.
+
 ---
 
 # Detailed Testing Strategy
