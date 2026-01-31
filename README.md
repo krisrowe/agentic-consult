@@ -127,6 +127,24 @@ gemini mcp add consult consult-mcp --stdio --scope user
 
 For Cloud MCP (HTTP transport), see the [Cloud Deployment](#cloud-deployment) section.
 
+### AI Agent Integration
+
+#### VS Code (Gemini Code Assist)
+Gemini Code Assist in VS Code uses the same user-level configuration as the Gemini CLI. Once you have registered the server locally with the `--scope user` flag, it will be **automatically available** in VS Code. Use the `@consult` handle in the VS Code sidebar to direct requests to these tools.
+
+#### Claude Code CLI
+For Claude Code, use the `-e` flag to pass the required `GEMINI_API_KEY`:
+
+```bash
+claude mcp add --scope user consult -e 'GEMINI_API_KEY=${GEMINI_API_KEY}' -- consult-mcp
+```
+
+### Troubleshooting (Local MCP)
+
+- **"Command not found: consult-mcp"**: Ensure you have installed the package (`pipx install .`) and your virtual environment is active or the script is in your PATH.
+- **"Server not found: consult"**: Run `gemini mcp list` to check if the server is registered. If missing, repeat the `gemini mcp add` step.
+- **Backup Errors**: Ensure you have run `consult backup config` to set the destination Drive folder.
+
 ## Installation
 
 The recommended way to install `agentic-consult` is via `pipx` to ensure isolation and global availability.
@@ -419,6 +437,7 @@ consult remote register
 | `./cloud scheduler list` | View active background jobs. |
 | `./cloud user-auth export` | Get client connection info (Gateway URL + API Key). |
 | `./cloud deploy --ref <SHA>` | Deploy a specific git commit. |
+| `./cloud deploy config` | Sync config files (prompts) to GCS without image rebuild. |
 
 ### Internals
 

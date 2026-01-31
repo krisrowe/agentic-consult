@@ -289,6 +289,52 @@ The most significant architectural choice is the use of **Google Gemini Context 
 ### Decision: Holistic Reasoning
 We chose Long-Context Native because personal productivity (summarizing a project's evolution, finding subtle threads across months) requires **Global Reasoning**. Vector Search often misses the logical relationship between tasks/emails that are semantically similar but chronologically or logically distinct.
 
+## 5. Specialized Pattern: The "Cognitive Tool"
+
+Instead of the primary agent managing low-level filters (dates, tags, status), it delegates natural language intent to a specialized MCP tool.
+
+- **Encapsulation**: The sub-agent (MCP tool) understands the domain deeply (e.g. TickTick or Gmail). The primary agent remains a generalist.
+- **Context Isolation**: Massive datasets (50k+ tokens) are processed within the tool's execution scope. The primary agent only receives a synthesized answer, preserving its context window for the active conversation.
+- **Optimization via Context Caching**:
+    - **Strategy**: Use Google Gemini Context Caching for the bulk of the history.
+    - **Hybrid Delta Handling**: Since caches are immutable, use a "Cold Cache" for historical data and a "Hot Delta" (appended to the prompt) for items modified since the cache was created.
+    - **Efficiency**: Reduces latency and token costs by avoiding full re-uploads of history on every change.
+
+## 6. Framework Selection: Custom Orchestration vs. LangGraph/Frameworks
+
+We avoid heavy-weight frameworks like LangGraph, Semantic Kernel, or CrewAI.
+
+-   **Decision**: Lean Python + MCP.
+-   **Rationale**: 
+    -   **Performance**: Direct API calls have lower latency than framework abstraction layers.
+    -   **Control**: Explicit state management in Python is easier to debug than complex directed-acyclic-graphs (DAGs) in third-party libraries.
+    -   **First-Class Tooling**: MCP (Model Context Protocol) is the native plugin format for our primary interfaces. Using MCP ensures our "Cognitive Tools" are portable to any client (CLI, IDE, or Desktop Agent).
+
+## 6. Patterns to Study & Apply
+
+To improve effectiveness without adding complexity, focus on these patterns:
+
+1.  **The "Cognitive Tool" (or Reasoning Tool):**
+    *   *Concept:* A tool that doesn't just "do" (like `write_file`), but "thinks" (like `analyze_project_history`). It uses a cheaper/faster LLM call internally to process data before returning a result.
+    *   *Application:* Build a `get_situational_awareness()` tool that polls your Task and Email engines and returns a prioritized "Morning Briefing" automatically.
+
+2.  **The "Semantic Router":**
+    *   *Concept:* Instead of hardcoding "If X then Y", let the LLM decide which "Expert Tool" to call based on the user's intent.
+    *   *Application:* Your CLI already does this natively. Trust the model to pick the right tool (`backup_local_repo`, `run_precommit_scan`, `analyze_files`) rather than forcing it into a linear script.
+
+3.  **Context Isolation:**
+    *   *Concept:* Keep the Primary Agent's context window clean. Never dump raw logs or 500 emails into the main chat. Always synthesize first.
+    *   *Application:* Ensure every "List" or "Search" tool has a summarization step (or default limit) so the Primary Agent receives actionable insights, not noise.
+
+## 7. Session Continuity & Initiative
+
+To enable a "Day 1 / Minute 1" experience where the agent immediately takes initiative, we rely on three pillars:
+
+1.  **`GEMINI.md` (The Bootloader)**: Defines the *Persona* ("Chief of Staff") and the *Protocol* ("Upon startup, always call `get_situational_awareness` first"). It sets the mission but contains no dynamic state.
+2.  **`workflow_state.json` (The Bookmark)**: Persists the execution context across sessions (e.g., `last_sync_time`, `current_focus_project`, `pending_decisions`).
+3.  **`get_situational_awareness` (The Bridge)**: A Cognitive Tool that reads the Bookmark and queries the Super-Context to generate a real-time briefing.
+    *   *Effect:* The agent wakes up, reads its instructions, checks the state, and immediately asks: "Welcome back. We were working on Project X. 3 new emails have arrived since. Shall we resume?"
+
 ---
 
 # Detailed Testing Strategy
