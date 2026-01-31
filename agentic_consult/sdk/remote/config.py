@@ -124,9 +124,8 @@ def get_registration_info(include_token: bool = False) -> dict:
     key_display = cfg.api_key if include_token else "****"
     key_masked = cfg.masked_key
 
-    # MCP SSE endpoint is at /sse
+    # MCP Stateless HTTP endpoint is at root /
     base_url = cfg.url.rstrip('/')
-    sse_url = f"{base_url}/sse"
     
     # Construct auth query params
     # We use API Key ONLY.
@@ -135,7 +134,7 @@ def get_registration_info(include_token: bool = False) -> dict:
         query_params.append(f"key={key_display}")
          
     query_str = "&".join(query_params)
-    full_url = f"{sse_url}?{query_str}" if query_str else sse_url
+    full_url = f"{base_url}/?{query_str}" if query_str else f"{base_url}/"
 
     return {
         "configured": True,
@@ -146,7 +145,7 @@ def get_registration_info(include_token: bool = False) -> dict:
         },
         "commands": {
             "claude": f'claude mcp add --transport http -s user consult "{full_url}"',
-            "gemini": f'gemini mcp add consult "{full_url}" --scope user',
+            "gemini": f'gemini mcp add consult "{full_url}" --scope user --transport http',
         },
         "manual": {
             "simple": {
