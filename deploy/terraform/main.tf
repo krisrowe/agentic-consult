@@ -336,7 +336,6 @@ resource "google_apikeys_key" "mcp_key" {
   restrictions {
     api_targets {
       service = google_api_gateway_api.mcp_api.managed_service
-      methods = ["GET*", "POST*"]
     }
   }
 

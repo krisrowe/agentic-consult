@@ -82,24 +82,30 @@ def check_health(url: str, timeout: int = 10) -> tuple[bool, Optional[str]]:
         return False, str(e)
 
 
-def check_auth(url: str, token: str, timeout: int = 10) -> tuple[bool, Optional[str]]:
+def check_auth(url: str, token: Optional[str] = None, api_key: Optional[str] = None, timeout: int = 10) -> tuple[bool, Optional[str]]:
     """
     Validate auth token against remote server.
 
-    Sends MCP initialize request to /mcp endpoint to verify token validity.
+    Sends MCP initialize request to root endpoint to verify token/key validity.
 
     Args:
         url: Base URL of the MCP server
-        token: Access token
+        token: Access token (optional)
+        api_key: API Key (optional)
         timeout: Request timeout in seconds
 
     Returns:
         (success, error_message) tuple
     """
     mcp_url = f"{url.rstrip('/')}/"
+    if api_key:
+        separator = "&" if "?" in mcp_url else "?"
+        mcp_url += f"{separator}key={api_key}"
+
     try:
         req = urllib.request.Request(mcp_url, method="POST")
-        req.add_header("Authorization", f"Bearer {token}")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
         req.add_header("Content-Type", "application/json")
         req.add_header("Accept", MCP_ACCEPT)
         # Full MCP initialize request with required params
@@ -118,13 +124,12 @@ def check_auth(url: str, token: str, timeout: int = 10) -> tuple[bool, Optional[
             return True, None
     except urllib.error.HTTPError as e:
         if e.code == 401:
-            return False, "No token provided"
+            return False, "Unauthorized (check token/key)"
         elif e.code == 403:
-            return False, "Invalid token"
+            return False, "Forbidden (invalid token/key)"
         elif e.code == 500:
             return False, "Server misconfigured"
         else:
-            # Other errors (400, 404, etc.) might mean auth passed but request was bad
             return True, None
     except urllib.error.URLError as e:
         return False, str(e.reason)
@@ -132,22 +137,28 @@ def check_auth(url: str, token: str, timeout: int = 10) -> tuple[bool, Optional[
         return False, str(e)
 
 
-def _mcp_initialize(url: str, token: str, timeout: int = 10) -> tuple[Optional[str], Optional[str]]:
+def _mcp_initialize(url: str, token: Optional[str] = None, api_key: Optional[str] = None, timeout: int = 10) -> tuple[Optional[str], Optional[str]]:
     """
     Initialize MCP session and get session ID.
 
     Args:
         url: Base URL of the MCP server
-        token: Access token
+        token: Access token (optional)
+        api_key: API Key (optional)
         timeout: Request timeout in seconds
 
     Returns:
         (session_id, error_message) tuple
     """
     mcp_url = f"{url.rstrip('/')}/"
+    if api_key:
+        separator = "&" if "?" in mcp_url else "?"
+        mcp_url += f"{separator}key={api_key}"
+
     try:
         req = urllib.request.Request(mcp_url, method="POST")
-        req.add_header("Authorization", f"Bearer {token}")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
         req.add_header("Content-Type", "application/json")
         req.add_header("Accept", MCP_ACCEPT)
         req.data = json.dumps({
@@ -162,9 +173,20 @@ def _mcp_initialize(url: str, token: str, timeout: int = 10) -> tuple[Optional[s
         }).encode()
 
         with urllib.request.urlopen(req, timeout=timeout) as resp:
+            # Session ID might be in header or body depending on implementation
+            # FastMCP stateless might not return session ID in header, but we check anyway
             session_id = resp.headers.get("Mcp-Session-Id")
+            
+            # If no header, check if we got a valid JSON-RPC response
+            # Stateless mode implies no session persistence needed, so maybe we don't need ID?
+            # But call_tool uses it?
+            
             if not session_id:
-                return None, "No session ID in response"
+                # If we got a 200 OK result, we can assume success for stateless?
+                # But call_tool might need it for stateful calls. 
+                # For now, if we get success, return a dummy ID if missing, or handle it in call_tool.
+                return "stateless", None
+                
             return session_id, None
 
     except urllib.error.HTTPError as e:
@@ -177,9 +199,10 @@ def _mcp_initialize(url: str, token: str, timeout: int = 10) -> tuple[Optional[s
 
 def call_tool(
     url: str,
-    token: str,
-    tool_name: str,
+    token: Optional[str] = None,
+    tool_name: str = "",
     arguments: Optional[dict] = None,
+    api_key: Optional[str] = None,
     timeout: int = 30
 ) -> tuple[Optional[Any], Optional[str]]:
     """
@@ -189,26 +212,34 @@ def call_tool(
 
     Args:
         url: Base URL of the MCP server
-        token: Access token
+        token: Access token (optional)
         tool_name: Name of the tool to call
         arguments: Tool arguments (default: {})
+        api_key: API Key (optional)
         timeout: Request timeout in seconds
 
     Returns:
         (result, error_message) tuple
     """
-    # First initialize to get session ID
-    session_id, error = _mcp_initialize(url, token, timeout)
+    # First initialize to get session ID (or validate auth)
+    session_id, error = _mcp_initialize(url, token, api_key, timeout)
     if error:
         return None, f"Init failed: {error}"
 
     mcp_url = f"{url.rstrip('/')}/"
+    if api_key:
+        separator = "&" if "?" in mcp_url else "?"
+        mcp_url += f"{separator}key={api_key}"
+
     try:
         req = urllib.request.Request(mcp_url, method="POST")
-        req.add_header("Authorization", f"Bearer {token}")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
         req.add_header("Content-Type", "application/json")
         req.add_header("Accept", MCP_ACCEPT)
-        req.add_header("Mcp-Session-Id", session_id)
+        if session_id and session_id != "stateless":
+            req.add_header("Mcp-Session-Id", session_id)
+            
         req.data = json.dumps({
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -218,32 +249,63 @@ def call_tool(
 
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             # Response is SSE format: "event: message\ndata: {...}"
-            result = _parse_sse_response(resp.read())
-            if not result:
-                return None, "Failed to parse SSE response"
+            # OR standard JSON-RPC if stateless?
+            # FastMCP stateless seems to return JSON-RPC directly (based on my curl test)
+            # content-type: application/json
+            
+            ctype = resp.headers.get("Content-Type", "")
+            data = resp.read()
+            
+            if "application/json" in ctype:
+                # Direct JSON-RPC response
+                try:
+                    result = json.loads(data)
+                    if "error" in result:
+                        return None, str(result["error"])
+                    if "result" in result:
+                        # Extract content from result
+                        res = result["result"]
+                        if "content" in res:
+                            content = res["content"]
+                            if isinstance(content, list) and content:
+                                text = content[0].get("text")
+                                if text:
+                                    try:
+                                        return json.loads(text), None
+                                    except json.JSONDecodeError:
+                                        return text, None
+                        return res, None
+                    return result, None
+                except json.JSONDecodeError:
+                    return None, "Failed to parse JSON response"
+            else:
+                # SSE fallback
+                result = _parse_sse_response(data)
+                if not result:
+                    return None, "Failed to parse SSE response"
 
-            if "error" in result:
-                return None, str(result["error"])
+                if "error" in result:
+                    return None, str(result["error"])
 
-            if "result" in result:
-                content = result["result"]
-                # Check for structuredContent first (preferred)
-                if isinstance(content, dict) and "structuredContent" in content:
-                    return content["structuredContent"], None
-                # Fall back to parsing text from content blocks
-                if isinstance(content, dict) and "content" in content:
-                    content = content["content"]
-                if isinstance(content, list) and content:
-                    text = content[0].get("text", "{}")
-                    if isinstance(text, str):
-                        try:
-                            return json.loads(text), None
-                        except json.JSONDecodeError:
-                            return text, None
-                    return text, None
-                return content, None
+                if "result" in result:
+                    content = result["result"]
+                    # Check for structuredContent first (preferred)
+                    if isinstance(content, dict) and "structuredContent" in content:
+                        return content["structuredContent"], None
+                    # Fall back to parsing text from content blocks
+                    if isinstance(content, dict) and "content" in content:
+                        content = content["content"]
+                    if isinstance(content, list) and content:
+                        text = content[0].get("text", "{}")
+                        if isinstance(text, str):
+                            try:
+                                return json.loads(text), None
+                            except json.JSONDecodeError:
+                                return text, None
+                        return text, None
+                    return content, None
 
-            return None, "Unexpected response format"
+                return None, "Unexpected response format"
 
     except urllib.error.HTTPError as e:
         return None, f"HTTP {e.code}: {e.reason}"
@@ -283,14 +345,14 @@ def get_full_status(test_tool: Optional[str] = "email_triage_stats") -> RemoteSt
         return status
 
     # Auth check
-    status.auth_ok, status.auth_error = check_auth(config.url, config.access_token)
+    status.auth_ok, status.auth_error = check_auth(config.url, config.access_token, config.api_key)
 
     if not status.auth_ok:
         return status
 
     # Tool test (optional)
     if test_tool:
-        result, error = call_tool(config.url, config.access_token, test_tool)
+        result, error = call_tool(config.url, config.access_token, test_tool, api_key=config.api_key)
         if error:
             status.tool_error = error
         else:
