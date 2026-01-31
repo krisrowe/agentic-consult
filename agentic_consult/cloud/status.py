@@ -23,6 +23,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from .base import CloudProvider
+from .deployment import (
+    get_repo_root,
+    load_components_config,
+    get_git_repo_slug,
+    get_head_sha,
+    get_image_url,
+    resolve_image_name
+)
 
 
 @dataclass
@@ -159,53 +167,6 @@ def format_tf_resource(resource: Dict[str, Any]) -> Optional[Tuple[str, str, Opt
         return (f"{rtype}.{name}", "exists", None)
 
 
-def load_images_config() -> dict:
-    """Load image definitions from deploy/components.ini."""
-    import configparser
-    from pathlib import Path
-    config_path = Path(__file__).parent.parent.parent / "deploy" / "components.ini"
-    parser = configparser.ConfigParser()
-    parser.read(config_path)
-
-    images = {}
-    for section in parser.sections():
-        # Only include sections that define an image
-        if parser.has_option(section, "image"):
-            images[section] = dict(parser[section])
-    return images
-
-
-def is_internal_image(info: dict) -> bool:
-    """Check if image is internal (has target = built in this repo)."""
-    return "target" in info or "terraform" in info
-
-
-def get_git_repo_slug() -> str:
-    """Get 'user/repo' from git remote origin."""
-    try:
-        repo_root = Path(__file__).parent.parent.parent
-        res = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            cwd=repo_root, capture_output=True, text=True, check=True
-        )
-        url = res.stdout.strip()
-        if url.endswith(".git"):
-            url = url[:-4]
-        
-        # Handle SSH: git@github.com:user/repo
-        if "@" in url and ":" in url:
-            return url.split(":")[-1]
-            
-        # Handle HTTPS: https://github.com/user/repo
-        parts = url.split("/")
-        if len(parts) >= 2:
-            return f"{parts[-2]}/{parts[-1]}"
-            
-        return "unknown/unknown"
-    except subprocess.CalledProcessError:
-        return "unknown/unknown"
-
-
 def refresh_terraform_state(project_id: str, bucket_name: str) -> Tuple[bool, Optional[str]]:
     """Run terraform refresh to update state from cloud.
 
@@ -225,28 +186,22 @@ def refresh_terraform_state(project_id: str, bucket_name: str) -> Tuple[bool, Op
     if not (terraform_dir / ".terraform").exists():
         return False, "Terraform not initialized. Run ./cloud deploy first."
 
-    # Load image config to construct image variables
-    images = load_images_config()
+    # Load config and determine tags (using shared logic)
+    repo_root = get_repo_root()
+    images = load_components_config(repo_root)
     git_slug = get_git_repo_slug()
-    
-    # Helper to resolve image name
-    def resolve_image(section_name: str, config: dict) -> str:
-        name = config.get('image', '')
-        if name == "auto":
-            if section_name == "mcp":
-                return f"{git_slug}-mcp"
-            return f"{git_slug}-{section_name}"
-        return name
+    head_sha = get_head_sha()
 
-    # Construct placeholder URLs to satisfy terraform inputs
-    # The actual running images will be pulled into state by refresh
+    # MCP (Internal): Uses HEAD SHA
     mcp_info = images.get("mcp", {})
-    mcp_name = resolve_image("mcp", mcp_info)
-    mcp_image = f"gcr.io/{project_id}/{mcp_name}:latest"
-    
+    mcp_name = resolve_image_name("mcp", mcp_info, git_slug)
+    mcp_image = get_image_url(project_id, mcp_name, head_sha, mcp_info.get("registry"))
+
+    # Fetcher (External): Uses configured ref
     fetcher_info = images.get("fetcher", {})
-    fetcher_name = resolve_image("fetcher", fetcher_info)
-    fetcher_image = f"gcr.io/{project_id}/{fetcher_name}:latest"
+    fetcher_name = resolve_image_name("fetcher", fetcher_info, git_slug)
+    fetcher_tag = fetcher_info.get("ref", "latest")
+    fetcher_image = get_image_url(project_id, fetcher_name, fetcher_tag, fetcher_info.get("registry"))
 
     cmd = [
         "terraform", "refresh",
@@ -399,18 +354,15 @@ def read_cloud_status(
             pre_deploy_complete = False
 
     # 4. Check images (from deploy/components.ini)
-    images_config = load_images_config()
+    repo_root = get_repo_root()
+    images_config = load_components_config(repo_root)
     git_slug = get_git_repo_slug()
 
     for name, info in images_config.items():
-        image_name = info["image"]
-        
-        # Resolve 'auto' image names
-        if image_name == "auto":
-            if name == "mcp":
-                image_name = f"{git_slug}-mcp"
-            else:
-                image_name = f"{git_slug}-{name}"
+        if not info.get("image"):
+            continue
+            
+        image_name = resolve_image_name(name, info, git_slug)
 
         if provider.image_exists(project_id, image_name):
             pre_deploy.append(ResourceStatus(

@@ -3,6 +3,7 @@ from .base import CloudProvider
 from .factory import get_cloud_provider, set_cloud_provider
 from .status import read_cloud_status, CloudStatus, ResourceStatus
 from .init import cloud_init, InitResult, InitOptions, InitContext
+from . import deployment
 
 __all__ = [
     "CloudProvider",
@@ -15,4 +16,5 @@ __all__ = [
     "InitResult",
     "InitOptions",
     "InitContext",
+    "deployment",
 ]

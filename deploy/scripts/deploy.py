@@ -27,6 +27,12 @@ COMPONENTS_INI = REPO_ROOT / "deploy" / "components.ini"
 
 sys.path.insert(0, str(REPO_ROOT))
 from agentic_consult.paths import load_settings
+from agentic_consult.cloud.deployment import (
+    get_head_sha,
+    get_git_repo_slug,
+    load_components_config,
+    get_image_url
+)
 
 
 def run_cmd(cmd: list, cwd=None, capture=False, check=True) -> subprocess.CompletedProcess:
@@ -53,98 +59,6 @@ def run_cmd(cmd: list, cwd=None, capture=False, check=True) -> subprocess.Comple
             print(result.stderr, file=sys.stderr)
         sys.exit(result.returncode)
     return result
-
-
-def get_head_sha() -> str:
-    """Get current HEAD SHA."""
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=REPO_ROOT, capture_output=True, text=True, check=True
-    )
-    return result.stdout.strip()
-
-
-def get_git_repo_slug() -> str:
-    """Get 'user/repo' from git remote origin."""
-    try:
-        res = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True
-        )
-        url = res.stdout.strip()
-        if url.endswith(".git"):
-            url = url[:-4]
-        
-        # Handle SSH: git@github.com:user/repo
-        if "@" in url and ":" in url:
-            return url.split(":")[-1]
-            
-        # Handle HTTPS: https://github.com/user/repo
-        parts = url.split("/")
-        if len(parts) >= 2:
-            return f"{parts[-2]}/{parts[-1]}"
-            
-        return "unknown/unknown"
-    except subprocess.CalledProcessError:
-        return "unknown/unknown"
-
-
-def git_status_clean() -> bool:
-    """Check if working tree is clean (no uncommitted or untracked files)."""
-    result = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=REPO_ROOT, capture_output=True, text=True
-    )
-    return result.returncode == 0 and not result.stdout.strip()
-
-
-def git_has_unpushed() -> bool:
-    """Check if HEAD has commits not pushed to remote."""
-    result = subprocess.run(
-        ["git", "log", "@{u}..HEAD", "--oneline"],
-        cwd=REPO_ROOT, capture_output=True, text=True
-    )
-    # If no upstream or has unpushed commits
-    return result.returncode != 0 or bool(result.stdout.strip())
-
-
-def load_components_config(ref: str = None) -> dict:
-    """Load component definitions from deploy/components.ini, optionally at specific ref."""
-    if ref is None:
-        # Read from working directory
-        parser = configparser.ConfigParser()
-        parser.read(COMPONENTS_INI)
-    else:
-        # Read from git at specific ref
-        result = subprocess.run(
-            ["git", "show", f"{ref}:deploy/components.ini"],
-            cwd=REPO_ROOT, capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            print(f"Error: Could not read components.ini at ref {ref}", file=sys.stderr)
-            sys.exit(1)
-        parser = configparser.ConfigParser()
-        parser.read_string(result.stdout)
-
-    images = {}
-    for section in parser.sections():
-        images[section] = dict(parser[section])
-    return images
-
-
-def get_image_url(project_id: str, image_name: str, tag: str, registry: str = None) -> str:
-    """Construct full image URL.
-    
-    If registry is provided, use it.
-    If image_name looks like a full URL (has domain), use it.
-    Otherwise default to gcr.io/project_id/image_name.
-    """
-    if "/" in image_name and "." in image_name.split("/")[0]:
-        # Fully qualified (e.g. ghcr.io/user/repo)
-        return f"{image_name}:{tag}"
-    
-    base = registry or f"gcr.io/{project_id}"
-    return f"{base}/{image_name}:{tag}"
 
 
 def wait_for_gh_build(ref: str, timeout: int = 300) -> bool:
@@ -330,7 +244,7 @@ Examples:
 """
     )
     # Load components config to get valid choices
-    components_config = load_components_config()
+    components_config = load_components_config(REPO_ROOT)
     component_targets = {name: cfg.get("terraform") for name, cfg in components_config.items() if cfg.get("terraform")}
 
     parser.add_argument(
@@ -384,7 +298,7 @@ Examples:
 
     # Reload config at the specified ref
     if args.ref:
-        components_config = load_components_config(args.ref)
+        components_config = load_components_config(REPO_ROOT, args.ref)
         component_targets = {name: cfg.get("terraform") for name, cfg in components_config.items() if cfg.get("terraform")}
 
     # Auto-detect image names
