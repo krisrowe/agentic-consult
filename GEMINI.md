@@ -268,6 +268,45 @@ issues/
 *.log
 ```
 
+## Cloud Deployment & MCP
+
+This repository includes a "Zero-Install" cloud deployment system to run the MCP server on Google Cloud (Cloud Run).
+
+**Architecture:**
+- **Private Cloud Run:** Hosts the MCP server.
+- **Public API Gateway:** Proxies requests, secured by an **API Key**.
+- **Cloud Scheduler:** Triggers background jobs (email fetching/analysis).
+
+**Agent Workflow:**
+
+1.  **Initialize (Admin):**
+    ```bash
+    ./cloud init --project=my-project-id
+    ```
+    *   This sets up the `terraform-deployer` Service Account and required Org Policies.
+    *   It saves the SA key to `~/.config/agentic-consult/cloud-deploy-svc-account.json`.
+
+2.  **Deploy (Admin):**
+    ```bash
+    ./cloud deploy
+    ```
+    *   Automatically transfers images from GHCR to GCR using Cloud Build.
+    *   Runs Terraform to provision infrastructure.
+    *   This command is idempotent and safe to re-run.
+
+3.  **Connect (User):**
+    ```bash
+    ./cloud user-auth export > creds.yaml
+    cat creds.yaml | consult remote auth import
+    consult remote register
+    ```
+    *   This outputs the `gemini mcp add` command with the correct Gateway URL and API Key.
+
+**Key Concepts:**
+*   **No Local Docker:** All builds happen in the cloud.
+*   **Single Identity:** Deployment uses a dedicated Service Account.
+*   **Simple Auth:** Clients connect via `https://gateway-url/sse?key=API_KEY`. No complex tokens required for user endpoints.
+
 ## Example Agent Session
 
 ```
