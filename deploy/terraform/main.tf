@@ -296,7 +296,11 @@ resource "google_api_gateway_api_config" "mcp_cfg" {
     }
   }
 
-  gateway_service_account = google_service_account.analyzer_sa.email
+  gateway_config {
+    backend_config {
+      google_service_account = google_service_account.analyzer_sa.email
+    }
+  }
 
   lifecycle {
     create_before_destroy = true
