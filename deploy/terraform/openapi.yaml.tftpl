@@ -8,6 +8,20 @@ schemes:
 produces:
   - application/json
 paths:
+  /:
+    post:
+      summary: MCP JSON-RPC Endpoint
+      operationId: mcp_root
+      x-google-backend:
+        address: ${mcp_url}/
+        jwt_audience: ${mcp_url}
+        path_translation: CONSTANT_ADDRESS
+        protocol: h2
+      security:
+        - api_key: []
+      responses:
+        '200':
+          description: OK
   /health:
     get:
       summary: Health Check
@@ -15,8 +29,10 @@ paths:
       x-google-backend:
         address: ${mcp_url}/health
         jwt_audience: ${mcp_url}
+        path_translation: CONSTANT_ADDRESS
         protocol: h2
-      # No security - public health check
+      # Public health check
+      security: []
       responses:
         '200':
           description: OK
@@ -27,26 +43,13 @@ paths:
       x-google-backend:
         address: ${mcp_url}/sse
         jwt_audience: ${mcp_url}
+        path_translation: CONSTANT_ADDRESS
         protocol: h2
       security:
         - api_key: []
       responses:
         '200':
           description: OK
-  /messages:
-    post:
-      summary: Messages Endpoint
-      operationId: messages
-      x-google-backend:
-        address: ${mcp_url}/messages
-        jwt_audience: ${mcp_url}
-        protocol: h2
-      security:
-        - api_key: []
-      responses:
-        '200':
-          description: OK
-  # Internal endpoints - pass through (secured by App Token anyway)
   /internal/batch:
     post:
       summary: Batch Analysis
@@ -54,6 +57,7 @@ paths:
       x-google-backend:
         address: ${mcp_url}/internal/batch
         jwt_audience: ${mcp_url}
+        path_translation: CONSTANT_ADDRESS
         protocol: h2
       security:
         - api_key: []

@@ -96,7 +96,7 @@ def check_auth(url: str, token: str, timeout: int = 10) -> tuple[bool, Optional[
     Returns:
         (success, error_message) tuple
     """
-    mcp_url = f"{url.rstrip('/')}/mcp"
+    mcp_url = f"{url.rstrip('/')}/"
     try:
         req = urllib.request.Request(mcp_url, method="POST")
         req.add_header("Authorization", f"Bearer {token}")
@@ -144,7 +144,7 @@ def _mcp_initialize(url: str, token: str, timeout: int = 10) -> tuple[Optional[s
     Returns:
         (session_id, error_message) tuple
     """
-    mcp_url = f"{url.rstrip('/')}/mcp"
+    mcp_url = f"{url.rstrip('/')}/"
     try:
         req = urllib.request.Request(mcp_url, method="POST")
         req.add_header("Authorization", f"Bearer {token}")
@@ -202,7 +202,7 @@ def call_tool(
     if error:
         return None, f"Init failed: {error}"
 
-    mcp_url = f"{url.rstrip('/')}/mcp"
+    mcp_url = f"{url.rstrip('/')}/"
     try:
         req = urllib.request.Request(mcp_url, method="POST")
         req.add_header("Authorization", f"Bearer {token}")
