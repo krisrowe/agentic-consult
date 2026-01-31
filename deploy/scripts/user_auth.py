@@ -62,6 +62,67 @@ def get_api_key(project_id: str) -> str:
         return None
 
 
+def generate_token(length: int = 32) -> str:
+    """Generate a secure random token (urlsafe base64 encoded)."""
+    # Using os.urandom + base64 directly to avoid collision with local secrets.py
+    return base64.urlsafe_b64encode(os.urandom(length)).rstrip(b"=").decode("ascii")
+
+
+def cmd_init(args, provider, project_id):
+    """Create new access token in Secret Manager."""
+    # Check if token already exists
+    existing = provider.get_secret_value(project_id, SECRET_ID)
+    if existing and not args.force:
+        error("Token already exists. Use --force to overwrite, or 'regen' to rotate.")
+        sys.exit(1)
+
+    # Generate and store token
+    token = generate_token()
+
+    try:
+        provider.set_secret_value(project_id, SECRET_ID, token)
+        success(f"Created access token in Secret Manager: {SECRET_ID}")
+        print(f"Token:   {token[:8]}...")
+        print()
+        print("Next steps:")
+        print("  1. Deploy MCP service: ./cloud deploy")
+        print("  2. Export credentials: ./cloud user-auth export")
+    except Exception as e:
+        error(f"Failed to create secret: {e}")
+        sys.exit(1)
+
+
+def cmd_regen(args, provider, project_id):
+    """Rotate access token."""
+    # Check if token exists
+    existing = provider.get_secret_value(project_id, SECRET_ID)
+    if not existing:
+        error("No existing token. Use 'init' to create one first.")
+        sys.exit(1)
+
+    # Confirm unless --force
+    if not args.force:
+        print("This will invalidate the current token.")
+        print("All users will need to re-import credentials.")
+        print()
+        if not confirm("Regenerate token?", default=False):
+            print("Aborted.")
+            sys.exit(0)
+
+    # Generate and store new token
+    token = generate_token()
+
+    try:
+        provider.set_secret_value(project_id, SECRET_ID, token)
+        success("Rotated access token.")
+        print(f"New token: {token[:8]}...")
+        print()
+        print("Next: ./cloud user-auth export  (distribute to users)")
+    except Exception as e:
+        error(f"Failed to update secret: {e}")
+        sys.exit(1)
+
+
 def cmd_status(args, provider, project_id):
     """Show current auth state."""
     print(f"Project: {project_id}\n")
