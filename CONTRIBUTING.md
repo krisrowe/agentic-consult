@@ -79,6 +79,38 @@ See **[TESTING.md](TESTING.md)** for detailed testing strategy (**["Sociable Uni
 4. Run `make test` or `make test-integration` to verify
 5. Run `make precommit` before committing
 
+### Validating Remote MCP Deployment
+
+After deploying infrastructure changes or updating the API Gateway, you must validate the remote connection to ensure the "Zero-Install" stack is fully operational.
+
+**When to validate:**
+- After running `./cloud deploy`.
+- After modifying `deploy/terraform/openapi.yaml.tftpl`.
+- When troubleshooting 403 Forbidden or 404 Not Found errors in the remote client.
+
+**Validation Commands:**
+
+1.  **Low-level Health & Auth Check:**
+    ```bash
+    # This verifies URL reachability and API Key validity
+    consult remote test
+    ```
+
+2.  **End-to-End Tool Invocation:**
+    ```bash
+    # This verifies the Gemini CLI can successfully call tools through the Gateway
+    gemini "Triage my emails"
+    ```
+
+3.  **Manual Probe (Debug):**
+    ```bash
+    # Direct JSON-RPC call to the root endpoint
+    curl -v -X POST "https://your-gateway-url/?key=your-api-key" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "curl", "version": "1.0"}}, "id": 1}'
+    ```
+
 ## Code Style
 
 - Follow existing patterns in the codebase
@@ -159,7 +191,7 @@ All filesystem paths must be resolved via centralized internal APIs (e.g., `agen
 
 #### D. Cloud-Agnostic CLI
 CLI commands interact only with settings and HTTP REST APIs. Cloud-specific logic (GCP/Terraform) is isolated to deployment tooling (`./cloud` and `deploy/`).
-*   **Zero-Install Deployment**: The `./cloud` entry point is a standalone Python script using only the standard library. It manages the entire deployment lifecycle (init, build, push, terraform apply) without requiring `pip`, `venv`, or any installed dependencies on the deployer's machine. This enables a "clone and deploy" workflow for cloud admins.
+*   **Zero-Install Deployment**: The `./cloud` entry point is a standalone Python script using only the standard library. It manages the entire deployment lifecycle (init, build, push, terraform apply) **without requiring Python-specific setup (pip, venv)** or a local Docker daemon. It assumes only that the standard system orchestrators (`gcloud`, `terraform`, `python3`) are available in the PATH. This enables a "clone and deploy" workflow for cloud admins.
 
 #### E. Overridable Resources
 Config resources (prompts, docstrings) use `load_updateable()` to check for GCS-deployed overrides before falling back to package defaults, enabling hotfixes without image rebuilds.

@@ -353,7 +353,11 @@ consult config set local_data /home/user/private-config-repo/agentic-consult/dat
 
 ## Cloud Deployment
 
-Deploy the email triage system to Google Cloud for automated background processing. This project uses a "Zero-Install" deployment system that runs entirely from the repository using `python3` and `gcloud`, with no local Docker required.
+Deploy the email triage system to Google Cloud for automated background processing. This project uses a "Zero-Install" deployment system that runs entirely from the repository using `python3`, `terraform`, and `gcloud`.
+
+*   **No Python Packages**: No `pip install` or `venv` required.
+*   **No Local Docker**: Images are built remotely via Cloud Build.
+*   **System Requirements**: `python3`, `gcloud`, and `terraform` must be in your PATH.
 
 ### Architecture
 
@@ -386,6 +390,7 @@ The system uses a **Private Cloud Run** backend fronted by a **Public API Gatewa
 **GCP Setup:**
 - A GCP project with billing enabled
 - `gcloud` CLI installed and authenticated (`gcloud auth login`)
+- `terraform` installed (required for `./cloud deploy`)
 - User must be **Owner** (to set org policies and create service accounts during init)
 
 ### Step-by-Step Deployment
@@ -439,7 +444,74 @@ consult remote register
 | `./cloud deploy --ref <SHA>` | Deploy a specific git commit. |
 | `./cloud deploy config` | Sync config files (prompts) to GCS without image rebuild. |
 
-### Internals
+## Batch Processing, Catch-Up, and Troubleshooting
+
+When managing the email triage system, you may need to force processing of older emails or catch up after downtime.
+
+### 1. Monitoring Status & Troubleshooting
+
+To diagnose the pipeline, compare **System Stats** (what the tool knows) with **Gmail Reality** (what is actually in your inbox).
+
+**A. Get System Stats**
+Use the `email_triage_stats` tool (or `consult email triage stats` via CLI).
+*   **Fetched**: Look at `start` AND `end` dates + count. (The available raw data).
+*   **Analyzed**: Look at `start` AND `end` dates + count. (The processed intelligence).
+
+**B. Get Gmail Reality**
+*   **Total Unresolved**: Search `label:inbox`. (All emails that *should* be accounted for in stats).
+*   **New Triage Pool**: Search `label:inbox -label:reviewing`. (Subset for `triage_emails(review_status="new")`).
+
+**C. Compare & Diagnose**
+
+| Scenario | Diagnosis | Fix |
+| :--- | :--- | :--- |
+| **Fetched Range != Analyzed Range** | **System Lag (Analyzer)**<br>Analyzer hasn't processed the full fetched window. | Trigger **Analyzer** (see below). |
+| **Inbox Date > Fetched End Date** | **System Lag (Fetcher)**<br>New emails exist in Gmail but haven't been downloaded. | Trigger **Fetcher** (see below). |
+| **Inbox Count > Fetched Count**<br>*(But End Dates match)* | **Limited Scope (Fetcher)**<br>System has the newest emails, but your Inbox goes back further than the fetch limit. | Run manual catch-up:<br>`gcloud run jobs execute gmex-fetcher --update-env-vars=GMEX_LIMIT=500 --region=us-central1 --project=gws-access-480717` |
+| **Active Count ≈ New Triage Pool** | **User Backlog**<br>System is healthy. You just have emails to triage. | Run `triage_emails`. |
+
+### 2. Manual Triggers (Cloud Scheduler)
+If you need to trigger immediate processing without waiting for the cron schedule:
+
+```bash
+# Trigger Fetcher (Getting new emails)
+gcloud scheduler jobs run trigger-email-fetch --location=us-central1 --project=gws-access-480717
+
+# Trigger Analyzer (Processing pending emails)
+gcloud scheduler jobs run trigger-email-analysis --location=us-central1 --project=gws-access-480717
+```
+
+### 3. Forcing Re-Analysis
+If rules change or analysis was incorrect, you can force re-processing. The Analyzer will pick these up on its next run.
+
+*   **Specific Emails**: Use the tool `flag_for_reanalysis(message_ids=[...])` (via agent).
+*   **Entire Date**: Use the tool `reset_analysis(date="YYYY-MM-DD")` (via agent).
+
+### 4. Tuning Limits (Environment Variables)
+The processing behavior is controlled by environment variables on the Cloud Run services. Update these via Terraform or the Console.
+
+| Service | Variable | Default | Description |
+|---|---|---|---|
+| **Analyzer** | `ANALYZER_LOOKBACK_DAYS` | `14` | How far back to look for un-analyzed emails. |
+| **Analyzer** | `ANALYZER_LIMIT` | `10` | Max emails to process per execution (avoids timeouts). |
+
+### 5. Catch-Up Strategy
+If `Fetched` history is deeper than `Analyzed` history:
+1.  **Increase Analyzer Limit**: Temporarily bump `ANALYZER_LIMIT` to `20` or `50` to chew through the backlog faster.
+2.  **Run Manually**: Trigger the `trigger-email-analysis` job repeatedly until caught up.
+
+To **fetch older emails** (increase depth), you must update the `gmex-fetcher` arguments to request a higher limit (exact flag depends on `gmail-extractor` version).
+
+### 6. Targeted Re-Processing (`analyze_emails`)
+The `analyze_emails` tool allows you to instantly process specific message IDs on-demand.
+
+> [!WARNING]
+> **Performance Impact**: This tool is **synchronous and blocking**. It performs the analysis in real-time within your agent session, which is significantly slower than the background worker.
+>
+> *   **Do NOT** use this for "catch-up" or bulk processing.
+> *   **ONLY** use this for targeted debugging or testing of a small handful of emails (< 5) to verify rule changes immediately.
+
+## Internals
 
 **Zero Local Docker:**
 The deployment script serves as a bridge. You never run `docker build` locally.

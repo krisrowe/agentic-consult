@@ -937,8 +937,15 @@ async def analyze_emails(
     Analyze specific emails on-demand.
 
     Runs Gemini analysis on the given email IDs immediately, without waiting
-    for the background analyzer. Use when you need fresh analysis or want to
-    analyze specific emails that haven't been processed yet.
+    for the background analyzer.
+
+    **Performance Warning:** This tool is synchronous, slow, and blocking.
+    It should ONLY be used for targeted re-processing of a small handful of
+    emails (e.g., < 5) after rule changes or for testing/debugging.
+    
+    Do NOT use this for "catch-up" strategies or processing large backlogs.
+    Instead, use `flag_for_reanalysis` to mark emails for the background
+    worker to pick up asynchronously.
 
     Args:
         message_ids: List of Gmail message IDs to analyze (1 or more)
