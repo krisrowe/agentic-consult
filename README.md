@@ -357,6 +357,7 @@ Deploy the email triage system to Google Cloud for automated background processi
 
 *   **No Python Packages**: No `pip install` or `venv` required.
 *   **No Local Docker**: Images are built remotely via Cloud Build.
+*   **Standard Library Mandate**: All logic in `./cloud` and the `deploy/` directory is strictly Python standard library only to ensure immediate execution.
 *   **System Requirements**: `python3`, `gcloud`, and `terraform` must be in your PATH.
 
 ### Architecture

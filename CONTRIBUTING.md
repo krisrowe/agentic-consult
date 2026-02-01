@@ -147,7 +147,15 @@ Business logic belongs exclusively in the SDK (`agentic_consult/sdk/` or domain 
 *   **SDK**: Pure Python functions, dataclasses, and exceptions. No transport-specific logic (Click, FastAPI, etc.). Returns data, not text.
 *   **Clients**: The CLI (`agentic_consult/cli/`), MCP Server (`agentic_consult/mcp/`), and other apps are equal consumers of the SDK. They handle transport, formatting, and interaction.
 
-#### B. Sociable Unit Testing
+#### B. Context Integrity Mandate
+To ensure AI agents consistently adhere to project patterns and respect established investments, all design principles, architectural mandates, and maintainer guidance **MUST** be documented within the core files already tracked as context (as defined in `.gemini/settings.json`):
+*   **README.md**: High-level features, usage, and troubleshooting.
+*   **CONTRIBUTING.md**: Architectural patterns, development workflows, and mandates.
+*   **GEMINI.md**: Agent-specific mission, protocol, and behavioral guidelines.
+
+**Do not** fragment documentation into new top-level files (e.g., `DESIGN.md`) or hidden directories that are not already part of the agent's established context. When using Claude as a coding agent, ensure these files are properly referenced or imported (e.g., using the `@` syntax specified in `CLAUDE.md`).
+
+#### C. Sociable Unit Testing
 We prioritize tests that verify full features or SDK transactions end-to-end without network I/O.
 *   **Deceptiveness of Mocks**: We avoid mocking internal logic because mocks can pass even when integrations are broken. We only mock at the system edge (Network I/O, Third-Party APIs).
 *   **Environment-Based Isolation**: We use env vars (e.g., `CONSULT_CONFIG_DIR`) to redirect paths to OS-managed temporary directories. This allows fast (<10ms) real disk I/O while ensuring zero repo pollution and workstation safety.
