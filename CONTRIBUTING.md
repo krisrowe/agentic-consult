@@ -153,7 +153,7 @@ To ensure AI agents consistently adhere to project patterns and respect establis
 *   **CONTRIBUTING.md**: Architectural patterns, development workflows, and mandates.
 *   **GEMINI.md**: Agent-specific mission, protocol, and behavioral guidelines.
 
-**Do not** fragment documentation into new top-level files (e.g., `DESIGN.md`) or hidden directories that are not already part of the agent's established context. When using Claude as a coding agent, ensure these files are properly referenced or imported (e.g., using the `@` syntax specified in `CLAUDE.md`).
+**Do not** fragment documentation into new top-level files (e.g., `DESIGN.md`) or hidden directories that are not already part of the agent's established context. When using Claude as a coding agent, ensure these files are properly referenced or imported (e.g., using the `@filepath` syntax specified in `CLAUDE.md`).
 
 #### C. Sociable Unit Testing
 We prioritize tests that verify full features or SDK transactions end-to-end without network I/O.
