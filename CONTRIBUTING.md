@@ -192,6 +192,7 @@ All filesystem paths must be resolved via centralized internal APIs (e.g., `agen
 #### D. Cloud-Agnostic CLI
 CLI commands interact only with settings and HTTP REST APIs. Cloud-specific logic (GCP/Terraform) is isolated to deployment tooling (`./cloud` and `deploy/`).
 *   **Zero-Install Deployment**: The `./cloud` entry point is a standalone Python script using only the standard library. It manages the entire deployment lifecycle (init, build, push, terraform apply) **without requiring Python-specific setup (pip, venv)** or a local Docker daemon. It assumes only that the standard system orchestrators (`gcloud`, `terraform`, `python3`) are available in the PATH. This enables a "clone and deploy" workflow for cloud admins.
+    *   **Maintainer Mandate**: To preserve this capability, all logic within the `deploy/` directory (and the `./cloud` script) **MUST** remain strictly limited to the Python standard library. Do not add dependencies that require `pip install` or an active virtual environment to this specific path.
 
 #### E. Overridable Resources
 Config resources (prompts, docstrings) use `load_updateable()` to check for GCS-deployed overrides before falling back to package defaults, enabling hotfixes without image rebuilds.
