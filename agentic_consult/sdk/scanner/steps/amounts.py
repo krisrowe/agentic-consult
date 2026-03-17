@@ -108,7 +108,7 @@ def check_amounts_with_cents(repo_path: str, thresholds: dict) -> CheckResult:
     return CheckResult("Amounts with cents", passed, findings[:10])
 
 
-def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
+def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:
     """Run all amount checks. Standard step interface."""
     thresholds = load_thresholds()
     return [

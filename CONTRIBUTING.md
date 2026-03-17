@@ -127,6 +127,16 @@ The `consult precommit` scanner detects:
 - API keys/tokens
 - Local usernames
 
+**Untracked file scanning:** By default, `consult precommit` only scans
+staged and unstaged changes — the things that are actually about to be
+committed.  Use `--untracked` to also scan untracked files as an
+abundance-of-caution measure (warns about files that *could* be
+accidentally committed later).  This is off by default because a command
+named "precommit" should focus on what's being committed, and because
+scanning untracked files in unusual work-tree layouts (e.g., bare-repo
+dotfile managers where `$HOME` is the work-tree) would enumerate millions
+of irrelevant files and hang indefinitely.
+
 **Test your scanner changes:**
 ```bash
 # Test on current repo

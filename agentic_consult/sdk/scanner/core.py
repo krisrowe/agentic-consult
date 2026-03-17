@@ -4,6 +4,7 @@ Scans uncommitted changes (anything that could get committed) by default.
 Use deep=True to also scan full git history.
 """
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
@@ -53,25 +54,41 @@ class ScanReport:
         return "\n".join(lines)
 
 
-def get_uncommitted_files(repo_path: str) -> List[str]:
-    """Get all files that could be committed (staged + unstaged + untracked)."""
+def get_uncommitted_files(repo_path: str, include_untracked: bool = False) -> List[str]:
+    """Get files relevant to a precommit check (staged + unstaged).
+
+    Untracked files are not staged and won't be in the commit.  Scanning
+    them is purely cautionary and off by default — opt in with
+    ``include_untracked=True``.
+    """
     rc, staged, _ = run_cmd("git diff --cached --name-only", repo_path)
     staged_files = staged.strip().split("\n") if staged.strip() else []
 
     rc, modified, _ = run_cmd("git diff --name-only", repo_path)
     modified_files = modified.strip().split("\n") if modified.strip() else []
 
-    rc, untracked, _ = run_cmd("git ls-files --others --exclude-standard", repo_path)
-    untracked_files = untracked.strip().split("\n") if untracked.strip() else []
+    if include_untracked:
+        rc, untracked, _ = run_cmd("git ls-files --others --exclude-standard", repo_path)
+        untracked_files = untracked.strip().split("\n") if untracked.strip() else []
+    else:
+        untracked_files = []
 
     all_files = set(staged_files + modified_files + untracked_files)
     return [f for f in all_files if f]
 
 
 def check_git_repo(repo_path: str) -> CheckResult:
-    """Verify path is a git repository."""
+    """Verify path is a git repository.
+
+    Works for normal repos (.git/ directory) and bare repos where
+    GIT_DIR is set in the environment (e.g., when running as a hook).
+    """
     git_dir = Path(repo_path) / ".git"
     if git_dir.exists():
+        return CheckResult("Git repository", True)
+    # When git runs a hook, it sets GIT_DIR in the environment.
+    # This supports bare repo setups (e.g., dotfiles managers).
+    if os.environ.get("GIT_DIR"):
         return CheckResult("Git repository", True)
     return CheckResult("Git repository", False, ["Not a git repository"])
 
@@ -79,7 +96,8 @@ def check_git_repo(repo_path: str) -> CheckResult:
 def run_scan(repo_path: str, deep: bool = False,
              on_check_complete: callable = None,
              only_check: str = None,
-             require_user_config: bool = False) -> ScanReport:
+             require_user_config: bool = False,
+             include_untracked: bool = False) -> ScanReport:
     """Run all checks on a repository.
 
     Args:
@@ -89,6 +107,7 @@ def run_scan(repo_path: str, deep: bool = False,
         only_check: If specified, run only this step's checks. Use get_step_names() for valid values.
         require_user_config: If True, raise MissingUserConfigError when no
                             sensitive-patterns.yaml config file is found
+        include_untracked: If True, also scan untracked files (off by default)
 
     Returns:
         ScanReport with all check results
@@ -114,7 +133,8 @@ def run_scan(repo_path: str, deep: bool = False,
 
     # Pre-calculate total checks (git repo check + all step results)
     # Run steps to get results, then iterate with correct total
-    step_results = run_all_steps(repo_path, deep=deep, only_step=only_check)
+    step_results = run_all_steps(repo_path, deep=deep, only_step=only_check,
+                                 include_untracked=include_untracked)
     total_checks = 1 + len(step_results)  # 1 for git repo check
 
     # Check it's a git repo first

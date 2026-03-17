@@ -101,6 +101,6 @@ def check_git_identity(repo_path: str) -> CheckResult:
                           info=f"Check failed: {e}")
 
 
-def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
+def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:
     """Run git identity check. Standard step interface."""
     return [check_git_identity(repo_path)]

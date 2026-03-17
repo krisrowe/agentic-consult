@@ -62,6 +62,6 @@ def check_emails(repo_path: str) -> CheckResult:
     return CheckResult("Email addresses", passed, findings[:10])
 
 
-def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
+def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:
     """Run all email checks. Standard step interface."""
     return [check_emails(repo_path)]

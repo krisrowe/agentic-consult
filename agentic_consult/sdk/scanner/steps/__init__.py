@@ -28,13 +28,15 @@ def discover_steps() -> List[tuple]:
 
 
 def run_all_steps(repo_path: str, deep: bool = False,
-                  only_step: str = None) -> List[CheckResult]:
+                  only_step: str = None,
+                  include_untracked: bool = False) -> List[CheckResult]:
     """Run all discovered steps and collect results.
 
     Args:
         repo_path: Path to git repository
         deep: If True, run deep/history checks
         only_step: If specified, run only this step module
+        include_untracked: If True, also scan untracked files
 
     Returns:
         List of CheckResult from all steps
@@ -44,7 +46,8 @@ def run_all_steps(repo_path: str, deep: bool = False,
         if only_step is not None and name != only_step:
             continue
         try:
-            step_results = run_checks(repo_path, deep=deep)
+            step_results = run_checks(repo_path, deep=deep,
+                                      include_untracked=include_untracked)
             results.extend(step_results)
         except Exception as e:
             results.append(CheckResult(

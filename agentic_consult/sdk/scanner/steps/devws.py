@@ -25,6 +25,6 @@ def run_devws_precommit(repo_path: str) -> CheckResult:
     return CheckResult("devws precommit", False, findings[:10])
 
 
-def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
+def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:
     """Run devws precommit. Standard step interface."""
     return [run_devws_precommit(repo_path)]

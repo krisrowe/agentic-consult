@@ -81,7 +81,7 @@ def test_detects_pattern_in_unstaged_content(tmp_path, config_dir):
 
 
 def test_detects_pattern_in_untracked_file(tmp_path, config_dir):
-    """Patterns in untracked (new, not added) files are detected."""
+    """Patterns in untracked files detected when --untracked is opted in."""
     create_patterns_config(config_dir, ["SecretWord"])
 
     repo = tmp_path / "repo"
@@ -91,7 +91,12 @@ def test_detects_pattern_in_untracked_file(tmp_path, config_dir):
     # Create file but don't stage it
     (repo / "newfile.txt").write_text("Contains SecretWord")
 
+    # Without include_untracked, untracked files are not scanned
     report = run_scan(str(repo), only_check="user")
+    assert not report.failed
+
+    # With include_untracked, the pattern is caught
+    report = run_scan(str(repo), only_check="user", include_untracked=True)
 
     assert_only_user_module(report)
     assert report.failed

@@ -29,6 +29,6 @@ def check_ssn_ein(repo_path: str) -> CheckResult:
     return CheckResult("SSN/EIN patterns", passed, findings[:10])
 
 
-def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
+def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:
     """Run all SSN/EIN checks. Standard step interface."""
     return [check_ssn_ein(repo_path)]

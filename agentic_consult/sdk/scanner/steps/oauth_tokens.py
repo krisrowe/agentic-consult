@@ -30,6 +30,6 @@ def check_oauth_tokens(repo_path: str) -> CheckResult:
     return CheckResult("OAuth/API tokens", passed, findings[:10])
 
 
-def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
+def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:
     """Run all OAuth/token checks. Standard step interface."""
     return [check_oauth_tokens(repo_path)]

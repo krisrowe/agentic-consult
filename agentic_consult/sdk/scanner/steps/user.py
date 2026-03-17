@@ -7,7 +7,8 @@ from ..config import load_patterns, build_regex_for_pattern
 
 
 def check_uncommitted_content(repo_path: str, simple_patterns: List[str],
-                               special_patterns: List[Tuple[dict, str]]) -> CheckResult:
+                               special_patterns: List[Tuple[dict, str]],
+                               include_untracked: bool = False) -> CheckResult:
     """Check uncommitted changes for sensitive patterns."""
     if not simple_patterns and not special_patterns:
         return CheckResult("Sensitive patterns in uncommitted", True, [], skipped=True)
@@ -28,11 +29,14 @@ def check_uncommitted_content(repo_path: str, simple_patterns: List[str],
             for line in stdout.strip().split("\n")[:5]:
                 findings.append(f"[unstaged] {line[:80]}")
 
-        cmd = f"git ls-files --others --exclude-standard | head -50 | xargs -I{{}} grep -liE '{patterns}' {{}} 2>/dev/null | head -10"
-        rc, stdout, _ = run_cmd(cmd, repo_path)
-        if stdout.strip():
-            for f in stdout.strip().split("\n")[:5]:
-                findings.append(f"[untracked] {f}")
+        # Untracked files aren't staged and won't be in the commit —
+        # scanning them is purely cautionary and off by default.
+        if include_untracked:
+            cmd = f"git ls-files --others --exclude-standard | head -50 | xargs -I{{}} grep -liE '{patterns}' {{}} 2>/dev/null | head -10"
+            rc, stdout, _ = run_cmd(cmd, repo_path)
+            if stdout.strip():
+                for f in stdout.strip().split("\n")[:5]:
+                    findings.append(f"[untracked] {f}")
 
     passed = len(findings) == 0
     return CheckResult("Sensitive patterns in uncommitted", passed, findings)
@@ -165,7 +169,8 @@ def check_tags(repo_path: str, simple_patterns: List[str]) -> CheckResult:
     return CheckResult("Tag names", passed, findings)
 
 
-def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
+def run_checks(repo_path: str, deep: bool = False,
+               include_untracked: bool = False, **kwargs) -> List[CheckResult]:
     """Run all user pattern checks. Standard step interface."""
     patterns_config, simple_patterns = load_patterns()
 
@@ -175,7 +180,8 @@ def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
             special_patterns.append((p, build_regex_for_pattern(p)))
 
     results = [
-        check_uncommitted_content(repo_path, simple_patterns, special_patterns),
+        check_uncommitted_content(repo_path, simple_patterns, special_patterns,
+                                  include_untracked=include_untracked),
         check_filenames(repo_path, simple_patterns, deep=deep),
         check_branches(repo_path, simple_patterns),
         check_tags(repo_path, simple_patterns),

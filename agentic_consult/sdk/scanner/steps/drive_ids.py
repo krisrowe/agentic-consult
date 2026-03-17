@@ -27,6 +27,6 @@ def check_drive_ids(repo_path: str) -> CheckResult:
     return CheckResult("Google Drive IDs", passed, findings[:10])
 
 
-def run_checks(repo_path: str, deep: bool = False) -> List[CheckResult]:
+def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:
     """Run all Drive ID checks. Standard step interface."""
     return [check_drive_ids(repo_path)]

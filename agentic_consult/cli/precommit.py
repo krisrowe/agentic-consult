@@ -29,11 +29,13 @@ def print_check_progress(result: CheckResult, current: int, total: int):
 @click.option('--deep', is_flag=True, help="Also scan git history (slower).")
 @click.option('--verbose', '-v', is_flag=True, help="Show detailed status of all checks.")
 @click.option('--only', 'only_check', help="Run only this check module (e.g., ssn_ein, amounts, devws).")
+@click.option('--untracked', is_flag=True, help="Also scan untracked files (off by default).")
 @click.argument('path', default='.', type=click.Path(exists=True))
-def precommit(deep, verbose, only_check, path):
+def precommit(deep, verbose, only_check, untracked, path):
     """Scans repository for sensitive data before commit.
 
-    By default, scans uncommitted changes (staged, unstaged, untracked).
+    By default, scans staged and unstaged changes only.
+    Use --untracked to also scan untracked files.
     Use --deep to also scan full git history.
     """
     click.echo("\n🔍 Pre-commit Scan")
@@ -43,6 +45,7 @@ def precommit(deep, verbose, only_check, path):
         repo_path=path,
         deep=deep,
         only_check=only_check,
+        include_untracked=untracked,
         on_check_complete=print_check_progress if verbose else None
     )
 
