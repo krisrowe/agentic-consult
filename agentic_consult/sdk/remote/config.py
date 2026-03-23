@@ -3,15 +3,19 @@
 Settings are stored in settings.json under the 'remote' namespace:
     {
         "remote": {
-            "url": "https://consult-mcp-xxx.run.app",
-            "access_token": "abc123..."
+            "url": "https://consult-mcp-xxx.run.app"
         }
     }
+
+Secrets (access_token, api_key) are read from .credentials.json in the
+same config directory, falling back to settings.json for backwards
+compatibility.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Optional
-from agentic_consult.config import load_main_config, save_main_config
+from agentic_consult.config import load_main_config, save_main_config, get_consult_config_dir
 
 
 @dataclass
@@ -41,39 +45,69 @@ class RemoteConfig:
         return f"{self.api_key[:8]}..."
 
 
+def _load_credentials() -> dict:
+    """Load secrets from .credentials.json in the config directory."""
+    creds_path = get_consult_config_dir() / ".credentials.json"
+    if not creds_path.exists():
+        return {}
+    try:
+        with open(creds_path, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
+def _save_credentials(data: dict) -> None:
+    """Save secrets to .credentials.json in the config directory."""
+    creds_path = get_consult_config_dir() / ".credentials.json"
+    creds_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(creds_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
 def get_remote_config() -> RemoteConfig:
-    """Load remote configuration from settings.json."""
+    """Load remote configuration from settings.json and .credentials.json.
+
+    Non-secret settings (url) come from settings.json.
+    Secrets (access_token, api_key) come from .credentials.json,
+    falling back to settings.json for backwards compatibility.
+    """
     config = load_main_config()
     remote = config.get("remote", {})
+    creds = _load_credentials()
 
     # Migration: check for legacy keys at root level
     url = remote.get("url") or config.get("mcp_url")
-    token = remote.get("access_token") or config.get("personal_access_token")
-    key = remote.get("api_key")
+    token = (creds.get("access_token")
+             or remote.get("access_token")
+             or config.get("personal_access_token"))
+    key = creds.get("api_key") or remote.get("api_key")
 
     return RemoteConfig(url=url, access_token=token, api_key=key)
 
 
 def set_remote_config(url: Optional[str] = None, access_token: Optional[str] = None, api_key: Optional[str] = None) -> None:
     """
-    Update remote configuration in settings.json.
+    Update remote configuration.
 
+    Non-secret settings (url) go to settings.json.
+    Secrets (access_token, api_key) go to .credentials.json.
     Only updates fields that are provided (not None).
     """
-    config = load_main_config()
-
-    # Ensure remote namespace exists
-    if "remote" not in config:
-        config["remote"] = {}
-
     if url is not None:
+        config = load_main_config()
+        if "remote" not in config:
+            config["remote"] = {}
         config["remote"]["url"] = url
-    if access_token is not None:
-        config["remote"]["access_token"] = access_token
-    if api_key is not None:
-        config["remote"]["api_key"] = api_key
+        save_main_config(config)
 
-    save_main_config(config)
+    if access_token is not None or api_key is not None:
+        creds = _load_credentials()
+        if access_token is not None:
+            creds["access_token"] = access_token
+        if api_key is not None:
+            creds["api_key"] = api_key
+        _save_credentials(creds)
 
 
 def get_remote_url() -> Optional[str]:
