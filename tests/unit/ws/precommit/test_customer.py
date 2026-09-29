@@ -69,7 +69,7 @@ def test_precommit_no_matches(tmp_path):
     subprocess.run(['git', '-C', str(tmp), 'add', str(f)], check=True)
 
     out = run_checker(repo_root, tmp, customers, expect_ok=True)
-    assert 'checks passed' in out
+    assert 'checks passed' in out.lower()
 
 
 def test_precommit_detects_match(tmp_path):
@@ -188,7 +188,7 @@ def test_precommit_respects_gitignore(tmp_path):
     log_file.write_text('Log entry: secretword')
 
     out = run_checker(repo_root, tmp_repo, tmp_customers, expect_ok=True)
-    assert 'checks passed' in out
+    assert 'checks passed' in out.lower()
 
 
 def test_exit_code_zero_on_all_passing(tmp_path):
@@ -201,7 +201,7 @@ def test_exit_code_zero_on_all_passing(tmp_path):
     customers.mkdir()
 
     out = run_checker(repo_root, tmp, customers, expect_ok=True)
-    assert 'checks passed' in out
+    assert 'checks passed' in out.lower()
 
 
 def test_exit_code_not_zero_on_single_failure(tmp_path):
@@ -242,3 +242,62 @@ def test_exit_code_not_zero_on_multiple_failures(tmp_path):
     out = run_checker(repo_root, tmp, customers, expect_ok=False)
     assert 'FAILED' in out
     assert 'badword' in out or 'Customer' in out
+
+
+def test_precommit_untracked_customer_pattern_opt_in(tmp_path):
+    """Verify untracked files with customer keywords are ignored by default and caught with --untracked."""
+    repo_root = Path.cwd()
+    tmp = tmp_path / 'repo_untracked_cust'
+    tmp.mkdir()
+    subprocess.run(['git', 'init', str(tmp)], check=True)
+
+    customers = tmp / 'customers'
+    (customers / 'untrackedco').mkdir(parents=True)
+    (customers / 'untrackedco' / 'customer.yaml').write_text(
+        "name: UntrackedCo\nslug: untrackedco\nkeywords: [untrackedsecret]\n"
+    )
+
+    # Create untracked file (not staged)
+    (tmp / 'draft.txt').write_text('Contains untrackedsecret in an untracked file')
+
+    # Default scan ignores untracked files
+    out_default = run_checker(repo_root, tmp, customers, expect_ok=True)
+    assert 'checks passed' in out_default.lower()
+
+    # Passing --untracked catches the customer pattern in the untracked file
+    out_untracked = run_checker(repo_root, tmp, customers, expect_ok=False, args=['--untracked'])
+    assert 'draft.txt' in out_untracked or 'untrackedsecret' in out_untracked
+
+
+def test_precommit_multiple_configured_customers(tmp_path):
+    """Verify multiple configured customer.yaml profiles are loaded and enforced."""
+    repo_root = Path.cwd()
+    tmp = tmp_path / 'repo_multi_cust'
+    tmp.mkdir()
+    subprocess.run(['git', 'init', str(tmp)], check=True)
+
+    customers = tmp / 'customers'
+    (customers / 'alphacorp').mkdir(parents=True)
+    (customers / 'alphacorp' / 'customer.yaml').write_text(
+        "name: AlphaCorp\nslug: alphacorp\nkeywords: [ProjectAlpha]\n"
+    )
+    (customers / 'betaretail').mkdir(parents=True)
+    (customers / 'betaretail' / 'customer.yaml').write_text(
+        "name: BetaRetail\nslug: betaretail\nkeywords: [BetaGateway]\n"
+    )
+
+    # Clean file shows total patterns loaded across both customer configs
+    clean = tmp / 'clean.md'
+    clean.write_text('Generic architecture notes')
+    subprocess.run(['git', '-C', str(tmp), 'add', str(clean)], check=True)
+    out_clean = run_checker(repo_root, tmp, customers, expect_ok=True)
+    assert 'patterns from customer.yaml' in out_clean
+
+    # File with customer 2 keyword fails and reports finding
+    f = tmp / 'doc.md'
+    f.write_text('Architecture notes for BetaGateway deployment')
+    subprocess.run(['git', '-C', str(tmp), 'add', str(f)], check=True)
+
+    out = run_checker(repo_root, tmp, customers, expect_ok=False)
+    assert 'BetaGateway' in out
+    assert '1 findings' in out

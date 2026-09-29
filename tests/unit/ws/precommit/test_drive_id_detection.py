@@ -49,7 +49,8 @@ def test_variable_name_alone_does_not_trigger(tmp_path):
     subprocess.run(['git', '-C', str(tmp), 'add', str(f)], check=True)
 
     out = run_checker(repo_root, tmp, customers, expect_ok=True)
-    assert 'Drive' not in out
+    assert 'Google Drive IDs' in out
+    assert '❌' not in out
 
 
 def test_long_non_id_token_not_matched(tmp_path):

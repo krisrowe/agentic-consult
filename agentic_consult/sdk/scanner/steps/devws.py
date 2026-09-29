@@ -10,7 +10,7 @@ def run_devws_precommit(repo_path: str) -> CheckResult:
     rc, stdout, stderr = run_cmd("devws precommit 2>&1", repo_path)
 
     if rc == 0:
-        return CheckResult("devws precommit", True)
+        return CheckResult("devws precommit", True, info="External scan passed")
 
     findings = []
     if "FOUND" in stdout:
@@ -22,7 +22,7 @@ def run_devws_precommit(repo_path: str) -> CheckResult:
     if not findings:
         findings = ["devws precommit reported issues"]
 
-    return CheckResult("devws precommit", False, findings[:10])
+    return CheckResult("devws precommit", False, findings[:10], info="Entropy check failed")
 
 
 def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:

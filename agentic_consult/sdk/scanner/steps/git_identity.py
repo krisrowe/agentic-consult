@@ -42,7 +42,7 @@ def check_git_identity(repo_path: str) -> CheckResult:
             if impending_email != local_email:
                 return CheckResult("Git identity", False, [
                     f"Impending '{impending_email}' differs from local config '{local_email}'"
-                ])
+                ], info=f"Conflict: {impending_email} vs {local_email}")
 
             # Check unpushed commits match local email
             unpushed_emails = set()
@@ -68,9 +68,9 @@ def check_git_identity(repo_path: str) -> CheckResult:
                 if mismatches:
                     return CheckResult("Git identity", False, [
                         f"Unpushed commits have different identity: {mismatches}"
-                    ])
+                    ], info="Unpushed mismatches found")
 
-            return CheckResult("Git identity", True)
+            return CheckResult("Git identity", True, info=f"Verified: {impending_email}")
 
         # No local config - history must match impending email
         res = subprocess.run(
@@ -81,20 +81,20 @@ def check_git_identity(repo_path: str) -> CheckResult:
             history_emails = set(e.strip() for e in res.stdout.splitlines() if e.strip())
 
             if not history_emails or history_emails == {impending_email}:
-                return CheckResult("Git identity", True)
+                return CheckResult("Git identity", True, info=f"Verified: {impending_email}")
 
             # Check for override setting
             settings = load_main_config()
             if settings.get('precommit', {}).get('git_local_user_identity_optional', False):
-                return CheckResult("Git identity", True)
+                return CheckResult("Git identity", True, info=f"Matched (Optional): {impending_email}")
 
             return CheckResult("Git identity", False, [
                 f"History has {history_emails}, impending is '{impending_email}'",
                 f"Fix: git config user.email {impending_email}",
                 f"Or: consult config set precommit.git_local_user_identity_optional true"
-            ])
+            ], info="History mismatch")
 
-        return CheckResult("Git identity", True)
+        return CheckResult("Git identity", True, info=f"Assuming identity: {impending_email}")
 
     except Exception as e:
         return CheckResult("Git identity", True, [], skipped=True,

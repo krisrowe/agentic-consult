@@ -5,14 +5,14 @@ from agentic_consult.sdk.scanner.core import run_scan, MissingUserConfigError
 
 # Check names that belong to the user module
 USER_CHECK_NAMES = {
-    "Sensitive patterns in uncommitted",
-    "Sensitive patterns in history",
-    "Sensitive patterns in commits",
+    "User patterns (content)",
+    "User patterns (history)",
+    "User patterns (commits)",
     "Stash entries",
-    "Reflog patterns",
-    "Sensitive filenames",
-    "Branch names",
-    "Tag names",
+    "User patterns (reflog)",
+    "User patterns (filenames)",
+    "User patterns (branches)",
+    "User patterns (tags)",
 }
 
 
@@ -49,9 +49,10 @@ def test_detects_pattern_in_staged_content(tmp_path, config_dir):
 
     # Verify finding detected
     assert report.failed
-    uncommitted = next(c for c in report.checks if c.name == "Sensitive patterns in uncommitted")
+    uncommitted = next(c for c in report.checks if c.name == "User patterns (content)")
     assert not uncommitted.passed
     assert any("SecretWord" in f for f in uncommitted.findings)
+    assert "1 patterns loaded" in (uncommitted.info or "")
 
 
 def test_detects_pattern_in_unstaged_content(tmp_path, config_dir):
@@ -76,7 +77,7 @@ def test_detects_pattern_in_unstaged_content(tmp_path, config_dir):
 
     assert_only_user_module(report)
     assert report.failed
-    uncommitted = next(c for c in report.checks if c.name == "Sensitive patterns in uncommitted")
+    uncommitted = next(c for c in report.checks if c.name == "User patterns (content)")
     assert not uncommitted.passed
 
 
@@ -100,7 +101,7 @@ def test_detects_pattern_in_untracked_file(tmp_path, config_dir):
 
     assert_only_user_module(report)
     assert report.failed
-    uncommitted = next(c for c in report.checks if c.name == "Sensitive patterns in uncommitted")
+    uncommitted = next(c for c in report.checks if c.name == "User patterns (content)")
     assert not uncommitted.passed
 
 
@@ -129,7 +130,7 @@ def test_detects_pattern_in_git_history(tmp_path, config_dir):
 
     assert_only_user_module(report)
     assert report.failed
-    history = next(c for c in report.checks if c.name == "Sensitive patterns in history")
+    history = next(c for c in report.checks if c.name == "User patterns (history)")
     assert not history.passed
     assert any("SecretWord" in f for f in history.findings)
 
@@ -147,8 +148,9 @@ def test_skips_when_no_config(tmp_path):
 
     # Should not fail - just skip
     assert not report.failed
-    uncommitted = next(c for c in report.checks if c.name == "Sensitive patterns in uncommitted")
+    uncommitted = next(c for c in report.checks if c.name == "User patterns (content)")
     assert uncommitted.skipped
+    assert uncommitted.info == "No patterns configured"
 
 
 def test_errors_when_no_config_and_required(tmp_path):

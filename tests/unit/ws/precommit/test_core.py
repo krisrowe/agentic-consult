@@ -100,3 +100,49 @@ def test_cli_exit_nonzero_when_sdk_scanner_finds_ssn(tmp_path):
 
     assert proc.returncode != 0, f"Expected non-zero exit, got 0\n{proc.stdout}\n{proc.stderr}"
     assert TEST_SSN in proc.stdout or "SSN" in proc.stdout.upper()
+
+
+def test_cli_rich_table_and_step_info_output(tmp_path):
+    """CLI outputs Rich table with step index, step info details, and stderr summary."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+
+    (repo / "clean.txt").write_text("Nothing sensitive here")
+    subprocess.run(["git", "-C", str(repo), "add", "clean.txt"], check=True)
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "agentic_consult", "precommit", "--only=ssn_ein", str(repo)],
+        cwd=str(repo),
+        capture_output=True,
+        text=True
+    )
+
+    assert proc.returncode == 0
+    assert "[1/2]" in proc.stdout
+    assert "[2/2]" in proc.stdout
+    assert "SSN/EIN patterns" in proc.stdout
+    assert "Scanning for ID patterns (regex)" in proc.stdout
+    assert "checks PASSED" in proc.stderr
+
+
+def test_cli_summary_flag_hides_passed_table(tmp_path):
+    """CLI --summary (-s) suppresses passed table rows on stdout while reporting final status on stderr."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+
+    (repo / "clean.txt").write_text("Nothing sensitive here")
+    subprocess.run(["git", "-C", str(repo), "add", "clean.txt"], check=True)
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "agentic_consult", "precommit", "--summary", "--only=ssn_ein", str(repo)],
+        cwd=str(repo),
+        capture_output=True,
+        text=True
+    )
+
+    assert proc.returncode == 0
+    assert "[1/2]" not in proc.stdout
+    assert "checks PASSED" in proc.stderr
+

@@ -27,7 +27,7 @@ def check_oauth_tokens(repo_path: str) -> CheckResult:
                 findings.append(f"{name}: {truncated}")
 
     passed = len(findings) == 0
-    return CheckResult("OAuth/API tokens", passed, findings[:10])
+    return CheckResult("OAuth/API tokens", passed, findings[:10], info="Scanning for token patterns (regex)")
 
 
 def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:

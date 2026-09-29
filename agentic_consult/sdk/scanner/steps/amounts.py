@@ -68,7 +68,7 @@ def check_large_amounts(repo_path: str, thresholds: dict) -> CheckResult:
                     findings.append(f"{amount_str} (>= ${threshold:,})")
 
     passed = len(findings) == 0
-    return CheckResult(f"Large amounts (>= ${threshold:,})", passed, findings[:10])
+    return CheckResult(f"Large amounts (>= ${threshold:,})", passed, findings[:10], info=f"Threshold: ${threshold:,}")
 
 
 def check_nonround_amounts(repo_path: str, thresholds: dict) -> CheckResult:
@@ -86,7 +86,7 @@ def check_nonround_amounts(repo_path: str, thresholds: dict) -> CheckResult:
                 findings.append(amount_str)
 
     passed = len(findings) == 0
-    return CheckResult("Non-round suspicious amounts", passed, findings[:10])
+    return CheckResult("Non-round suspicious amounts", passed, findings[:10], info=f"Threshold: ${threshold:,}")
 
 
 def check_amounts_with_cents(repo_path: str, thresholds: dict) -> CheckResult:
@@ -105,7 +105,7 @@ def check_amounts_with_cents(repo_path: str, thresholds: dict) -> CheckResult:
                 findings.append(amount_str)
 
     passed = len(findings) == 0
-    return CheckResult("Amounts with cents", passed, findings[:10])
+    return CheckResult("Amounts with cents", passed, findings[:10], info=f"Reviewing > ${threshold:,}")
 
 
 def run_checks(repo_path: str, deep: bool = False, **kwargs) -> List[CheckResult]:
